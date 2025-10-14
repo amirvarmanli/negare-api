@@ -2,6 +2,9 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
+import { TracingInterceptor } from './common/interceptors/tracing.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -9,7 +12,19 @@ async function bootstrap() {
   app.useLogger(new Logger());
   app.flushLogs();
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+      forbidNonWhitelisted: true,
+    }),
+  );
+  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(
+    new TracingInterceptor(),
+    new TransformResponseInterceptor(),
+  );
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Negare API')
