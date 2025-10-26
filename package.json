@@ -7,16 +7,17 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"apps/api/src/**/*.ts\" \"apps/api/test/**/*.ts\" \"scripts/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
-    "lint": "cross-env ESLINT_USE_FLAT_CONFIG=false eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "typeorm": "typeorm-ts-node-commonjs -d src/typeorm.config.ts",
-    "migration:gen": "npm run typeorm -- migration:generate src/migrations/init-core",
+    "start:prod": "node dist/apps/api/main",
+    "lint": "cross-env ESLINT_USE_FLAT_CONFIG=false eslint \"{apps/api/src,apps/api/test,test}/**/*.ts\" --fix",
+    "typeorm": "typeorm-ts-node-commonjs -d apps/api/src/typeorm.config.ts",
+    "migration:gen": "npm run typeorm -- migration:generate apps/api/src/migrations/init-core",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
+    "docs:openapi": "node ./scripts/export-openapi.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -81,7 +82,7 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
+    "rootDir": "apps/api/src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
@@ -89,7 +90,7 @@
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
-    "coverageDirectory": "../coverage",
+    "coverageDirectory": "../../coverage",
     "testEnvironment": "node"
   }
 }
