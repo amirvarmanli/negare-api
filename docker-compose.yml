@@ -1,50 +1,80 @@
+version: '3.9'
+
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile.dev
+    working_dir: /app
+
+    # .env باید کنار همین فایل compose باشد
     env_file:
-      - .env
+      - ./.env
+
     environment:
-      - NODE_ENV=development
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
-      - DATABASE_URL=${DATABASE_URL}
-      - KAVENEGAR_API_KEY=${KAVENEGAR_API_KEY}
-      - KAVENEGAR_TEMPLATE=${KAVENEGAR_TEMPLATE}
-      - OTP_TTL_SECONDS=${OTP_TTL_SECONDS}
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - NO_PROXY=api.kavenegar.com,.kavenegar.com,localhost,127.0.0.1
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - MAIL_FROM=${MAIL_FROM}
-      - SET_PWD_JWT_SECRET=${SET_PWD_JWT_SECRET}
-      - SET_PWD_JWT_EXPIRES=${SET_PWD_JWT_EXPIRES}
-      - ACCESS_JWT_SECRET=${ACCESS_JWT_SECRET}
-      - ACCESS_JWT_EXPIRES=${ACCESS_JWT_EXPIRES}
-      - OTP_REQUEST_WINDOW=${OTP_REQUEST_WINDOW}
-      - OTP_REQUEST_MAX=${OTP_REQUEST_MAX}
-      - OTP_VERIFY_WINDOW=${OTP_VERIFY_WINDOW}
-      - OTP_VERIFY_MAX=${OTP_VERIFY_MAX}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
+      # --- Dev & Hot Reload ---
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '1000'
+
+      # --- App Config ---
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/negare}
+      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
+      KAVENEGAR_TEMPLATE: ${KAVENEGAR_TEMPLATE:-send-code}
+      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Negare <no-reply@negare.test>}
+      SET_PWD_JWT_SECRET: ${SET_PWD_JWT_SECRET:-changeme}
+      SET_PWD_JWT_EXPIRES: ${SET_PWD_JWT_EXPIRES:-15m}
+      ACCESS_JWT_SECRET: ${ACCESS_JWT_SECRET:-changeme}
+      ACCESS_JWT_EXPIRES: ${ACCESS_JWT_EXPIRES:-30m}
+      OTP_REQUEST_WINDOW: ${OTP_REQUEST_WINDOW:-60}
+      OTP_REQUEST_MAX: ${OTP_REQUEST_MAX:-5}
+      OTP_VERIFY_WINDOW: ${OTP_VERIFY_WINDOW:-300}
+      OTP_VERIFY_MAX: ${OTP_VERIFY_MAX:-5}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      CORS_ORIGIN: http://localhost:3000
+
+      # --- Proxy hygiene (اختیاری) ---
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      ALL_PROXY:
+      NO_PROXY: api.kavenegar.com,.kavenegar.com,localhost,127.0.0.1
+
+    # DNS سفارشی اختیاری
     dns:
       - 1.1.1.1
       - 8.8.8.8
+
     ports:
-      - '3000:3000'
-      - '9229:9229'
+      - '4000:3000' # Nest داخل کانتینر روی 3000 → میزبان 4000
+      - '9229:9229' # Node inspect برای دیباگ
+
     volumes:
-      - .:/app:delegated
-      - /app/node_modules
+      - .:/app # کد شما
+      - /app/node_modules # جلوگیری از overwrite شدن node_modules داخل کانتینر
+
     depends_on:
-      - db
-      - redis
-    command: npx nodemon --exec "nest start --watch" --signal SIGTERM
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    # اجرای درست nodemon (بدون اجرا با node)
+    command: >
+      sh -lc "npx nodemon
+      --inspect=0.0.0.0:9229
+      --watch src
+      --ext ts,js,json
+      --exec 'nest start --watch'"
+
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
 
   db:
     image: postgres:16-alpine
@@ -56,8 +86,21 @@ services:
       - '5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d negare']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
 volumes:
   pgdata:

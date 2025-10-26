@@ -1,98 +1,62 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Negare API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend for the Negare marketplace built with NestJS, TypeORM, PostgreSQL, and Next.js on the frontend. This document highlights the latest catalog engagement changes and how to operate the project.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Recent Changes — Split Likes & Bookmarks
 
-## Description
+- Introduced dedicated `content.likes` and `content.bookmarks` tables with TypeORM entities and migrations.
+- Likes now drive the public `products.likesCount` counter, while bookmarks remain private per user.
+- Added `/catalog/products/:id/like` and `/catalog/products/:id/bookmark` toggle endpoints with idempotent behaviour.
+- Exposed profile feeds `/profile/likes` and `/profile/bookmarks` alongside existing downloads, purchases, and follow endpoints.
+- Product detail responses now include per-user `liked` and `bookmarked` flags when a user is authenticated.
+- Published Postman collection `postman/Catalog_Profile.postman_collection.json` covering catalog, profile, downloads, and follow flows.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Data Model & Migration Notes
 
-## Project setup
+- `content.favorites` is renamed to `content.bookmarks`; constraints were updated accordingly.
+- New `content.likes` table stores `(user_id, product_id)` pairs with a composite PK and an index on `product_id`.
+- Migration `1730000000000-SplitLikesBookmarks.ts` copies existing favorite rows into the likes table, clears bookmarks, and backfills `products.likes_count`.
+- Running the migration sequence:
+  ```bash
+  npm run typeorm:migration:run
+  ```
+  Rollback uses the down script but will merge bookmarks back into the legacy `favorites` table.
 
-```bash
-$ npm install
-```
+## Development Workflow
 
-## Compile and run the project
+Install dependencies and start the server:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
+npm run start:dev
 ```
 
-## Run tests
+Unit tests cover counters, likes, bookmarks, and product decoration logic:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm test
 ```
 
-## Deployment
+## Product Detail Response
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+- `GET /catalog/products/:idOrSlug` returns the product entity extended with `liked` and `bookmarked` booleans when the requester is authenticated.
+- Anonymous requests receive the same payload with both flags set to `false`.
+- View tracking and analytics updates remain unchanged.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## API Collections
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+- Import `postman/Catalog_Profile.postman_collection.json` to exercise catalog listing, product detail, like/bookmark toggles, downloads, profile histories, and supplier follow flows.
+- Collection variables:
+  - `baseUrl` – API root (defaults to `http://localhost:3000/api`).
+  - `productId`, `supplierId` – sample identifiers for quick testing.
+  - `accessToken`, `refreshToken` – JWT and refresh cookie values for authenticated calls.
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Additional Commands
 
-## Resources
+- Generate new migrations: `npm run typeorm:migration:generate -- <MigrationName>`
+- Apply migrations: `npm run typeorm:migration:run`
+- Linting / formatting follow the project’s ESLint and Prettier configuration (run via `npm run lint` when available).
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+For architectural details, refer to the source under `src/catalog`, `src/core`, and the respective DTO/service implementations added in this update.
