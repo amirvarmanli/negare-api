@@ -9,6 +9,8 @@ import {
   Post,
   Req,
   Res,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,6 +21,13 @@ import {
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { Public } from '@app/common/decorators/public.decorator';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
+import { NoCacheInterceptor } from '@app/common/interceptors/no-cache.interceptor';
+
 import { OtpService } from '../otp/otp.service';
 import { OtpChannel, OtpPurpose } from '@app/prisma/prisma.constants';
 import { TokenService } from '../token/token.service';
@@ -34,6 +43,7 @@ import {
 } from '../dto/password/password.dto';
 
 @ApiTags('Authentication - Password')
+@UseInterceptors(NoCacheInterceptor)
 @Controller('auth/password')
 export class PasswordController {
   constructor(
@@ -63,7 +73,6 @@ export class PasswordController {
     if (out?.data?.alreadyActive && out.data.resendAvailableIn) {
       res.setHeader('Retry-After', String(out.data.resendAvailableIn));
     }
-    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Vary', 'Cookie');
     return out; // { success, data }
   }
@@ -89,7 +98,6 @@ export class PasswordController {
     if (out?.data?.alreadyActive && out.data.resendAvailableIn) {
       res.setHeader('Retry-After', String(out.data.resendAvailableIn));
     }
-    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Vary', 'Cookie');
     return out;
   }
@@ -113,7 +121,6 @@ export class PasswordController {
       this.getIp(req),
       (req.headers['user-agent'] as string) || undefined,
     );
-    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Vary', 'Cookie');
     return out;
   }
@@ -137,7 +144,7 @@ export class PasswordController {
       });
     }
     const out = await this.password.setPassword(token, dto.password);
-    return { success: true, data: out };
+    return { success: true as const, data: out };
   }
 
   // 5) ست اولیه پسورد (signup/login via OTP)
@@ -161,30 +168,33 @@ export class PasswordController {
       });
     }
     const out = await this.password.setPassword(token, dto.password);
-    return { success: true, data: out };
+    return { success: true as const, data: out };
   }
 
   // 6) تغییر پسورد (نیازمند auth)
   @Post('change')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change password (requires auth)' })
   @ApiBearerAuth()
   @ApiCookieAuth('access_token')
   @ApiResponse({ status: 200 })
-  async change(@Req() req: Request, @Body() dto: ChangePasswordDto) {
-    const userId = (req as any)?.user?.sub as string | undefined;
-    if (!userId) {
+  async change(
+    @CurrentUser() currentUser: CurrentUserPayload | undefined,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    if (!currentUser?.id) {
       throw new BadRequestException({
         code: 'Unauthorized',
         message: 'Unauthorized context.',
       });
     }
     const out = await this.password.changePassword(
-      userId,
+      currentUser.id,
       dto.currentPassword,
       dto.newPassword,
     );
-    return { success: true, data: out };
+    return { success: true as const, data: out };
   }
 
   // 7) محاسبه strength (لوکال)
@@ -195,7 +205,7 @@ export class PasswordController {
   @ApiResponse({ status: 200 })
   async strength(@Body() dto: PasswordStrengthDto) {
     const score = this.estimateStrength(dto.password);
-    return { success: true, data: { score } };
+    return { success: true as const, data: { score } };
   }
 
   // 8) policy برای UI
@@ -205,7 +215,7 @@ export class PasswordController {
   @ApiResponse({ status: 200 })
   policy() {
     return {
-      success: true,
+      success: true as const,
       data: {
         minLength: 8,
         requireNumber: true,
@@ -216,7 +226,7 @@ export class PasswordController {
     };
   }
 
-  // 9) وضعیت OTP (اختیاری)
+  // 9) وضعیت OTP (اختیاری / placeholder)
   @Public()
   @Post('forgot/status')
   @HttpCode(HttpStatus.OK)
@@ -224,12 +234,12 @@ export class PasswordController {
   @ApiResponse({ status: 200 })
   async status() {
     return {
-      success: true,
+      success: true as const,
       data: { expiresIn: null, resendAvailableIn: null },
     };
   }
 
-  // 10) بررسی payload تیکت (فقط دیباگ؛ در پرود غیرفعال کن)
+  // 10) بررسی payload تیکت (فقط دیباگ؛ در پرود غیرفعال)
   @Public()
   @Post('ticket/inspect')
   @HttpCode(HttpStatus.OK)
@@ -245,7 +255,7 @@ export class PasswordController {
       });
     }
     const payload = this.tokens.decodeUnsafe(token);
-    return { success: true, data: { payload } };
+    return { success: true as const, data: { payload } };
   }
 
   // ----------------- helpers -----------------
