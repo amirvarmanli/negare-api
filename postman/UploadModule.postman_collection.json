@@ -1,0 +1,184 @@
+{
+  "info": {
+    "name": "Upload Module",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Negare Upload module endpoints for chunked uploads with finish and abort flows."
+  },
+  "item": [
+    {
+      "name": "Init Upload",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-user-id",
+            "value": "user-1"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"filename\": \"sample.png\",\n  \"size\": 5242880,\n  \"mime\": \"image/png\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/upload/init",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "init"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Upload Chunk",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('chunk accepted', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().success).to.eql(true);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/octet-stream"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{{chunkBinary}}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/upload/chunk?uploadId={{uploadId}}&index={{chunkIndex}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "chunk"
+          ],
+          "query": [
+            {
+              "key": "uploadId",
+              "value": "{{uploadId}}"
+            },
+            {
+              "key": "index",
+              "value": "{{chunkIndex}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/upload/status?uploadId={{uploadId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "status"
+          ],
+          "query": [
+            {
+              "key": "uploadId",
+              "value": "{{uploadId}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Finish Upload",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uploadId\": \"{{uploadId}}\",\n  \"subdir\": \"uploads\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/upload/finish",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "finish"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Abort Upload",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/upload/abort?uploadId={{uploadId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "abort"
+          ],
+          "query": [
+            {
+              "key": "uploadId",
+              "value": "{{uploadId}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api"
+    },
+    {
+      "key": "uploadId",
+      "value": ""
+    },
+    {
+      "key": "chunkIndex",
+      "value": "0"
+    },
+    {
+      "key": "chunkBinary",
+      "value": "<binary data>"
+    }
+  ]
+}

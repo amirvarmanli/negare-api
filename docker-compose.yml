@@ -30,19 +30,37 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: '${MAIL_FROM:-Negare <no-reply@negare.test>}'
-      # اگر دیباگ نمی‌خوای، این خط رو حذف کن تا ارور 9229 هم نداشته باشی:
-      # NODE_OPTIONS: ${NODE_OPTIONS:---inspect=0.0.0.0:9229}
+
+      # ===== FTP / CDN =====
+      FTP_HOST: ${FTP_HOST}
+      FTP_PORT: ${FTP_PORT:-21}
+      FTP_USER: ${FTP_USER}
+      FTP_PASS: ${FTP_PASS}
+      FTP_SECURE: ${FTP_SECURE:-false}
+      FTP_PUBLIC_ROOT: ${FTP_PUBLIC_ROOT:-public_html}
+      CDN_BASE_URL: ${CDN_BASE_URL}
+
+      # ===== Upload (Phase 1) =====
+      UPLOAD_TMP_DIR: ${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
+      UPLOAD_CHUNK_SIZE: ${UPLOAD_CHUNK_SIZE:-5242880}
+      UPLOAD_TTL_SECONDS: ${UPLOAD_TTL_SECONDS:-86400}
+      UPLOAD_MAX_SIZE_BYTES: ${UPLOAD_MAX_SIZE_BYTES:-5368709120}
+      UPLOAD_CLEAN_INTERVAL_MIN: ${UPLOAD_CLEAN_INTERVAL_MIN:-30}
+      UPLOAD_MAX_TEMP_AGE_HOURS: ${UPLOAD_MAX_TEMP_AGE_HOURS:-6}
+      ALLOWED_EXTS: ${ALLOWED_EXTS:-zip,rar,png,jpg,jpeg,webp,mp4,mkv}
+      ALLOWED_MIME: ${ALLOWED_MIME:-image/png,image/jpeg,image/webp,application/zip,application/x-rar-compressed,video/mp4,video/x-matroska}
+
     dns:
       - 1.1.1.1
       - 8.8.8.8
     ports:
       - '4000:4000'
-      # اگر دیباگ می‌خوای، این رو هم باز کن و env بالا رو فعال بذار:
-      # - '9229:9229'
     volumes:
       - .:/app
       - /app/node_modules
       - /app/dist
+      # ولوم موقت فایل‌های چانک‌شده:
+      - upload-tmp:${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
     depends_on:
       db:
         condition: service_healthy
@@ -96,7 +114,6 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Prisma Studio (اختیاری، با profile)
   studio:
     build:
       context: .
@@ -123,3 +140,4 @@ services:
 
 volumes:
   db-data:
+  upload-tmp:

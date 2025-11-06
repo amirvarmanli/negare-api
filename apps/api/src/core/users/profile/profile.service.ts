@@ -109,6 +109,28 @@ export class ProfileService {
     }
   }
 
+  async updateAvatar(userId: string, avatarUrl: string): Promise<void> {
+    const data: PrismaNS.UserUpdateInput = {
+      avatarUrl: this.normalizeNullable(avatarUrl),
+    };
+
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data,
+        select: { id: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('پروفایل کاربر یافت نشد');
+      }
+      throw error;
+    }
+  }
+
   /**
    * چک سریع اعتبار و موجودبودن نام‌کاربری
    */

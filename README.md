@@ -62,9 +62,25 @@ Core `.env` knobs (see `.env.example`):
 npm run start:dev        # local API (http://localhost:4000/api)
 npm run test             # unit tests (TokenService, RefreshService, SessionService, AuthController)
 npm run test:e2e         # end-to-end auth cookie/token rotation checks
+npm run test:cov         # full coverage report (HTML + lcov)
 ```
 
 All tests assume Redis is available — the suite boots against an in-memory fake Redis used by the services.
+
+## Upload Module
+
+The chunked upload pipeline lives under `apps/api/src/core/upload` and now ships with:
+
+- Strict validation for init/chunk/finish flows, MIME sniffing, CDN-safe filenames, and lock-aware state transitions.
+- WebSocket progress notifications via `/upload` namespace (`serverUploadProgress`, `uploaded`, `uploadError`).
+- Comprehensive unit/integration/e2e coverage (≥90% lines, ≥85% branches) with fakes for storage, Redis, and media persistence.
+- Swagger-ready DTOs plus a Postman collection at `postman/UploadModule.postman_collection.json`.
+
+### Local workflow
+
+1. `npm run test:cov` – executes unit + e2e suites and publishes coverage to `coverage/index.html`.
+2. Import the Postman collection, set `{{baseUrl}}` (e.g. `http://localhost:4000/api`), and provide `x-user-id` when hitting `/upload/init`.
+3. For WebSocket smoke-tests, connect via Socket.IO client to `ws://localhost:4000/upload`, emit `join { uploadId }`, and watch for `serverUploadProgress`/`uploaded` events.
 
 ## Docs & Tooling
 

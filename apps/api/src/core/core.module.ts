@@ -4,9 +4,24 @@ import { ProfileModule } from './users/profile/profile.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
 import { WalletModule } from './wallet/wallet.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
-  imports: [AuthModule, ProfileModule, RolesModule, UsersModule, WalletModule],
-  exports: [AuthModule, ProfileModule, RolesModule, UsersModule, WalletModule],
+  imports: [
+    AuthModule,
+    ProfileModule,
+    RolesModule,
+    UsersModule,
+    WalletModule,
+    UploadModule,
+  ],
+  exports: [
+    AuthModule,
+    ProfileModule,
+    RolesModule,
+    UsersModule,
+    WalletModule,
+    UploadModule,
+  ],
 })
 export class CoreModule {}

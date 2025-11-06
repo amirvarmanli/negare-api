@@ -31,6 +31,20 @@ const config: Config = {
     '!<rootDir>/apps/api/src/**/*.spec.ts',
   ],
   coverageDirectory: '<rootDir>/coverage',
+  coverageThreshold: {
+    global: {
+      statements: 70,
+      branches: 60,
+      functions: 70,
+      lines: 70,
+    },
+    './apps/api/src/core/upload/**/*.ts': {
+      statements: 90,
+      branches: 85,
+      functions: 90,
+      lines: 90,
+    },
+  },
   testEnvironment: 'node',
   verbose: false,
 };

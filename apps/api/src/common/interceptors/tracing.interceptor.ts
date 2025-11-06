@@ -1,14 +1,16 @@
 import {
   CallHandler,
   ExecutionContext,
+  HttpException,
   Injectable,
   Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { Observable, throwError } from 'rxjs';
+import { catchError, finalize, tap } from 'rxjs/operators';
+import { requestTraceStorage } from '@app/common/tracing/request-trace';
 
 @Injectable()
 export class TracingInterceptor implements NestInterceptor {
@@ -28,26 +30,59 @@ export class TracingInterceptor implements NestInterceptor {
     const userId = request.user?.id ?? 'anonymous';
     const { method, originalUrl } = request;
 
-    this.logger.log(`txId=${txId} userId=${userId} start ${method} ${originalUrl}`);
+    this.logger.log(
+      `traceId=${txId} userId=${userId} start method=${method} url=${originalUrl}`,
+    );
 
     const startTime = Date.now();
 
-    return next.handle().pipe(
-      tap({
-        next: () => {
-          const duration = Date.now() - startTime;
-          this.logger.log(
-            `txId=${txId} userId=${userId} completed ${method} ${originalUrl} status=${response.statusCode} duration=${duration}ms`,
-          );
-        },
-        error: (error: unknown) => {
-          const duration = Date.now() - startTime;
-          this.logger.error(
-            `txId=${txId} userId=${userId} failed ${method} ${originalUrl} status=${response.statusCode} duration=${duration}ms`,
-            error instanceof Error ? error.stack : undefined,
-          );
-        },
-      }),
+    return requestTraceStorage.run(
+      { traceId: txId, userId },
+      () => {
+        let finalStatus: number | undefined;
+        let capturedError: unknown;
+
+        return next.handle().pipe(
+          tap(() => {
+            finalStatus = response.statusCode;
+          }),
+          catchError((error: unknown) => {
+            capturedError = error;
+            if (error instanceof HttpException) {
+              finalStatus = error.getStatus();
+            } else if (
+              typeof (error as { status?: number }).status === 'number'
+            ) {
+              finalStatus = Number(
+                (error as { status?: number }).status ?? response.statusCode,
+              );
+            } else if (
+              typeof (error as { statusCode?: number }).statusCode === 'number'
+            ) {
+              finalStatus = Number(
+                (error as { statusCode?: number }).statusCode ??
+                  response.statusCode,
+              );
+            } else {
+              finalStatus = 500;
+            }
+            return throwError(() => error);
+          }),
+          finalize(() => {
+            const durationMs = Date.now() - startTime;
+            const status = finalStatus ?? response.statusCode;
+            const baseLog = `traceId=${txId} userId=${userId} method=${method} url=${originalUrl} status=${status} durationMs=${durationMs}`;
+            if (capturedError) {
+              this.logger.error(
+                baseLog,
+                capturedError instanceof Error ? capturedError.stack : undefined,
+              );
+            } else {
+              this.logger.log(baseLog);
+            }
+          }),
+        );
+      },
     );
   }
 }

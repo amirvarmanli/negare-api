@@ -340,6 +340,22 @@ model WalletAuditLog {
   @@schema("core")
 }
 
+model File {
+  id        String   @id @default(uuid())
+  userId    String
+  filename  String
+  mime      String
+  size      BigInt
+  path      String // e.g. uploads/2025-11-04/uuid-file.png
+  url       String // cdn absolute
+  status    String   @default("uploaded")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@schema("core")
+}
+
 /**
  * ============================
  * Content domain (@@schema("content"))
