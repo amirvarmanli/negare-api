@@ -30,7 +30,10 @@
     "db:reset:prisma": "prisma migrate reset --force --schema prisma/schema.prisma",
     "compose:up": "docker compose up --build",
     "compose:down": "docker compose down -v",
-    "compose:logs": "docker compose logs -f api"
+    "compose:logs": "docker compose logs -f api",
+    "migrate:deploy": "prisma migrate deploy --schema apps/api/prisma/schema.prisma",
+    "start:prod": "node dist/apps/api/main.js",
+    "start:prod:with-migrate": "npm run migrate:deploy && npm run start:prod"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
