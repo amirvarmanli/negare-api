@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsDefined, IsString, Length, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { USERNAME_MIN, USERNAME_MAX, USERNAME_REGEX } from '../username.rules';
+import { USERNAME_MIN, USERNAME_MAX, USERNAME_REGEX } from '@app/core/users/profile/username.rules';
 
 export class UpdateUsernameDto {
   @ApiProperty({

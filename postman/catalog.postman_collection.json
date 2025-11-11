@@ -1,0 +1,512 @@
+{
+  "info": {
+    "name": "Catalog API",
+    "description": "Postman collection covering the rebuilt catalog module.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Create Product (fileId connect)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"test-vector-pack\",\n  \"title\": \"وکتور تستی\",\n  \"description\": \"پک نمونه با چند دارایی\",\n  \"coverUrl\": \"https://cdn.negare.test/products/cover.png\",\n  \"shortLink\": \"p/test-vector-pack\",\n  \"fileId\": \"{{productFileId}}\",\n  \"graphicFormats\": [\"SVG\", \"PNG\"],\n  \"colors\": [\"#101010\", \"#FFAA00\"],\n  \"seoTitle\": \"پک وکتور تستی\",\n  \"seoDescription\": \"پک وکتور مناسب تمرین آزمون\",\n  \"seoKeywords\": [\"vector\", \"pack\"],\n  \"pricingType\": \"PAID\",\n  \"price\": 129000,\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2025-01-01T08:00:00.000Z\",\n  \"fileSizeMB\": 120,\n  \"fileBytes\": \"123456789\",\n  \"assets\": [\n    { \"url\": \"https://cdn.negare.test/products/cover.png\", \"alt\": \"preview\" },\n    { \"url\": \"https://cdn.negare.test/products/preview-2.png\", \"order\": 1 }\n  ],\n  \"topics\": [ { \"topicId\": \"{{topicId}}\", \"order\": 0 } ],\n  \"categoryIds\": [ \"{{categoryId}}\" ],\n  \"tagIds\": [ \"{{tagId}}\" ],\n  \"authorIds\": [ \"supplier-user\" ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Product (nested file)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"test-nested-file\",\n  \"title\": \"ساخت فایل درجا\",\n  \"description\": \"این درخواست ProductFile جدید می‌سازد\",\n  \"graphicFormats\": [\"SVG\"],\n  \"pricingType\": \"SUBSCRIPTION\",\n  \"file\": {\n    \"storageKey\": \"products/2025/01/nested-file.zip\",\n    \"originalName\": \"nested-file.zip\",\n    \"size\": \"2048\",\n    \"mimeType\": \"application/zip\",\n    \"meta\": { \"source\": \"postman\" }\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Product (no file)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"test-without-file\",\n  \"title\": \"بدون فایل اولیه\",\n  \"graphicFormats\": [\"PNG\"],\n  \"pricingType\": \"FREE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/catalog/products?limit=12&graphicFormat=SVG",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "catalog",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "12"
+                },
+                {
+                  "key": "graphicFormat",
+                  "value": "SVG"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Product",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/products/{{productSlug}}"
+          }
+        },
+        {
+          "name": "Update Product (connect fileId)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"نسخه با فایل موجود\",\n  \"fileId\": \"{{productFileId}}\",\n  \"status\": \"PUBLISHED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Product (create ProductFile)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"افزودن فایل جدید\",\n  \"file\": {\n    \"storageKey\": \"products/2025/02/update-file.zip\",\n    \"size\": \"8192\",\n    \"mimeType\": \"application/zip\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Toggle Like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}/like"
+          }
+        },
+        {
+          "name": "Toggle Bookmark",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}/bookmark"
+          }
+        },
+        {
+          "name": "Register Download",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}/download"
+          }
+        },
+        {
+          "name": "Increment View",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/catalog/products/{{productId}}/view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/categories",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"وکتور\",\n  \"slug\": \"vector\",\n  \"coverUrl\": \"https://cdn.negare.test/categories/vector.png\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Categories",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/categories?limit=50"
+          }
+        },
+        {
+          "name": "Tree",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/categories/tree/root"
+          }
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/categories/{{categoryId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tags",
+      "item": [
+        {
+          "name": "Create Tag",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/tags",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"dashboard\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Tags",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/tags?limit=50"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Topics",
+      "item": [
+        {
+          "name": "Create Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/topics",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"طراحی داشبورد\",\n  \"slug\": \"dashboard-design\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Topics",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/topics?limit=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookmarks",
+      "item": [
+        {
+          "name": "Toggle Bookmark",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/bookmarks/{{productId}}/toggle"
+          }
+        },
+        {
+          "name": "Check Bookmark",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/bookmarks/{{productId}}/check"
+          }
+        },
+        {
+          "name": "Profile Bookmarks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/profile/bookmarks?limit=24"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Likes",
+      "item": [
+        {
+          "name": "Toggle Like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/likes/{{productId}}/toggle"
+          }
+        },
+        {
+          "name": "Profile Likes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/profile/likes?limit=24"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Downloads",
+      "item": [
+        {
+          "name": "Start Download",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/downloads/{{productId}}/start",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bytes\": 1048576,\n  \"pricePaid\": 129000\n}"
+            }
+          }
+        },
+        {
+          "name": "Profile Downloads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/profile/downloads?limit=24"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Comments",
+      "item": [
+        {
+          "name": "Create Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-user",
+                "value": "{{regularUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/comments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetType\": \"PRODUCT\",\n  \"targetId\": \"{{productSlug}}\",\n  \"productId\": \"{{productId}}\",\n  \"body\": \"نظر نمونه روی محصول\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Moderation List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-mock-user",
+                "value": "{{adminUserHeader}}"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/comments?limit=50"
+          }
+        },
+        {
+          "name": "Product Comments",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/comments/product/{{productId}}?limit=10"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "adminUserHeader",
+      "value": "{\"id\":\"admin-user\",\"roles\":[\"admin\"]}"
+    },
+    {
+      "key": "regularUserHeader",
+      "value": "{\"id\":\"customer-user\",\"roles\":[\"user\"]}"
+    },
+    {
+      "key": "topicId",
+      "value": "1"
+    },
+    {
+      "key": "categoryId",
+      "value": "1"
+    },
+    {
+      "key": "tagId",
+      "value": "1"
+    },
+    {
+      "key": "productId",
+      "value": "1"
+    },
+    {
+      "key": "productSlug",
+      "value": "test-vector-pack"
+    }
+  ]
+}

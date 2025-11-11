@@ -14,7 +14,7 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { UploadService } from './upload.service';
+import { UploadService } from '@app/core/upload/upload.service';
 
 import {
   ApiBearerAuth,
@@ -33,8 +33,8 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 
-import { UploadInitDto } from './dto/upload-init.dto';
-import { UploadFinishDto } from './dto/upload-finish.dto';
+import { UploadInitDto } from '@app/core/upload/dto/upload-init.dto';
+import { UploadFinishDto } from '@app/core/upload/dto/upload-finish.dto';
 
 type RequestWithUser = Request & { user?: { id?: string } };
 

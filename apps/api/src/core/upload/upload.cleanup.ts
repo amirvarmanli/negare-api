@@ -9,8 +9,8 @@ import {
 import * as fs from 'node:fs/promises';
 import * as fssync from 'node:fs';
 import { basename, join } from 'node:path';
-import { UPLOAD_CONFIG } from './upload.tokens';
-import type { UploadConfig } from './upload.tokens';
+import { UPLOAD_CONFIG } from '@app/core/upload/upload.tokens';
+import type { UploadConfig } from '@app/core/upload/upload.tokens';
 
 function toInt(val: string | number | undefined, fallback: number): number {
   const n = typeof val === 'string' ? Number(val) : val;

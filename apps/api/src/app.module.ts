@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { CoreModule } from './core/core.module';
-import { HealthModule } from './health/health.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { CatalogModule } from './catalog/catalog.module';
-import { AppConfigModule } from './config/config.module';
-import { PrismaModule } from './prisma/prisma.module';
+import { CoreModule } from '@app/core/core.module';
+import { HealthModule } from '@app/health/health.module';
+import { NotificationsModule } from '@app/notifications/notifications.module';
+import { CatalogModule } from '@app/catalog/catalog.module';
+import { AppConfigModule } from '@app/config/config.module';
+import { PrismaModule } from '@app/prisma/prisma.module';
 
 @Module({
   imports: [

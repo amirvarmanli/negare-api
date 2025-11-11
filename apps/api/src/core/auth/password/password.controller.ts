@@ -28,18 +28,18 @@ import {
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import { NoCacheInterceptor } from '@app/common/interceptors/no-cache.interceptor';
 
-import { OtpService } from '../otp/otp.service';
-import { TokenService } from '../token/token.service';
-import { PasswordService } from './password.service';
-import { RequestOtpDto } from '../dto/otp/otp-request.dto';
-import { ResendOtpDto } from '../dto/otp/otp-resend.dto';
-import { VerifyOtpDto } from '../dto/otp/otp-verify.dto';
+import { OtpService } from '@app/core/auth/otp/otp.service';
+import { TokenService } from '@app/core/auth/token/token.service';
+import { PasswordService } from '@app/core/auth/password/password.service';
+import { RequestOtpDto } from '@app/core/auth/dto/otp/otp-request.dto';
+import { ResendOtpDto } from '@app/core/auth/dto/otp/otp-resend.dto';
+import { VerifyOtpDto } from '@app/core/auth/dto/otp/otp-verify.dto';
 import {
   ChangePasswordDto,
   PasswordStrengthDto,
   ResetPasswordDto,
   SetPasswordDto,
-} from '../dto/password/password.dto';
+} from '@app/core/auth/dto/password/password.dto';
 import { OtpChannel, OtpPurpose } from '@prisma/client';
 
 @ApiTags('Authentication - Password')

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { CategoryDto, CategoryTreeNodeDto } from './dtos/category-response.dto';
+import { CategoryDto, CategoryTreeNodeDto } from '@app/catalog/categories/dtos/category-response.dto';
 
 export type CategoryEntity = Prisma.CategoryGetPayload<{}>;
 
@@ -10,6 +10,7 @@ export class CategoryMapper {
       name: c.name,
       slug: c.slug,
       parentId: c.parentId ? String(c.parentId) : null,
+      coverUrl: c.coverUrl ?? undefined,
     };
   }
 

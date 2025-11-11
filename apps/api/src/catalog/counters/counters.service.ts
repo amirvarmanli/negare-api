@@ -2,7 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import IORedis, { Redis } from 'ioredis';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '@app/prisma/prisma.service';
 
 type CounterKind = 'views' | 'downloads' | 'likes';
 

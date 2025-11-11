@@ -6,10 +6,10 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { PasswordService } from './password/password.service';
-import { RefreshService } from './refresh.service';
-import { SessionService } from './session/session.service';
-import { TokenService } from './token/token.service';
+import { PasswordService } from '@app/core/auth/password/password.service';
+import { RefreshService } from '@app/core/auth/refresh.service';
+import { SessionService } from '@app/core/auth/session/session.service';
+import { TokenService } from '@app/core/auth/token/token.service';
 import { UsersService } from '@app/core/users/users.service';
 
 type LoginInput = {

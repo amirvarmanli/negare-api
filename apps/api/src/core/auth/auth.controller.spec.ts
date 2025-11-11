@@ -1,6 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { AuthController } from './auth.controller';
+import { AuthController } from '@app/core/auth/auth.controller';
 
 const authConfig = {
   accessSecret: 'spec-access',

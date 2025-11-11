@@ -1,8 +1,8 @@
 import { RoleName } from '@app/prisma/prisma.constants';
-import { refreshAllowKey } from './auth.constants';
-import { RefreshService } from './refresh.service';
-import { SessionService } from './session/session.service';
-import { TokenService } from './token/token.service';
+import { refreshAllowKey } from '@app/core/auth/auth.constants';
+import { RefreshService } from '@app/core/auth/refresh.service';
+import { SessionService } from '@app/core/auth/session/session.service';
+import { TokenService } from '@app/core/auth/token/token.service';
 import { createFakeRedis } from '@test/utils/fake-redis';
 
 class ConfigStub {

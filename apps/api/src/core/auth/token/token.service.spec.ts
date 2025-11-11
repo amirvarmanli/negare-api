@@ -1,5 +1,5 @@
 import { RoleName } from '@app/prisma/prisma.constants';
-import { TokenService } from './token.service';
+import { TokenService } from '@app/core/auth/token/token.service';
 import { createFakeRedis } from '@test/utils/fake-redis';
 
 class ConfigServiceStub {

@@ -22,9 +22,9 @@ import {
   CurrentUserPayload,
 } from '@app/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
-import { ProfileService } from './profile.service';
-import { UpdateProfileDto } from './dto/update-profile.dto';
-import { UpdateUsernameDto } from './dto/update-username.dto';
+import { ProfileService } from '@app/core/users/profile/profile.service';
+import { UpdateProfileDto } from '@app/core/users/profile/dto/update-profile.dto';
+import { UpdateUsernameDto } from '@app/core/users/profile/dto/update-username.dto';
 import { NoCacheInterceptor } from '@app/common/interceptors/no-cache.interceptor';
 
 @ApiTags('User Profile')

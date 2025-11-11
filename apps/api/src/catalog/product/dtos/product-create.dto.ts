@@ -1,36 +1,46 @@
-// apps/api/src/core/catalog/product/dto/product-create.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsArray,
   ArrayMaxSize,
+  ArrayNotEmpty,
   ArrayUnique,
+  IsArray,
   IsEnum,
-  IsIn,
   IsInt,
   IsOptional,
   IsString,
   IsUrl,
   Length,
+  Matches,
+  MaxLength,
   Max,
   Min,
-  ValidateIf,
-  IsNotEmpty,
+  ValidateNested,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { PricingType, ProductStatus, GraphicFormat } from '@prisma/client';
+import {
+  ProductAssetInputDto,
+  ProductFileInputDto,
+  ProductTopicLinkDto,
+} from '@app/catalog/product/dtos/product-shared.dto';
 import {
   toBigIntString,
   toBigIntStringArray,
+  toColorArray,
   toStringArray,
   toTrimmedString,
-} from './transformers';
+  toUppercaseStringArray,
+} from '@app/catalog/product/dtos/transformers';
+import { FA_SLUG_REGEX } from '@shared-slug/slug/fa-slug.util';
 
 export class CreateProductDto {
-  @ApiProperty({ example: 'ghalam-siah-vector' })
+  @ApiPropertyOptional({ example: 'نقاشی-و-تصویرسازی' })
+  @IsOptional()
   @IsString()
-  @Length(3, 255)
+  @MaxLength(200)
+  @Matches(FA_SLUG_REGEX, { message: 'Invalid slug format' })
   @Transform(toTrimmedString)
-  slug!: string;
+  slug?: string;
 
   @ApiProperty({ example: 'قلم سیاه – وکتور خوشنویسی' })
   @IsString()
@@ -45,14 +55,24 @@ export class CreateProductDto {
   @Transform(toTrimmedString)
   description?: string;
 
-  // Media
   @ApiPropertyOptional({ example: 'https://cdn.example.com/cover/abc.jpg' })
   @IsOptional()
   @IsUrl()
   coverUrl?: string;
 
   @ApiPropertyOptional({
-    description: 'ID فایل اصلی (BigInt به صورت رشته)',
+    example: 'p/ghalam-siah',
+    description: 'اختیاری؛ برای ساخت لینک کوتاه یکتا',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 80)
+  @Transform(toTrimmedString)
+  shortLink?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'ID فایل اصلی (BigInt به صورت رشته). در صورت موجود نبودن فایل، از فیلد file برای ساخت رکورد جدید استفاده کنید.',
     example: '1234567890123',
   })
   @IsOptional()
@@ -60,19 +80,39 @@ export class CreateProductDto {
   @IsString()
   fileId?: string;
 
-  // Catalog
-  @ApiPropertyOptional({ example: 'خوشنویسی' })
+  @ApiPropertyOptional({
+    type: () => ProductFileInputDto,
+    description:
+      'برای ساخت ProductFile جدید. این فیلد و fileId نباید همزمان ارسال شوند.',
+  })
   @IsOptional()
-  @IsString()
-  @Length(1, 120)
-  @Transform(toTrimmedString)
-  topic?: string;
+  @ValidateNested()
+  @Type(() => ProductFileInputDto)
+  file?: ProductFileInputDto;
 
-  @ApiProperty({ enum: GraphicFormat, example: GraphicFormat.SVG })
-  @IsEnum(GraphicFormat)
-  graphicFormat!: GraphicFormat;
+  @ApiProperty({
+    enum: GraphicFormat,
+    isArray: true,
+    example: [GraphicFormat.SVG, GraphicFormat.EPS],
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @Transform(toUppercaseStringArray)
+  @IsEnum(GraphicFormat, { each: true })
+  graphicFormats!: GraphicFormat[];
 
-  // SEO
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'کدهای رنگ HEX به صورت #RRGGBB',
+    example: ['#101010', '#FFD000'],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @Transform(toColorArray)
+  colors?: string[];
+
   @ApiPropertyOptional({ example: 'دانلود وکتور خوشنویسی قلم سیاه' })
   @IsOptional()
   @IsString()
@@ -97,8 +137,10 @@ export class CreateProductDto {
   @Transform(toStringArray)
   seoKeywords?: string[];
 
-  // Pricing/Publish
-  @ApiProperty({ enum: PricingType, example: PricingType.PAID_OR_SUBSCRIPTION })
+  @ApiProperty({
+    enum: PricingType,
+    example: PricingType.PAID_OR_SUBSCRIPTION,
+  })
   @IsEnum(PricingType)
   pricingType!: PricingType;
 
@@ -124,7 +166,46 @@ export class CreateProductDto {
   @IsString()
   publishedAt?: string;
 
-  // Relations
+  @ApiPropertyOptional({
+    description: 'حجم فایل بر حسب مگابایت (برای فیلترهای کلاینت)',
+    example: 120,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  fileSizeMB?: number;
+
+  @ApiPropertyOptional({
+    description: 'اندازه فایل به بایت (BigInt به صورت رشته)',
+    example: '123456789',
+  })
+  @IsOptional()
+  @Transform(toBigIntString)
+  @IsString()
+  fileBytes?: string;
+
+  @ApiPropertyOptional({
+    type: [ProductAssetInputDto],
+    description: 'لیست دارایی‌های نمایشی محصول',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAssetInputDto)
+  assets?: ProductAssetInputDto[];
+
+  @ApiPropertyOptional({
+    type: [ProductTopicLinkDto],
+    description: 'تاپیک‌های مرتبط با محصول',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductTopicLinkDto)
+  topics?: ProductTopicLinkDto[];
+
   @ApiPropertyOptional({
     type: [String],
     description: 'آیدی‌های دسته‌بندی (BigInt به صورت رشته)',

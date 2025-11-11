@@ -6,9 +6,9 @@ import {
 import type { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { FindUsersQueryDto } from './dto/find-users-query.dto';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { FindUsersQueryDto } from '@app/core/users/dto/find-users-query.dto';
+import { CreateUserDto } from '@app/core/users/dto/create-user.dto';
+import { UpdateUserDto } from '@app/core/users/dto/update-user.dto';
 
 /** include واحد و تایپ همگام با Prisma */
 const userWithRelations = {

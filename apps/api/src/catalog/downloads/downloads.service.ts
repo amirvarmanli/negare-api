@@ -5,20 +5,20 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Buffer } from 'buffer';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CountersService } from '../counters/counters.service';
-import { DownloadStartDto } from './dtos/download-start.dto';
+import { PrismaService } from '@app/prisma/prisma.service';
+import { CountersService } from '@app/catalog/counters/counters.service';
+import { DownloadStartDto } from '@app/catalog/downloads/dtos/download-start.dto';
 import {
   DownloadCreatedDto,
   UserDownloadItemDto,
   UserDownloadsResultDto,
-} from './dtos/download-response.dto';
+} from '@app/catalog/downloads/dtos/download-response.dto';
 import {
   ProductMapper,
   productInclude,
   type ProductWithRelations,
-} from '../product/product.mapper';
-import { StorageService } from '../storage/storage.service';
+} from '@app/catalog/product/product.mapper';
+import { StorageService } from '@app/catalog/storage/storage.service';
 
 function encodeCursor(obj: Record<string, string | number>) {
   return Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');

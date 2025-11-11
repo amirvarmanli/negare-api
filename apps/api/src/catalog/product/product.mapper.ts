@@ -1,29 +1,50 @@
-import {
-  Prisma,
-  GraphicFormat,
-  PricingType,
-  ProductStatus,
-} from '@prisma/client';
+import { Prisma, PricingType, ProductStatus } from '@prisma/client';
 import {
   ProductAssetDto,
   ProductAuthorDto,
   ProductBriefDto,
   ProductCategoryDto,
   ProductDetailDto,
+  ProductFileDto,
   ProductTagDto,
-} from './dtos/product-response.dto';
+  ProductTopicDto,
+} from '@app/catalog/product/dtos/product-response.dto';
 
 /** include استاندارد که سرویس هم باید ازش استفاده کند تا تایپ‌ها درست Resolve شوند */
 export const productInclude = {
-  assets: true,
+  assets: { orderBy: { sortOrder: 'asc' } },
   categoryLinks: { include: { category: true } },
   tagLinks: { include: { tag: true } },
-  supplierLinks: { include: { user: true } },
+  supplierLinks: true,
+  topics: { include: { topic: true }, orderBy: { order: 'asc' } },
+  file: true,
 } as const;
 
 export type ProductWithRelations = Prisma.ProductGetPayload<{
   include: typeof productInclude;
 }>;
+
+/* ============================================================
+ * Helpers (type-safe, بدون any)
+ * ========================================================== */
+
+/** فقط زمانی مقدار را نگه می‌داریم که یک آبجکت plain باشد؛ در غیر این صورت null */
+function toRecordOrNull(
+  v: Prisma.JsonValue | null | undefined,
+): Record<string, unknown> | null {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** اندازه فایل را به string | undefined نرمال می‌کند */
+function toStringOrUndefined(v: unknown): string | undefined {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number') return v.toString();
+  if (typeof v === 'bigint') return v.toString();
+  return undefined;
+}
 
 export class ProductMapper {
   /** تبدیل مدل کامل به خروجی خلاصه برای لیست‌ها */
@@ -34,8 +55,10 @@ export class ProductMapper {
       title: p.title,
       coverUrl: p.coverUrl ?? undefined,
 
-      graphicFormat: p.graphicFormat as GraphicFormat,
+      graphicFormats: [...(p.graphicFormats ?? [])],
+      colors: [...(p.colors ?? [])],
       pricingType: p.pricingType as PricingType,
+
       // اگر 0 هم معتبر است، از چک صریح استفاده کن
       price:
         p.price !== null && p.price !== undefined ? Number(p.price) : undefined,
@@ -47,11 +70,13 @@ export class ProductMapper {
       likesCount: p.likesCount,
 
       shortLink: p.shortLink ?? undefined,
-      topic: p.topic ?? undefined,
 
       seoKeywords: p.seoKeywords ?? undefined,
       seoTitle: p.seoTitle ?? undefined,
       seoDescription: p.seoDescription ?? undefined,
+
+      fileSizeMB: p.fileSizeMB,
+      fileBytes: p.fileBytes ? p.fileBytes.toString() : undefined,
 
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
@@ -77,6 +102,7 @@ export class ProductMapper {
         parentId: pc.category.parentId
           ? String(pc.category.parentId)
           : undefined,
+        coverUrl: pc.category.coverUrl ?? undefined,
       }),
     );
 
@@ -91,6 +117,30 @@ export class ProductMapper {
       role: null,
     }));
 
+    const topics: ProductTopicDto[] = (p.topics ?? []).map((link) => ({
+      id: String(link.topic.id),
+      name: link.topic.name,
+      slug: link.topic.slug,
+      coverUrl: link.topic.coverUrl ?? undefined,
+      order: link.order,
+    }));
+
+    const file: ProductFileDto | undefined = p.file
+      ? {
+          id: String(p.file.id),
+          storageKey: p.file.storageKey,
+          originalName: p.file.originalName ?? undefined,
+          // ✅ اینجا string می‌خواهیم
+          size: toStringOrUndefined(p.file.size),
+          mimeType: p.file.mimeType ?? undefined,
+          // ✅ به Record<string, unknown> | null نرمال شود تا با DTO سازگار باشد
+          meta:
+            p.file.meta === undefined
+              ? undefined
+              : toRecordOrNull(p.file.meta),
+        }
+      : undefined;
+
     return {
       ...brief,
       description: p.description ?? undefined,
@@ -99,6 +149,8 @@ export class ProductMapper {
       categories,
       tags,
       authors,
+      topics,
+      file,
     };
   }
 }

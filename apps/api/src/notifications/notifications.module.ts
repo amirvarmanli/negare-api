@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { EMAIL_PORT, SMS_PORT } from './notifications.constants';
-import { FakeEmailAdapter } from './adapters/fake-email.adapter';
-import { FakeSmsAdapter } from './adapters/fake-sms.adapter';
+import { EMAIL_PORT, SMS_PORT } from '@app/notifications/notifications.constants';
+import { FakeEmailAdapter } from '@app/notifications/adapters/fake-email.adapter';
+import { FakeSmsAdapter } from '@app/notifications/adapters/fake-sms.adapter';
 
 @Module({
   providers: [

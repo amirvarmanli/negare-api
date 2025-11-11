@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FTPStorageDriver } from './storage.ftp';
+import { FTPStorageDriver } from '@app/core/upload/storage.ftp';
 
 const ensureDirMock = jest.fn(async () => undefined);
 const uploadFromMock = jest.fn(async () => undefined);

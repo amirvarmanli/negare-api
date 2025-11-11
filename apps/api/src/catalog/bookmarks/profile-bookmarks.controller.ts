@@ -1,24 +1,21 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { BookmarksService } from './bookmarks.service';
-import { BookmarkListQueryDto } from './dtos/bookmark-query.dto';
-import { UserBookmarksResultDto } from './dtos/bookmark-response.dto';
-
-// جایگزین با گارد واقعی پروژه‌ات: AuthGuard('jwt')
-class AuthGuardRequired {}
-
-function currentUserId(req: any): string {
-  return req?.user?.sub ?? req?.user?.id;
-}
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { requireUserId } from '@app/catalog/utils/current-user.util';
+import { BookmarksService } from '@app/catalog/bookmarks/bookmarks.service';
+import { BookmarkListQueryDto } from '@app/catalog/bookmarks/dtos/bookmark-query.dto';
+import { UserBookmarksResultDto } from '@app/catalog/bookmarks/dtos/bookmark-response.dto';
 
 @ApiTags('Profile / Bookmarks')
 @ApiBearerAuth()
-@UseGuards(AuthGuardRequired as any)
 @Controller('catalog/profile/bookmarks')
 export class ProfileBookmarksController {
   constructor(private readonly service: BookmarksService) {}
@@ -28,9 +25,9 @@ export class ProfileBookmarksController {
   @ApiOkResponse({ type: UserBookmarksResultDto })
   async listMine(
     @Query() q: BookmarkListQueryDto,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<UserBookmarksResultDto> {
-    const userId = currentUserId(req);
+    const userId = requireUserId(user);
     return this.service.listForUser(userId, q);
   }
 }

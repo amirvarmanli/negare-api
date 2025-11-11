@@ -1,6 +1,6 @@
 import { LikesService } from '@app/catalog/likes/likes.service';
 import { PricingType } from '@app/prisma/prisma.constants';
-import { createCatalogPrismaStub, CatalogPrismaStub } from '../../utils/prisma-catalog.stub';
+import { createCatalogPrismaStub, CatalogPrismaStub } from '@app/tests/utils/prisma-catalog.stub';
 
 describe('LikesService', () => {
   let prisma: CatalogPrismaStub;

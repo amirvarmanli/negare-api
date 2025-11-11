@@ -5,6 +5,7 @@ export class CategoryDto {
   @ApiProperty() name!: string;
   @ApiProperty() slug!: string;
   @ApiPropertyOptional() parentId?: string | null;
+  @ApiPropertyOptional() coverUrl?: string | null;
 }
 
 export class CategoryTreeNodeDto extends CategoryDto {

@@ -1,15 +1,15 @@
 // apps/api/src/core/catalog/likes/likes.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '@app/prisma/prisma.service';
 import {
   ProductMapper,
   productInclude,
   type ProductWithRelations,
-} from '../product/product.mapper';
+} from '@app/catalog/product/product.mapper';
 import { Prisma } from '@prisma/client';
 import { Buffer } from 'buffer';
-import { LikeToggleResponseDto } from './dtos/like-toggle.dto';
-import { UserLikeItemDto, UserLikesResultDto } from './dtos/likes-response.dto';
+import { LikeToggleResponseDto } from '@app/catalog/likes/dtos/like-toggle.dto';
+import { UserLikeItemDto, UserLikesResultDto } from '@app/catalog/likes/dtos/likes-response.dto';
 
 /* ---------------- Helpers ---------------- */
 function encodeCursor(obj: Record<string, string | number>) {

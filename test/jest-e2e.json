@@ -9,7 +9,7 @@
   "testEnvironment": "node",
   "testRegex": "apps/api/test/.*\\.e2e-spec\\.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "tsconfig.spec.json" }]
+    "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "apps/api/tsconfig.spec.json" }]
   },
   "moduleNameMapper": {
     "^@app/(.*)$": "<rootDir>/apps/api/src/$1",

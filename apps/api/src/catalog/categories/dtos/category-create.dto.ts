@@ -1,16 +1,37 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Length } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsOptional,
+  IsString,
+  IsUrl,
+  Length,
+  Matches,
+  MaxLength,
+} from 'class-validator';
+import { toTrimmedString } from '@app/catalog/product/dtos/transformers';
+import { FA_SLUG_REGEX } from '@shared-slug/slug/fa-slug.util';
 
 export class CreateCategoryDto {
   @ApiProperty({ example: 'وکتور' })
   @IsString()
   @Length(2, 255)
+  @Transform(toTrimmedString)
   name!: string;
 
-  @ApiProperty({ example: 'vector' })
+  @ApiPropertyOptional({ example: 'نقاشی-و-تصویرسازی' })
+  @IsOptional()
   @IsString()
-  @Length(2, 255)
-  slug!: string;
+  @MaxLength(200)
+  @Matches(FA_SLUG_REGEX, { message: 'Invalid slug format' })
+  @Transform(toTrimmedString)
+  slug?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://cdn.negare.test/categories/vector.png',
+  })
+  @IsOptional()
+  @IsUrl()
+  coverUrl?: string;
 
   @ApiPropertyOptional({
     description: 'Parent ID (BigInt as string)',

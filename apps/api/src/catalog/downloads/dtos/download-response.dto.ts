@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ProductBriefDto } from '../../product/dtos/product-response.dto';
+import { ProductBriefDto } from '@app/catalog/product/dtos/product-response.dto';
 
 export class DownloadCreatedDto {
   @ApiPropertyOptional({

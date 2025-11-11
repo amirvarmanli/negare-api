@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { SmsPort } from '../ports/sms.port';
+import { SmsPort } from '@app/notifications/ports/sms.port';
 
 @Injectable()
 export class FakeSmsAdapter implements SmsPort {

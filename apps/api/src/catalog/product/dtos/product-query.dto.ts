@@ -1,17 +1,19 @@
 // apps/api/src/core/catalog/product/dto/product-query.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBooleanString,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
   Length,
+  Matches,
   Max,
   Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PricingType, ProductStatus, GraphicFormat } from '@prisma/client';
-import { toBigIntString, toTrimmedString } from './transformers';
+import { toBigIntString, toTrimmedString } from '@app/catalog/product/dtos/transformers';
 
 export type ProductSort = 'latest' | 'popular' | 'viewed' | 'liked';
 
@@ -37,10 +39,42 @@ export class ProductFindQueryDto {
   @IsString()
   tagId?: string;
 
+  @ApiPropertyOptional({ description: 'آیدی تاپیک (BigInt به صورت رشته)' })
+  @IsOptional()
+  @Transform(toBigIntString)
+  @IsString()
+  topicId?: string;
+
   @ApiPropertyOptional({ description: 'UUID نویسنده' })
   @IsOptional()
   @IsString()
   authorId?: string;
+
+  @ApiPropertyOptional({
+    description: 'فیلتر بر اساس رنگ HEX (#RRGGBB)',
+    example: '#101010',
+  })
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/u, {
+    message: 'Color must be HEX in the form #RRGGBB',
+  })
+  color?: string;
+
+  @ApiPropertyOptional({
+    description: 'تنها محصولاتی که فایل متصل دارند',
+    example: 'true',
+  })
+  @IsOptional()
+  @IsBooleanString()
+  hasFile?: string;
+
+  @ApiPropertyOptional({
+    description: 'تنها محصولاتی که حداقل یک دارایی دارند',
+    example: 'true',
+  })
+  @IsOptional()
+  @IsBooleanString()
+  hasAssets?: string;
 
   @ApiPropertyOptional({ enum: PricingType })
   @IsOptional()

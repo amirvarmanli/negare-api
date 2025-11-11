@@ -2,7 +2,7 @@ import { HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { Readable } from 'node:stream';
 import { DownloadsService } from '@app/catalog/downloads/downloads.service';
 import { PricingType } from '@app/prisma/prisma.constants';
-import { createCatalogPrismaStub, CatalogPrismaStub } from '../../utils/prisma-catalog.stub';
+import { createCatalogPrismaStub, CatalogPrismaStub } from '@app/tests/utils/prisma-catalog.stub';
 
 const userId = 'download-user';
 

@@ -12,7 +12,7 @@ export class CreateUserDto {
   @ApiProperty({ example: 'john_doe' })
   @IsString()
   @Length(3, 32)
-  username: string;
+  username!: string;
 
   @ApiPropertyOptional({ example: 'john@example.com' })
   @IsOptional()

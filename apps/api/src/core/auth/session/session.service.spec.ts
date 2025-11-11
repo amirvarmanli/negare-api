@@ -1,4 +1,4 @@
-import { SessionService } from './session.service';
+import { SessionService } from '@app/core/auth/session/session.service';
 import { createFakeRedis } from '@test/utils/fake-redis';
 
 class ConfigStub {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { SmsService } from './sms.service';
+import Kavenegar = require('kavenegar');
+import { SmsService } from '@app/sms/sms.service';
 
 @Module({
   imports: [ConfigModule],
@@ -10,12 +11,13 @@ import { SmsService } from './sms.service';
       provide: 'KAVENEGAR_CLIENT',
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { KavenegarApi } = require('../vendors/kavenegar');
-        return KavenegarApi({ apikey: config.get<string>('KAVENEGAR_API_KEY') });
+        const key = config.get<string>('KAVENEGAR_API_KEY');
+        if (!key) throw new Error('KAVENEGAR_API_KEY not found');
+        return Kavenegar.KavenegarApi({ apikey: key });
       },
     },
   ],
+
   exports: [SmsService],
 })
 export class SmsModule {}

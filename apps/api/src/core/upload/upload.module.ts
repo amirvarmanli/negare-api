@@ -5,21 +5,21 @@ import {
   OnApplicationShutdown,
   Injectable,
 } from '@nestjs/common';
-import { UploadService } from './upload.service';
+import { UploadService } from '@app/core/upload/upload.service';
 import {
   UPLOAD_CONFIG,
   UPLOAD_STATE_STORE,
   STORAGE_DRIVER,
   type UploadConfig,
-} from './upload.tokens';
-import { RedisUploadStateStore } from './upload.state.redis';
+} from '@app/core/upload/upload.tokens';
+import { RedisUploadStateStore } from '@app/core/upload/upload.state.redis';
 import type Redis from 'ioredis';
 import IORedis from 'ioredis';
-import { UploadController } from './upload.controller';
-import { FTPStorageDriver } from './storage.ftp';
-import { UploadGateway } from './upload.gateway';
-import { UploadCleanup } from './upload.cleanup';
-import { MediaModule } from '../media/media.module';
+import { UploadController } from '@app/core/upload/upload.controller';
+import { FTPStorageDriver } from '@app/core/upload/storage.ftp';
+import { UploadGateway } from '@app/core/upload/upload.gateway';
+import { UploadCleanup } from '@app/core/upload/upload.cleanup';
+import { MediaModule } from '@app/core/media/media.module';
 
 /* -------------------------------------------------------------------------- */
 /*                              Helper functions                              */

@@ -1,50 +1,59 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
   Body,
-  Param,
-  Query,
-  Req,
-  Ip,
+  Controller,
+  Delete,
+  Get,
   Headers,
-  UseGuards,
   HttpCode,
   HttpStatus,
+  Ip,
+  Param,
+  Patch,
+  Post,
+  Query,
+  ForbiddenException,
+  Res,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
   ApiBearerAuth,
-  ApiOkResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiParam,
+  ApiResponse,
 } from '@nestjs/swagger';
+import { Response } from 'express';
+import { RoleName } from '@prisma/client';
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { Public } from '@app/common/decorators/public.decorator';
 
-import { ProductService, Actor } from './product.service';
-import { CreateProductDto } from './dtos/product-create.dto';
-import { UpdateProductDto } from './dtos/product-update.dto';
-import { ProductFindQueryDto } from './dtos/product-query.dto';
+import { ProductService, Actor } from '@app/catalog/product/product.service';
+import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
+import { UpdateProductDto } from '@app/catalog/product/dtos/product-update.dto';
+import { ProductFindQueryDto } from '@app/catalog/product/dtos/product-query.dto';
 import {
   ProductBriefDto,
   ProductDetailDto,
   ProductListResultDto,
-} from './dtos/product-response.dto';
-import { ProductIdBodyDto, ProductIdParamDto } from './dtos/product-id.dto';
+} from '@app/catalog/product/dtos/product-response.dto';
+import { ProductIdParamDto } from '@app/catalog/product/dtos/product-id.dto';
+import {
+  normalizeFaText,
+  safeDecodeSlug,
+} from '@shared-slug/slug/fa-slug.util';
 
-// اگر گارد احراز هویت داری، اینجا ایمپورت و استفاده کن.
-// این نمونه‌ی خنثی است؛ در پروژه‌ی واقعی‌ات از AuthGuard('jwt') استفاده کن.
-class OptionalAuthGuard {}
-class AuthGuardRequired {} // جایگزین با AuthGuard('jwt')
-
-function buildActor(req: any): Actor {
-  // سازگار با استراتژی‌های JWT سفارشی شما
-  const user = req?.user;
+function requireActor(user: CurrentUserPayload | undefined): Actor {
+  if (!user) {
+    throw new ForbiddenException('Authentication required.');
+  }
   return {
-    id: user?.sub ?? user?.id ?? 'anonymous',
-    isAdmin: Boolean(user?.roles?.includes?.('admin') || user?.isAdmin),
+    id: user.id,
+    isAdmin: Boolean(user.roles?.includes(RoleName.admin)),
   };
 }
 
@@ -53,63 +62,92 @@ function buildActor(req: any): Actor {
 export class ProductController {
   constructor(private readonly service: ProductService) {}
 
-  // -----------------------------------------------------------
-  // Create
-  // -----------------------------------------------------------
   @Post()
   @ApiBearerAuth()
-  @UseGuards(AuthGuardRequired as any)
-  @ApiOperation({ summary: 'Create a product' })
+  @ApiOperation({
+    summary: 'Create a product',
+    description:
+      'Either connect an existing ProductFile using fileId or provide file payload to create one inline.',
+  })
   @ApiCreatedResponse({ type: ProductDetailDto })
   async create(
     @Body() dto: CreateProductDto,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<ProductDetailDto> {
-    const actor = buildActor(req);
+    const actor = requireActor(user);
     return this.service.create(dto, actor);
   }
 
-  // -----------------------------------------------------------
-  // Update
-  // -----------------------------------------------------------
   @Patch(':idOrSlug')
   @ApiBearerAuth()
-  @UseGuards(AuthGuardRequired as any)
-  @ApiOperation({ summary: 'Update a product (partial)' })
+  @ApiOperation({
+    summary: 'Update a product (partial)',
+    description:
+      'Supports switching ProductFile via fileId, creating a new file inline, or disconnecting the current file (fileId: null).',
+  })
   @ApiOkResponse({ type: ProductDetailDto })
   async update(
     @Param() params: ProductIdParamDto,
     @Body() dto: UpdateProductDto,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<ProductDetailDto> {
-    const actor = buildActor(req);
+    const actor = requireActor(user);
     return this.service.update(params.idOrSlug, dto, actor);
   }
 
-  // -----------------------------------------------------------
-  // Find One
-  // -----------------------------------------------------------
-  @Get(':idOrSlug')
-  @UseGuards(OptionalAuthGuard as any)
-  @ApiOperation({ summary: 'Get a product by id or slug' })
+  @Get('id/:id')
+  @Public()
+  @ApiOperation({ summary: 'Get a product by numeric id' })
   @ApiOkResponse({ type: ProductDetailDto })
-  async findOne(
-    @Param() params: ProductIdParamDto,
-    @Req() req: any,
+  @ApiParam({ name: 'id', example: '1001', description: 'Product id' })
+  async findById(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<ProductDetailDto> {
-    const viewerId: string | undefined = req?.user?.sub ?? req?.user?.id;
-    return this.service.findOne(params.idOrSlug, viewerId);
+    const viewerId = user?.id;
+    return this.service.findByIdOrSlug(id, viewerId);
   }
 
-  // -----------------------------------------------------------
-  // Find All (Load More)
-  // -----------------------------------------------------------
+  @Get(':slug')
+  @Public()
+  @ApiOperation({
+    summary: 'Get a product by slug (Persian-safe)',
+    description:
+      'Decodes and normalizes the slug, returning a 301 redirect when the slug changed.',
+  })
+  @ApiOkResponse({ type: ProductDetailDto })
+  @ApiResponse({
+    status: 301,
+    description: 'Redirect to the canonical slug when an old slug is used',
+  })
+  @ApiParam({
+    name: 'slug',
+    example: 'نقاشی-و-تصویرسازی',
+    description: 'Product slug',
+  })
+  async findBySlug(
+    @Param('slug') slugParam: string,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<ProductDetailDto | undefined> {
+    const normalized = normalizeFaText(safeDecodeSlug(slugParam));
+    const result = await this.service.findBySlug(normalized, user?.id);
+    if (result.redirectTo) {
+      res.redirect(
+        HttpStatus.MOVED_PERMANENTLY,
+        `/catalog/products/${encodeURIComponent(result.redirectTo)}`,
+      );
+      return undefined;
+    }
+    return result.product;
+  }
+
   @Get()
-  @UseGuards(OptionalAuthGuard as any)
+  @Public()
   @ApiOperation({
     summary: 'List products (cursor-based "Load more")',
     description:
-      'Supports filters (q, categoryId, tagId, authorId, pricingType, graphicFormat, status) and sort (latest|popular|viewed|liked).',
+      'Supports filters (q, categoryId, tagId, topicId, authorId, pricingType, graphicFormat, status, color, hasFile, hasAssets) and sort (latest|popular|viewed|liked).',
   })
   @ApiOkResponse({ type: ProductListResultDto })
   async findAll(
@@ -118,85 +156,70 @@ export class ProductController {
     return this.service.findAll(q);
   }
 
-  // -----------------------------------------------------------
-  // Remove (Archive)
-  // -----------------------------------------------------------
   @Delete(':idOrSlug')
   @ApiBearerAuth()
-  @UseGuards(AuthGuardRequired as any)
   @ApiOperation({ summary: 'Archive a product (soft remove)' })
   @ApiOkResponse({ type: ProductDetailDto })
   async remove(
     @Param() params: ProductIdParamDto,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<ProductDetailDto> {
-    const actor = buildActor(req);
+    const actor = requireActor(user);
     return this.service.remove(params.idOrSlug, actor);
   }
 
-  // -----------------------------------------------------------
-  // Toggle Like
-  // -----------------------------------------------------------
   @Post(':id/like')
   @ApiBearerAuth()
-  @UseGuards(AuthGuardRequired as any)
   @ApiOperation({ summary: 'Toggle like for current user' })
   @ApiOkResponse({ schema: { properties: { liked: { type: 'boolean' } } } })
-  async toggleLike(@Param('id') id: string, @Req() req: any) {
-    const userId: string = req?.user?.sub ?? req?.user?.id;
-    return this.service.toggleLike(id, userId);
+  async toggleLike(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ) {
+    const actor = requireActor(user);
+    return this.service.toggleLike(id, actor.id);
   }
 
-  // -----------------------------------------------------------
-  // Toggle Bookmark
-  // -----------------------------------------------------------
   @Post(':id/bookmark')
   @ApiBearerAuth()
-  @UseGuards(AuthGuardRequired as any)
   @ApiOperation({ summary: 'Toggle bookmark for current user' })
   @ApiOkResponse({
     schema: { properties: { bookmarked: { type: 'boolean' } } },
   })
-  async toggleBookmark(@Param('id') id: string, @Req() req: any) {
-    const userId: string = req?.user?.sub ?? req?.user?.id;
-    return this.service.toggleBookmark(id, userId);
+  async toggleBookmark(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ) {
+    const actor = requireActor(user);
+    return this.service.toggleBookmark(id, actor.id);
   }
 
-  // -----------------------------------------------------------
-  // Register Download
-  // -----------------------------------------------------------
   @Post(':id/download')
   @ApiBearerAuth()
-  @UseGuards(AuthGuardRequired as any)
   @ApiOperation({ summary: 'Register a download and increment counts' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()
   async registerDownload(
     @Param('id') id: string,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
     @Ip() ip: string,
-    @Headers('user-agent') ua: string,
   ): Promise<void> {
-    const userId: string = req?.user?.sub ?? req?.user?.id;
-    // اگر اندازه‌ی فایل یا مبلغ پرداختی را داری، در بدنه بگیر؛ اینجا ساده نگه داشتیم.
-    await this.service.registerDownload(id, userId, undefined, undefined, ip);
+    const actor = requireActor(user);
+    await this.service.registerDownload(id, actor.id, undefined, undefined, ip);
   }
 
-  // -----------------------------------------------------------
-  // Increment View (public)
-  // -----------------------------------------------------------
   @Post(':id/view')
-  @UseGuards(OptionalAuthGuard as any)
+  @Public()
   @ApiOperation({ summary: 'Increment a view (public endpoint)' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()
   async incrementViewPublic(
     @Param('id') id: string,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
     @Ip() ip: string,
     @Headers('user-agent') ua: string,
   ): Promise<void> {
-    const viewerId: string | undefined = req?.user?.sub ?? req?.user?.id;
+    const viewerId: string | undefined = user?.id;
     await this.service.incrementView(BigInt(id), viewerId, ip, ua);
   }
 }

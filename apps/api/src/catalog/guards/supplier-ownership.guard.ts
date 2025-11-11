@@ -8,7 +8,7 @@ import {
 import { Request } from 'express';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { CurrentUserPayload } from '@app/common/decorators/current-user.decorator';
-import { isAdmin, isSupplier } from '../policies/catalog.policies';
+import { isAdmin, isSupplier } from '@app/catalog/policies/catalog.policies';
 
 @Injectable()
 export class SupplierOwnershipGuard implements CanActivate {

@@ -6,17 +6,19 @@ const config: Config = {
     '<rootDir>/apps/api/src',
     '<rootDir>/apps/api/test',
     '<rootDir>/apps/api/src/tests',
+    '<rootDir>/libs/shared/src',
   ],
   testMatch: [
     '<rootDir>/apps/api/src/**/*.spec.ts',
     '<rootDir>/apps/api/test/**/*.spec.ts',
+    '<rootDir>/libs/shared/src/**/*.spec.ts',
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
   transform: {
     '^.+\\.(t|j)s$': [
       'ts-jest',
       {
-        tsconfig: '<rootDir>/tsconfig.spec.json',
+        tsconfig: '<rootDir>/apps/api/tsconfig.spec.json',
         diagnostics: false,
       },
     ],
@@ -29,6 +31,8 @@ const config: Config = {
   collectCoverageFrom: [
     '<rootDir>/apps/api/src/**/*.(t|j)s',
     '!<rootDir>/apps/api/src/**/*.spec.ts',
+    '<rootDir>/libs/shared/src/**/*.(t|j)s',
+    '!<rootDir>/libs/shared/src/**/*.spec.ts',
   ],
   coverageDirectory: '<rootDir>/coverage',
   coverageThreshold: {

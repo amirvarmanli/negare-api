@@ -1,22 +1,20 @@
-import { Controller, Post, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Param } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { LikesService } from './likes.service';
-import { LikeToggleResponseDto } from './dtos/like-toggle.dto';
-
-// جایگزین با گارد واقعی‌ات مثلاً AuthGuard('jwt')
-class AuthGuardRequired {}
-function currentUserId(req: any): string {
-  return req?.user?.sub ?? req?.user?.id;
-}
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { requireUserId } from '@app/catalog/utils/current-user.util';
+import { LikesService } from '@app/catalog/likes/likes.service';
+import { LikeToggleResponseDto } from '@app/catalog/likes/dtos/like-toggle.dto';
 
 @ApiTags('Catalog / Likes')
 @ApiBearerAuth()
-@UseGuards(AuthGuardRequired as any)
 @Controller('catalog/likes')
 export class LikesController {
   constructor(private readonly service: LikesService) {}
@@ -26,9 +24,9 @@ export class LikesController {
   @ApiOkResponse({ type: LikeToggleResponseDto })
   async toggle(
     @Param('productId') productId: string,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<LikeToggleResponseDto> {
-    const userId = currentUserId(req);
+    const userId = requireUserId(user);
     return this.service.toggle(userId, productId);
   }
 }

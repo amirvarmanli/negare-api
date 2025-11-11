@@ -22,11 +22,11 @@ import {
   CurrentUserPayload,
 } from '@app/common/decorators/current-user.decorator';
 import { Roles } from '@app/common/decorators/roles.decorator';
-import { CreateUserDto } from './dto/create-user.dto';
-import { FindUsersQueryDto } from './dto/find-users-query.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UserIdParamDto } from './dto/user-id-param.dto';
-import { UsersService } from './users.service';
+import { CreateUserDto } from '@app/core/users/dto/create-user.dto';
+import { FindUsersQueryDto } from '@app/core/users/dto/find-users-query.dto';
+import { UpdateUserDto } from '@app/core/users/dto/update-user.dto';
+import { UserIdParamDto } from '@app/core/users/dto/user-id-param.dto';
+import { UsersService } from '@app/core/users/users.service';
 import { RoleName } from '@prisma/client';
 
 @ApiTags('Users')

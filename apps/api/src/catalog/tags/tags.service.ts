@@ -4,12 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateTagDto } from './dtos/tag-create.dto';
-import { UpdateTagDto } from './dtos/tag-update.dto';
-import { TagFindQueryDto } from './dtos/tag-query.dto';
-import { TagDto, TagListResultDto } from './dtos/tag-response.dto';
-import { TagMapper, TagWithCount } from './tag.mapper';
+import { PrismaService } from '@app/prisma/prisma.service';
+import { CreateTagDto } from '@app/catalog/tags/dtos/tag-create.dto';
+import { UpdateTagDto } from '@app/catalog/tags/dtos/tag-update.dto';
+import { TagFindQueryDto } from '@app/catalog/tags/dtos/tag-query.dto';
+import { TagDto, TagListResultDto } from '@app/catalog/tags/dtos/tag-response.dto';
+import { TagMapper, TagWithCount } from '@app/catalog/tags/tag.mapper';
 
 /* ---------- helpers ---------- */
 function slugify(s: string): string {

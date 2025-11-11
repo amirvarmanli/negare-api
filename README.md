@@ -1,5 +1,14 @@
 ﻿# Negare API
 
+## Persian Slug Support
+
+- Categories, topics, and products now accept Persian (UTF-8) slugs with NFC normalisation, Arabic→Persian character fixes, and zero-width stripping.
+- `/catalog/{categories|topics|products}/:slug` endpoints decode, normalise, and either return `200` or emit a `301` redirect when a slug changes (see `docs/fa-slug-support.md`).
+- Prisma migration `20250212000000_fa_slug_support` introduces the `SlugRedirect` table, clamps slug columns to 200 chars, and indexes `parentId`.
+- Backfill existing slugs with `npm run backfill:fa-slugs`.
+- Postman collection `postman/negare-fa-slug.postman_collection.json` exercises CRUD + slug flows (with assertions for 200/201/301/404).
+- New e2e tests at `apps/api/test/catalog/slug.e2e-spec.ts` cover encoded Persian slugs and redirect semantics.
+
 ## Hardened Auth & Token Platform
 
 The authentication layer now guarantees hop-by-hop security for both CSR and SSR clients. Key traits:

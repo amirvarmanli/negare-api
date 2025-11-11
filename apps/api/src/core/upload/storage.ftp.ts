@@ -3,7 +3,7 @@ import * as ftp from 'basic-ftp';
 import { posix as pathPosix } from 'path';
 import * as fs from 'node:fs/promises';
 import { Logger, type LoggerService } from '@nestjs/common';
-import { type StorageDriver, type StorageUploadProgress } from './upload.types';
+import { type StorageDriver, type StorageUploadProgress } from '@app/core/upload/upload.types';
 
 /**
  * بعضی نسخه‌های basic-ftp فیلد useEPSV را ندارند؛

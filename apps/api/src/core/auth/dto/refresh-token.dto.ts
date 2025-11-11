@@ -10,8 +10,8 @@ import { IsOptional, IsString, MinLength } from 'class-validator';
 export class RefreshTokenDto {
   @ApiPropertyOptional({
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    description: 'Refresh token string supplied when the HttpOnly cookie is not available.',
-
+    description:
+      'Refresh token string supplied when the HttpOnly cookie is not available.',
   })
   @IsOptional()
   @IsString()

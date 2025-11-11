@@ -27,14 +27,14 @@ import {
   type MimeType,
   type UploadId,
   type UserId,
-} from './upload.types';
+} from '@app/core/upload/upload.types';
 import {
   UPLOAD_CONFIG,
   UPLOAD_STATE_STORE,
   STORAGE_DRIVER,
   type UploadConfig,
-} from './upload.tokens';
-import { UploadGateway } from './upload.gateway';
+} from '@app/core/upload/upload.tokens';
+import { UploadGateway } from '@app/core/upload/upload.gateway';
 import { MediaService } from '@app/core/media/media.service';
 
 /** ---------- Branded-cast helpers ---------- */

@@ -2,7 +2,7 @@
  * DTO for partial user updates leveraging CreateUserDto definitions.
  */
 import { PartialType } from '@nestjs/swagger';
-import { CreateUserDto } from './create-user.dto';
+import { CreateUserDto } from '@app/core/users/dto/create-user.dto';
 
 /**
  * Mirrors CreateUserDto fields but marks them optional for updates.

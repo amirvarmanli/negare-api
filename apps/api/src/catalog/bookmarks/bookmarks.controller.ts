@@ -4,9 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  Query,
-  Req,
-  UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -17,20 +14,15 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { BookmarksService } from './bookmarks.service';
-import { BookmarkListQueryDto } from './dtos/bookmark-query.dto';
-import { UserBookmarksResultDto } from './dtos/bookmark-response.dto';
-
-// جایگزین با گارد واقعی پروژه‌ات: AuthGuard('jwt')
-class AuthGuardRequired {}
-
-function currentUserId(req: any): string {
-  return req?.user?.sub ?? req?.user?.id;
-}
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { requireUserId } from '@app/catalog/utils/current-user.util';
+import { BookmarksService } from '@app/catalog/bookmarks/bookmarks.service';
 
 @ApiTags('Catalog / Bookmarks')
 @ApiBearerAuth()
-@UseGuards(AuthGuardRequired as any)
 @Controller('catalog/bookmarks')
 export class BookmarksController {
   constructor(private readonly service: BookmarksService) {}
@@ -40,8 +32,11 @@ export class BookmarksController {
   @ApiOkResponse({
     schema: { properties: { bookmarked: { type: 'boolean' } } },
   })
-  async toggle(@Param('productId') productId: string, @Req() req: any) {
-    const userId = currentUserId(req);
+  async toggle(
+    @Param('productId') productId: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ) {
+    const userId = requireUserId(user);
     return this.service.toggle(userId, productId);
   }
 
@@ -51,9 +46,9 @@ export class BookmarksController {
   @ApiNoContentResponse()
   async remove(
     @Param('productId') productId: string,
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<void> {
-    const userId = currentUserId(req);
+    const userId = requireUserId(user);
     await this.service.remove(userId, productId);
   }
 
@@ -62,8 +57,11 @@ export class BookmarksController {
   @ApiOkResponse({
     schema: { properties: { bookmarked: { type: 'boolean' } } },
   })
-  async check(@Param('productId') productId: string, @Req() req: any) {
-    const userId = currentUserId(req);
+  async check(
+    @Param('productId') productId: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ) {
+    const userId = requireUserId(user);
     return this.service.isBookmarked(userId, productId);
   }
 }

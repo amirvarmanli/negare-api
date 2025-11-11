@@ -2,8 +2,8 @@
  * ProfileModule bundles the profile controller/service and required dependencies.
  */
 import { Module } from '@nestjs/common';
-import { ProfileController } from './profile.controller';
-import { ProfileService } from './profile.service';
+import { ProfileController } from '@app/core/users/profile/profile.controller';
+import { ProfileService } from '@app/core/users/profile/profile.service';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import { NoCacheInterceptor } from '@app/common/interceptors/no-cache.interceptor';
 

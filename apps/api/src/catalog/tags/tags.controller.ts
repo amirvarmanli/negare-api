@@ -16,12 +16,15 @@ import {
   ApiTags,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
-import { TagsService } from './tags.service';
-import { CreateTagDto } from './dtos/tag-create.dto';
-import { UpdateTagDto } from './dtos/tag-update.dto';
-import { TagFindQueryDto } from './dtos/tag-query.dto';
-import { TagDto, TagListResultDto } from './dtos/tag-response.dto';
+import { RoleName } from '@prisma/client';
+import { Roles } from '@app/common/decorators/roles.decorator';
+import { TagsService } from '@app/catalog/tags/tags.service';
+import { CreateTagDto } from '@app/catalog/tags/dtos/tag-create.dto';
+import { UpdateTagDto } from '@app/catalog/tags/dtos/tag-update.dto';
+import { TagFindQueryDto } from '@app/catalog/tags/dtos/tag-query.dto';
+import { TagDto, TagListResultDto } from '@app/catalog/tags/dtos/tag-response.dto';
 
 @ApiTags('Catalog / Tags')
 @Controller('catalog/tags')
@@ -29,6 +32,8 @@ export class TagsController {
   constructor(private readonly service: TagsService) {}
 
   @Post()
+  @ApiBearerAuth()
+  @Roles(RoleName.admin)
   @ApiOperation({ summary: 'Create a tag' })
   @ApiCreatedResponse({ type: TagDto })
   async create(@Body() dto: CreateTagDto): Promise<TagDto> {
@@ -36,6 +41,8 @@ export class TagsController {
   }
 
   @Patch(':id')
+  @ApiBearerAuth()
+  @Roles(RoleName.admin)
   @ApiOperation({ summary: 'Update a tag' })
   @ApiOkResponse({ type: TagDto })
   async update(
@@ -67,6 +74,8 @@ export class TagsController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth()
+  @Roles(RoleName.admin)
   @ApiOperation({ summary: 'Delete a tag (removes product links first)' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()

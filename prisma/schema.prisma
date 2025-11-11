@@ -1,5 +1,5 @@
 // ======================================================================
-// Prisma Schema — Negare (Core / Content / Analytics)
+// Prisma Schema — Negare (Core / Catalog / Analytics)
 // ======================================================================
 
 generator client {
@@ -8,9 +8,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-  // IMPORTANT: make sure these schemas exist in DB (core, content, analytics)
-  schemas  = ["public", "core", "content", "analytics"]
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+  // Make sure these schemas exist in DB
+  schemas  = ["public", "core", "catalog", "analytics" ]
 }
 
 /**
@@ -124,15 +125,16 @@ enum AuditAction {
   @@schema("core")
 }
 
-// -------------------- content enums --------------------
+// -------------------- catalog enums --------------------
 enum PricingType {
   FREE
   SUBSCRIPTION
   PAID
   PAID_OR_SUBSCRIPTION
 
+  // NOTE: می‌تونی بعداً نام map را به enum_catalog_* تغییر دهی (اختیاری)
   @@map("enum_content_products_pricingType")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 enum ProductStatus {
@@ -141,7 +143,7 @@ enum ProductStatus {
   ARCHIVED
 
   @@map("enum_content_products_status")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 enum GraphicFormat {
@@ -154,7 +156,7 @@ enum GraphicFormat {
   WEBP
 
   @@map("enum_content_products_graphicFormat")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 enum CommentTarget {
@@ -163,7 +165,7 @@ enum CommentTarget {
   NEWSLETTER
 
   @@map("enum_content_comment_target")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 /**
@@ -375,7 +377,7 @@ model WalletAuditLog {
   @@schema("core")
 }
 
-// فایل‌های آپلود عمومی (اختیاری؛ اگر در UploadModule نگه می‌داری)
+// Optional: public uploads registry
 model File {
   id        String   @id @default(uuid())
   userId    String
@@ -394,27 +396,27 @@ model File {
 
 /**
  * ======================================================================
- * Content domain (catalog / products / taxonomy / social)
+ * Catalog domain (products / taxonomy / social)
  * ====================================================================
  */
 
 model Product {
   id          BigInt  @id @default(autoincrement()) @db.BigInt
-  slug        String  @unique @db.VarChar(255)
+  slug        String  @unique @db.VarChar(200)
   title       String  @db.VarChar(255)
   description String? @db.Text
 
   // media
   coverUrl String? @db.VarChar(255)
 
-  // original file (metadata stored here; actual file lives in storage)
+  // original file (metadata here; actual file in storage)
   fileId BigInt?      @unique @map("file_id") @db.BigInt
   file   ProductFile? @relation("ProductFile", fields: [fileId], references: [id])
 
   // catalog features
-  topic         String?       @db.VarChar(120)
-  graphicFormat GraphicFormat
-  shortLink     String?       @unique @db.VarChar(80)
+  graphicFormats GraphicFormat[] @default([]) // multi-format
+  colors         String[]        @default([]) // array of #RRGGBB
+  shortLink      String?         @unique @db.VarChar(80)
 
   // SEO
   seoTitle       String?  @db.VarChar(160)
@@ -438,14 +440,15 @@ model Product {
 
   // relations
   assets        ProductAsset[]
-  supplierLinks ProductSupplier[] @relation("ProductSuppliersProduct") // authors (max 3 enforced in service)
+  supplierLinks ProductSupplier[] @relation("ProductSuppliersProduct") // authors (max 3 in service)
   categoryLinks ProductCategory[]
   tagLinks      ProductTag[]
+  topics        ProductTopic[] // NEW many-to-many
   bookmarks     Bookmark[]
   likes         Like[]
   comments      Comment[]         @relation("ProductComments")
 
-  // cross-domain analytics
+  // analytics
   views     ProductView[]
   downloads ProductDownload[]
 
@@ -454,10 +457,8 @@ model Product {
 
   @@index([status, pricingType], map: "products_status_pricing_idx")
   @@index([createdAt], map: "products_created_at_idx")
-  @@index([graphicFormat], map: "products_graphic_format_idx")
-  @@index([topic], map: "products_topic_idx")
   @@map("products")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model ProductAsset {
@@ -471,7 +472,7 @@ model ProductAsset {
   product Product @relation(fields: [productId], references: [id])
 
   @@map("product_assets")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model ProductFile {
@@ -486,21 +487,23 @@ model ProductFile {
   product Product? @relation("ProductFile")
 
   @@map("product_files")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model Category {
   id       BigInt  @id @default(autoincrement()) @db.BigInt
   name     String  @db.VarChar(255)
-  slug     String  @unique @db.VarChar(255)
+  slug     String  @unique @db.VarChar(200)
   parentId BigInt? @map("parent_id") @db.BigInt
+  coverUrl String? @db.VarChar(255) // NEW: cover
 
   parent       Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children     Category[]        @relation("CategoryHierarchy")
   productLinks ProductCategory[]
 
+  @@index([parentId], map: "categories_parent_idx")
   @@map("categories")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model ProductCategory {
@@ -513,7 +516,7 @@ model ProductCategory {
   @@id([productId, categoryId])
   @@index([categoryId], map: "product_categories_category_idx")
   @@map("product_categories")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model Tag {
@@ -524,7 +527,7 @@ model Tag {
   productLinks ProductTag[]
 
   @@map("tags")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model ProductTag {
@@ -537,11 +540,10 @@ model ProductTag {
   @@id([productId, tagId])
   @@index([tagId], map: "product_tags_tag_idx")
   @@map("product_tags")
-  @@schema("content")
+  @@schema("catalog")
 }
 
-// product authors/suppliers (many-to-many)
-// NOTE: max 3 authors per product => enforce in service layer
+// product authors/suppliers (many-to-many) — max 3 authors in service
 model ProductSupplier {
   productId BigInt @map("product_id") @db.BigInt
   userId    String @map("user_id") @db.Uuid
@@ -551,7 +553,48 @@ model ProductSupplier {
 
   @@id([productId, userId])
   @@map("product_suppliers")
-  @@schema("content")
+  @@schema("catalog")
+}
+
+model Topic {
+  id             BigInt  @id @default(autoincrement()) @db.BigInt
+  name           String  @unique @db.VarChar(120)
+  slug           String  @unique @db.VarChar(200)
+  coverUrl       String? @db.VarChar(255)
+  seoTitle       String? @db.VarChar(160)
+  seoDescription String? @db.VarChar(240)
+
+  productLinks ProductTopic[]
+
+  @@map("topics")
+  @@schema("catalog")
+}
+
+model ProductTopic {
+  productId BigInt @map("product_id") @db.BigInt
+  topicId   BigInt @map("topic_id") @db.BigInt
+  order     Int    @default(0) @map("order")
+
+  product Product @relation(fields: [productId], references: [id])
+  topic   Topic   @relation(fields: [topicId], references: [id])
+
+  @@id([productId, topicId])
+  @@index([topicId], map: "product_topics_topic_idx")
+  @@map("product_topics")
+  @@schema("catalog")
+}
+
+model SlugRedirect {
+  id         String   @id @default(cuid())
+  entityType String   @db.VarChar(32)
+  entityId   String   @db.VarChar(64)
+  fromSlug   String   @unique @db.VarChar(200)
+  toSlug     String   @db.VarChar(200)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([entityType, entityId], map: "slug_redirect_entity_idx")
+  @@map("slug_redirects")
+  @@schema("catalog")
 }
 
 model Bookmark {
@@ -565,7 +608,7 @@ model Bookmark {
   @@id([userId, productId])
   @@index([userId, createdAt], map: "bookmarks_user_time_idx")
   @@map("bookmarks")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 model Like {
@@ -580,11 +623,9 @@ model Like {
   @@index([productId], map: "likes_product_idx")
   @@index([userId, createdAt], map: "likes_user_time_idx")
   @@map("likes")
-  @@schema("content")
+  @@schema("catalog")
 }
 
-// Polymorphic comments (shared for product/blog/newsletter)
-// For product we also keep a strong relation for easy joins + cascade
 model Comment {
   id     BigInt @id @default(autoincrement()) @db.BigInt
   userId String @map("user_id") @db.Uuid
@@ -612,7 +653,7 @@ model Comment {
   @@index([targetType, targetId, createdAt], map: "comments_target_time_idx")
   @@index([productId, createdAt], map: "comments_product_time_idx")
   @@map("comments")
-  @@schema("content")
+  @@schema("catalog")
 }
 
 /**
@@ -641,7 +682,7 @@ model ProductDownload {
   productId BigInt  @map("product_id") @db.BigInt
   userId    String  @map("user_id") @db.Uuid
   bytes     BigInt? @db.BigInt
-  pricePaid Int? // store paid price (IRR) if applicable
+  pricePaid Int? // IRR if applicable
   ip        String? @db.VarChar(45)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

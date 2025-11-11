@@ -1,6 +1,6 @@
 import { BookmarksService } from '@app/catalog/bookmarks/bookmarks.service';
 import { PricingType } from '@app/prisma/prisma.constants';
-import { createCatalogPrismaStub, CatalogPrismaStub } from '../../utils/prisma-catalog.stub';
+import { createCatalogPrismaStub, CatalogPrismaStub } from '@app/tests/utils/prisma-catalog.stub';
 
 describe('BookmarksService', () => {
   let prisma: CatalogPrismaStub;

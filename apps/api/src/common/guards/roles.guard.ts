@@ -9,8 +9,8 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { CurrentUserPayload } from '../decorators/current-user.decorator';
-import { ROLES_KEY } from '../decorators/roles.decorator';
+import { CurrentUserPayload } from '@app/common/decorators/current-user.decorator';
+import { ROLES_KEY } from '@app/common/decorators/roles.decorator';
 import { RoleName } from '@prisma/client';
 
 @Injectable()

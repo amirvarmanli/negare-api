@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { TagDto } from './dtos/tag-response.dto';
+import { TagDto } from '@app/catalog/tags/dtos/tag-response.dto';
 
 export type TagWithCount = Prisma.TagGetPayload<{
   include: { _count: { select: { productLinks: true } } };

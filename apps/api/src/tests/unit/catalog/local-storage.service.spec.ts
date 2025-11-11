@@ -2,8 +2,8 @@ import { Readable } from 'node:stream';
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
-import { UploadedFile } from '../../../catalog/storage/storage.service';
-import { LocalStorageService } from '../../../catalog/storage/local-storage.service';
+import { UploadedFile } from '@app/catalog/storage/storage.service';
+import { LocalStorageService } from '@app/catalog/storage/local-storage.service';
 
 describe('LocalStorageService', () => {
   const storage = new LocalStorageService();

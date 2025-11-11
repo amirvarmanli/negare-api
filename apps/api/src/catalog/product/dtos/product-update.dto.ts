@@ -1,31 +1,42 @@
-// apps/api/src/core/catalog/product/dto/product-update.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsArray,
   ArrayMaxSize,
   ArrayUnique,
+  IsArray,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
   IsUrl,
   Length,
+  Matches,
+  MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { PricingType, ProductStatus, GraphicFormat } from '@prisma/client';
+import { Transform, Type } from 'class-transformer';
+import { GraphicFormat, PricingType, ProductStatus } from '@prisma/client';
+import {
+  ProductAssetInputDto,
+  ProductFileInputDto,
+  ProductTopicLinkDto,
+} from '@app/catalog/product/dtos/product-shared.dto';
 import {
   toBigIntString,
   toBigIntStringArray,
+  toColorArray,
   toStringArray,
   toTrimmedString,
-} from './transformers';
+  toUppercaseStringArray,
+} from '@app/catalog/product/dtos/transformers';
+import { FA_SLUG_REGEX } from '@shared-slug/slug/fa-slug.util';
 
 export class UpdateProductDto {
-  @ApiPropertyOptional({ example: 'ghalam-siah-vector' })
+  @ApiPropertyOptional({ example: 'نقاشی-و-تصویرسازی' })
   @IsOptional()
   @IsString()
-  @Length(3, 255)
+  @MaxLength(200)
+  @Matches(FA_SLUG_REGEX, { message: 'Invalid slug format' })
   @Transform(toTrimmedString)
   slug?: string;
 
@@ -43,32 +54,59 @@ export class UpdateProductDto {
   @Transform(toTrimmedString)
   description?: string;
 
-  // Media
   @ApiPropertyOptional()
   @IsOptional()
   @IsUrl()
   coverUrl?: string;
 
-  @ApiPropertyOptional({ description: 'ID فایل اصلی (BigInt به صورت رشته)' })
-  @IsOptional()
-  @Transform(toBigIntString)
-  @IsString()
-  fileId?: string;
-
-  // Catalog
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(1, 120)
+  @Length(2, 80)
   @Transform(toTrimmedString)
-  topic?: string;
+  shortLink?: string;
 
-  @ApiPropertyOptional({ enum: GraphicFormat })
+  @ApiPropertyOptional({
+    description:
+      'ID فایل اصلی (BigInt به صورت رشته). برای حذف فایل، مقدار null ارسال کنید.',
+  })
   @IsOptional()
-  @IsEnum(GraphicFormat)
-  graphicFormat?: GraphicFormat;
+  @Transform(toBigIntString)
+  @IsString()
+  fileId?: string | null;
 
-  // SEO
+  @ApiPropertyOptional({
+    type: () => ProductFileInputDto,
+    description:
+      'برای ساخت ProductFile جدید هنگام ویرایش. با fileId (به جز null) قابل جمع نیست.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProductFileInputDto)
+  file?: ProductFileInputDto;
+
+  @ApiPropertyOptional({
+    enum: GraphicFormat,
+    isArray: true,
+    example: [GraphicFormat.SVG, GraphicFormat.PNG],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @Transform(toUppercaseStringArray)
+  @IsEnum(GraphicFormat, { each: true })
+  graphicFormats?: GraphicFormat[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'HEX colors (#RRGGBB)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @Transform(toColorArray)
+  colors?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -88,7 +126,6 @@ export class UpdateProductDto {
   @Transform(toStringArray)
   seoKeywords?: string[];
 
-  // Pricing/Publish
   @ApiPropertyOptional({ enum: PricingType })
   @IsOptional()
   @IsEnum(PricingType)
@@ -98,7 +135,7 @@ export class UpdateProductDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  price?: number;
+  price?: number | null;
 
   @ApiPropertyOptional({ enum: ProductStatus })
   @IsOptional()
@@ -108,9 +145,46 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ example: '2025-11-08T12:00:00.000Z' })
   @IsOptional()
   @IsString()
-  publishedAt?: string;
+  publishedAt?: string | null;
 
-  // Relations (sync کامل در سرویس انجام می‌شود)
+  @ApiPropertyOptional({
+    description: 'حجم فایل بر حسب مگابایت (برای فیلترهای کلاینت)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  fileSizeMB?: number;
+
+  @ApiPropertyOptional({
+    description: 'اندازه فایل به بایت (BigInt به صورت رشته)',
+  })
+  @IsOptional()
+  @Transform(toBigIntString)
+  @IsString()
+  fileBytes?: string | null;
+
+  @ApiPropertyOptional({
+    type: [ProductAssetInputDto],
+    description: 'در صورت ارسال، تمام دارایی‌ها با این لیست جایگزین می‌شوند',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAssetInputDto)
+  assets?: ProductAssetInputDto[];
+
+  @ApiPropertyOptional({
+    type: [ProductTopicLinkDto],
+    description:
+      'در صورت ارسال، ارتباط موضوعی محصول دقیقاً مطابق این لیست به‌روز می‌شود',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductTopicLinkDto)
+  topics?: ProductTopicLinkDto[];
+
   @ApiPropertyOptional({
     type: [String],
     description: 'آیدی‌های دسته‌بندی (BigInt به صورت رشته)',

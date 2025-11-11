@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { welcomeHtml } from './templates/welcome';
+import { welcomeHtml } from '@app/mail/templates/welcome';
 
 /** Minimal Nodemailer typings */
 type MailAddress = string | { name?: string; address: string };

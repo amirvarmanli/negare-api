@@ -1,4 +1,4 @@
-import { UploadGateway, EV_SERVER_PROGRESS, EV_UPLOADED, EV_ERROR, EV_JOINED, EV_LEFT } from './upload.gateway';
+import { UploadGateway, EV_SERVER_PROGRESS, EV_UPLOADED, EV_ERROR, EV_JOINED, EV_LEFT } from '@app/core/upload/upload.gateway';
 
 describe('UploadGateway', () => {
   let gateway: UploadGateway;

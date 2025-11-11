@@ -1,0 +1,492 @@
+{
+  "info": {
+    "name": "Negare Persian Slug Support",
+    "description": "CRUD + slug resolution flows for Categories, Topics, and Products with Persian-safe slugs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000/api" },
+    { "key": "adminToken", "value": "REPLACE_ME" },
+    { "key": "categorySlug", "value": "نقاشی-و-تصویرسازی" },
+    { "key": "topicSlug", "value": "طراحی-تعامل" },
+    { "key": "productSlug", "value": "محصول-نمونه" }
+  ],
+  "item": [
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/categories",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"نقاشی و تصویرسازی\",\n  \"slug\": \"{{categorySlug}}\",\n  \"coverUrl\": \"https://cdn.negare.dev/cat/painting.png\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Category created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().slug).to.eql(pm.collectionVariables.get('categorySlug'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Category By Slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/categories/{{categorySlug}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Category slug is resolvable', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().slug).to.eql(pm.collectionVariables.get('categorySlug'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Category Slug Redirect",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/categories/نسخه-قدیمی"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Old category slug redirects', function () {",
+                  "  pm.response.to.have.status(301);",
+                  "  pm.expect(pm.response.headers.get('Location')).to.include('/catalog/categories/');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Category Slug 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/categories/دسته-ناموجود"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Category not found', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Categories",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/categories?q=تصویر"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Categories list returns 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Category Slug",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/categories/{{categoryId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"نقاشی دیجیتال\",\n  \"slug\": \"نقاشی-دیجیتال\"\n}"
+            }
+          },
+          "description": "Set {{categoryId}} after creating a category.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Category updated', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/categories/{{categoryId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Category deleted', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Topics",
+      "item": [
+        {
+          "name": "Create Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/topics",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"طراحی تعامل\",\n  \"slug\": \"{{topicSlug}}\",\n  \"seoTitle\": \"تاپیک طراحی تعامل\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topic created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Topic By Slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/topics/{{topicSlug}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topic resolved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Topic Slug Redirect",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/topics/هنر-قدیمی"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topic redirect', function () {",
+                  "  pm.response.to.have.status(301);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Topic Slug 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/topics/تاپیک-ناموجود"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topic not found', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Topics",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/topics?limit=10&q=طراحی"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topics listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Topic",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/topics/{{topicId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"تعامل-کاربر\",\n  \"seoDescription\": \"به\u200cروزرسانی تاپیک\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topic updated', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Topic",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/topics/{{topicId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Topic deleted', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"محصول نمونه\",\n  \"slug\": \"{{productSlug}}\",\n  \"graphicFormats\": [\"SVG\"],\n  \"pricingType\": \"FREE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Product created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Product By Slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/products/{{productSlug}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Product resolved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Product Slug Redirect",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/products/کالای-قدیمی"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Product redirect', function () {",
+                  "  pm.response.to.have.status(301);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Product Slug 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/products/محصول-ناموجود"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Product not found', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Products",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/catalog/products?limit=12&q=محصول"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Products listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Product Slug",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"محصول تازه\",\n  \"slug\": \"محصول-تازه\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Product updated', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Product archived', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

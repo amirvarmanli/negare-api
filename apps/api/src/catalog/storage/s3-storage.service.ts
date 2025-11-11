@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Readable } from 'node:stream';
-import { StorageService, StoredFileMetadata, UploadedFile } from './storage.service';
+import { StorageService, StoredFileMetadata, UploadedFile } from '@app/catalog/storage/storage.service';
 
 @Injectable()
 export class S3StorageService extends StorageService {

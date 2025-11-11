@@ -40,3 +40,25 @@ export function toBigIntStringArray({
   const out = arr.filter((s) => /^\d+$/.test(s));
   return out.length ? out : [];
 }
+
+/** Normalises an array of HEX color strings (#RRGGBB) while filtering out invalid inputs. */
+export function toColorArray({
+  value,
+}: TransformFnParams): string[] | undefined {
+  const arr = toStringArray({ value } as TransformFnParams);
+  if (!arr) return undefined;
+  const normalized = arr
+    .map((s) => s.trim().replace(/^#/u, '').toUpperCase())
+    .filter((s) => /^[0-9A-F]{6}$/u.test(s))
+    .map((s) => `#${s}`);
+  return normalized.length ? Array.from(new Set(normalized)) : [];
+}
+
+/** Uppercases each string entry (useful for enum arrays). */
+export function toUppercaseStringArray({
+  value,
+}: TransformFnParams): string[] | undefined {
+  const arr = toStringArray({ value } as TransformFnParams);
+  if (!arr) return undefined;
+  return arr.map((s) => s.toUpperCase());
+}

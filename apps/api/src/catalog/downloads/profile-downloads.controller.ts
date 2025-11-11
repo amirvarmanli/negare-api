@@ -1,22 +1,20 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { DownloadsService } from './downloads.service';
-import { UserDownloadsResultDto } from './dtos/download-response.dto';
-
-// جایگزین با گارد واقعی‌ات: AuthGuard('jwt')
-class AuthGuardRequired {}
-function currentUserId(req: any): string {
-  return req?.user?.sub ?? req?.user?.id;
-}
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { requireUserId } from '@app/catalog/utils/current-user.util';
+import { DownloadsService } from '@app/catalog/downloads/downloads.service';
+import { UserDownloadsResultDto } from '@app/catalog/downloads/dtos/download-response.dto';
 
 @ApiTags('Profile / Downloads')
 @ApiBearerAuth()
-@UseGuards(AuthGuardRequired as any)
 @Controller('catalog/profile/downloads')
 export class ProfileDownloadsController {
   constructor(private readonly service: DownloadsService) {}
@@ -25,11 +23,11 @@ export class ProfileDownloadsController {
   @ApiOperation({ summary: 'List current user downloads (Load more)' })
   @ApiOkResponse({ type: UserDownloadsResultDto })
   async listMine(
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
     @Query('limit') limit = '24',
     @Query('cursor') cursor?: string,
   ): Promise<UserDownloadsResultDto> {
-    const userId = currentUserId(req);
+    const userId = requireUserId(user);
     return this.service.listForUser(userId, Number(limit), cursor);
   }
 }

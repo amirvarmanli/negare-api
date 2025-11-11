@@ -11,10 +11,10 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { FileTypeResult } from 'file-type';
-import { UploadService } from './upload.service';
-import type { UploadConfig } from './upload.tokens';
+import { UploadService } from '@app/core/upload/upload.service';
+import type { UploadConfig } from '@app/core/upload/upload.tokens';
 import { InMemoryUploadStateStore, FakeStorageDriver, MockMediaService } from '@test/utils/upload-fakes';
-import type { UploadGateway } from './upload.gateway';
+import type { UploadGateway } from '@app/core/upload/upload.gateway';
 
 jest.mock('file-type', () => ({
   fileTypeFromBuffer: jest.fn(),

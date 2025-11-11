@@ -9,7 +9,7 @@ export class CreateTagDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  name: string;
+  name!: string;
 
   @ApiProperty({
     description: 'Optional slug, generated automatically if omitted',

@@ -4,22 +4,30 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateCategoryDto } from './dtos/category-create.dto';
-import { UpdateCategoryDto } from './dtos/category-update.dto';
-import { CategoryFindQueryDto } from './dtos/category-query.dto';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { PrismaService } from '@app/prisma/prisma.service';
+import {
+  clampFaSlug,
+  makeFaSlug,
+  normalizeFaText,
+} from '@shared-slug/slug/fa-slug.util';
+import { CreateCategoryDto } from '@app/catalog/categories/dtos/category-create.dto';
+import { UpdateCategoryDto } from '@app/catalog/categories/dtos/category-update.dto';
+import { CategoryFindQueryDto } from '@app/catalog/categories/dtos/category-query.dto';
 import {
   CategoryBreadcrumbDto,
   CategoryDto,
   CategoryListResultDto,
   CategoryTreeNodeDto,
-} from './dtos/category-response.dto';
-import { CategoryEntity, CategoryMapper } from './category.mapper';
+} from '@app/catalog/categories/dtos/category-response.dto';
+import { CategoryEntity, CategoryMapper } from '@app/catalog/categories/category.mapper';
 
 function toBigIntNullable(id?: string): bigint | null {
   if (!id || !/^\d+$/.test(id)) return null;
   return BigInt(id);
 }
+
+const CATEGORY_ENTITY_TYPE = 'category' as const;
 
 @Injectable()
 export class CategoriesService {
@@ -28,11 +36,14 @@ export class CategoriesService {
   /* ---------------- Create ---------------- */
   async create(dto: CreateCategoryDto): Promise<CategoryDto> {
     const parentId = toBigIntNullable(dto.parentId);
+    const name = normalizeFaText(dto.name);
+    const slug = await this.ensureUniqueSlug(dto.slug ?? dto.name);
     const created = await this.prisma.category.create({
       data: {
-        name: dto.name,
-        slug: dto.slug,
+        name,
+        slug,
         parentId: parentId ?? null,
+        coverUrl: dto.coverUrl ?? null,
       },
     });
     return CategoryMapper.toDto(created);
@@ -43,10 +54,28 @@ export class CategoriesService {
     const id = toBigIntNullable(idStr);
     if (!id) throw new BadRequestException('Invalid category id');
 
+    const existing = await this.prisma.category.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Category not found');
+
+    const nextName =
+      dto.name !== undefined ? normalizeFaText(dto.name) : undefined;
+    const slugSource =
+      dto.slug !== undefined
+        ? dto.slug
+        : dto.name !== undefined
+          ? dto.name
+          : undefined;
+    const nextSlug = slugSource
+      ? await this.ensureUniqueSlug(slugSource, id)
+      : undefined;
+
     // parentId رفتار: undefined = دست نزن | '' یا null = detach | مقدار = connect
     const data: Prisma.CategoryUpdateInput = {
-      name: dto.name ?? undefined,
-      slug: dto.slug ?? undefined,
+      name: nextName ?? undefined,
+      slug: nextSlug ?? undefined,
+      coverUrl: dto.coverUrl ?? undefined,
       ...(dto.parentId === undefined
         ? {}
         : dto.parentId && /^\d+$/.test(dto.parentId)
@@ -54,21 +83,47 @@ export class CategoriesService {
           : { parent: { disconnect: true } }),
     };
 
-    const updated = await this.prisma.category.update({
-      where: { id },
-      data,
+    const updated = await this.prisma.$transaction(async (trx) => {
+      const result = await trx.category.update({
+        where: { id },
+        data,
+      });
+      if (nextSlug && nextSlug !== existing.slug) {
+        await this.createSlugRedirect(trx, id, existing.slug, nextSlug);
+      }
+      return result;
     });
     return CategoryMapper.toDto(updated);
   }
 
   /* ---------------- Find One ---------------- */
-  async findOne(idOrSlug: string): Promise<CategoryDto> {
-    const where = /^\d+$/.test(idOrSlug)
-      ? { id: BigInt(idOrSlug) }
-      : { slug: idOrSlug };
-    const c = await this.prisma.category.findFirst({ where });
-    if (!c) throw new NotFoundException('Category not found');
-    return CategoryMapper.toDto(c);
+  async findById(idStr: string): Promise<CategoryDto> {
+    const id = toBigIntNullable(idStr);
+    if (!id) {
+      throw new BadRequestException('Invalid category id');
+    }
+    const category = await this.prisma.category.findUnique({ where: { id } });
+    if (!category) throw new NotFoundException('Category not found');
+    return CategoryMapper.toDto(category);
+  }
+
+  async findBySlug(
+    slug: string,
+  ): Promise<{ category?: CategoryDto; redirectTo?: string }> {
+    const direct = await this.prisma.category.findUnique({
+      where: { slug },
+    });
+    if (direct) {
+      return { category: CategoryMapper.toDto(direct) };
+    }
+    const redirect = await this.prisma.slugRedirect.findUnique({
+      where: { fromSlug: slug },
+      select: { entityType: true, toSlug: true },
+    });
+    if (redirect?.entityType === CATEGORY_ENTITY_TYPE) {
+      return { redirectTo: redirect.toSlug };
+    }
+    throw new NotFoundException('Category not found');
   }
 
   /* ---------------- List (flat) ---------------- */
@@ -77,7 +132,7 @@ export class CategoriesService {
     const ands: Prisma.CategoryWhereInput[] = [];
 
     if (q.q?.trim()) {
-      const term = q.q.trim();
+      const term = normalizeFaText(q.q.trim());
       ands.push({
         OR: [
           { name: { contains: term, mode: 'insensitive' } },
@@ -168,8 +223,67 @@ export class CategoriesService {
 
       // لینک‌های محصول را حذف کن (در صورت نیاز می‌تونی به دسته‌ی والد منتقل کنی)
       await trx.productCategory.deleteMany({ where: { categoryId: id } });
+      await trx.slugRedirect.deleteMany({
+        where: {
+          entityType: CATEGORY_ENTITY_TYPE,
+          entityId: id.toString(),
+        },
+      });
 
       await trx.category.delete({ where: { id } });
     });
+  }
+
+  private async ensureUniqueSlug(
+    source: string,
+    ignoreId?: bigint,
+  ): Promise<string> {
+    const base = makeFaSlug(source);
+    if (!base) {
+      throw new BadRequestException('Slug cannot be resolved from name.');
+    }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const candidate =
+        attempt === 0 ? base : clampFaSlug(`${base}-${attempt + 1}`);
+      const existing = await this.prisma.category.findUnique({
+        where: { slug: candidate },
+        select: { id: true },
+      });
+      if (!existing || (ignoreId && existing.id === ignoreId)) {
+        return candidate;
+      }
+    }
+    return clampFaSlug(`${base}-${Date.now()}`);
+  }
+
+  private async createSlugRedirect(
+    trx: Prisma.TransactionClient,
+    entityId: bigint,
+    fromSlug: string,
+    toSlug: string,
+  ): Promise<void> {
+    if (fromSlug === toSlug) {
+      return;
+    }
+    try {
+      await trx.slugRedirect.create({
+        data: {
+          entityType: CATEGORY_ENTITY_TYPE,
+          entityId: entityId.toString(),
+          fromSlug,
+          toSlug,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          `A redirect already exists for slug "${fromSlug}"`,
+        );
+      }
+      throw error;
+    }
   }
 }

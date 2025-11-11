@@ -1,4 +1,3 @@
-// apps/api/src/core/catalog/product/product.service.ts
 import {
   Injectable,
   BadRequestException,
@@ -11,32 +10,36 @@ import {
   ProductStatus,
   GraphicFormat,
 } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaClientKnownRequestError, Decimal } from '@prisma/client/runtime/library';
+import { PrismaService } from '@app/prisma/prisma.service';
 import { Buffer } from 'buffer';
 
-import { CreateProductDto } from './dtos/product-create.dto';
-import { UpdateProductDto } from './dtos/product-update.dto';
-import { ProductFindQueryDto, ProductSort } from './dtos/product-query.dto';
+import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
+import { UpdateProductDto } from '@app/catalog/product/dtos/product-update.dto';
+import { ProductFindQueryDto, ProductSort } from '@app/catalog/product/dtos/product-query.dto';
 import {
   ProductBriefDto,
   ProductDetailDto,
   ProductListResultDto,
-} from './dtos/product-response.dto';
+} from '@app/catalog/product/dtos/product-response.dto';
+import { ProductFileInputDto } from '@app/catalog/product/dtos/product-shared.dto';
 
 import {
   ProductMapper,
   productInclude,
   type ProductWithRelations,
-} from './product.mapper';
+} from '@app/catalog/product/product.mapper';
+import {
+  clampFaSlug,
+  makeFaSlug,
+  normalizeFaText,
+} from '@shared-slug/slug/fa-slug.util';
 
-/* ============================================================
- * انواع کمکی (بدون any)
- * ========================================================== */
 export type Actor = { id: string; isAdmin: boolean };
 
-/* ============================================================
- * ابزارهای کمکی: cursor, تبدیل‌ها، و …
- * ========================================================== */
+const MAX_AUTHORS = 3;
+const PRODUCT_ENTITY_TYPE = 'product' as const;
+
 function encodeCursor(obj: Record<string, string | number>): string {
   return Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');
 }
@@ -55,85 +58,105 @@ function uniq<T>(arr: T[] | null | undefined): T[] {
 }
 function toBigIntNullable(id?: string): bigint | null {
   if (!id) return null;
-  if (!/^\d+$/.test(id)) return null;
+  if (!/^\d+$/u.test(id)) return null;
   return BigInt(id);
 }
+function parseBooleanFlag(value?: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  return value === 'true';
+}
+function normalizeColorFilter(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim().toUpperCase();
+  if (!/^#[0-9A-F]{6}$/u.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
 
-/** جستجوی ساده روی title/description/topic/slug */
 function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
   if (!q) return undefined;
-  const term = q.trim();
+  const term = normalizeFaText(q.trim());
   if (!term) return undefined;
   return {
     OR: [
       { title: { contains: term, mode: 'insensitive' } },
       { description: { contains: term, mode: 'insensitive' } },
-      { topic: { contains: term, mode: 'insensitive' } },
       { slug: { contains: term, mode: 'insensitive' } },
+      { seoTitle: { contains: term, mode: 'insensitive' } },
+      { seoDescription: { contains: term, mode: 'insensitive' } },
+      { shortLink: { contains: term, mode: 'insensitive' } },
     ],
   };
 }
 
-/* ============================================================
- * Service
- * ========================================================== */
 @Injectable()
 export class ProductService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /* ------------------------------
-   * Create
-   * ---------------------------- */
   async create(dto: CreateProductDto, actor: Actor): Promise<ProductDetailDto> {
-    const authorIds = uniq(dto.authorIds ?? []);
-    if (authorIds.length === 0) authorIds.push(actor.id);
-    if (authorIds.length > 3) {
-      throw new BadRequestException('A product can have at most 3 authors.');
-    }
+    const title = normalizeFaText(dto.title);
+    const slug = await this.ensureUniqueSlug(dto.slug ?? dto.title);
+    const authors = this.resolveAuthors(dto.authorIds, actor);
+    const categoryIds = uniq(dto.categoryIds ?? []).map((cid) => BigInt(cid));
+    const tagIds = uniq(dto.tagIds ?? []).map((tid) => BigInt(tid));
+    const topics = this.buildTopicLinks(dto.topics);
+    const assetPayloads = this.buildAssetCreateInput(dto.assets);
+    const fileRelation = await this.buildFileRelationForCreate(dto);
 
     const created = await this.prisma.product.create({
       data: {
-        slug: dto.slug,
-        title: dto.title,
+        slug,
+        title,
         description: dto.description ?? null,
-
         coverUrl: dto.coverUrl ?? null,
-        // ✅ nested relation برای فایل
-        ...(dto.fileId
-          ? { file: { connect: { id: BigInt(dto.fileId) } } }
-          : {}),
-
-        topic: dto.topic ?? null,
-        graphicFormat: dto.graphicFormat as GraphicFormat,
-
-        // SEO
+        shortLink: dto.shortLink ?? null,
+        graphicFormats: dto.graphicFormats ?? [],
+        colors: dto.colors ?? [],
         seoTitle: dto.seoTitle ?? null,
         seoDescription: dto.seoDescription ?? null,
         seoKeywords: dto.seoKeywords ?? [],
-
-        // قیمت/انتشار
         pricingType: dto.pricingType as PricingType,
-        price:
-          dto.price !== undefined && dto.price !== null
-            ? new Prisma.Decimal(dto.price)
-            : null,
+        price: this.toDecimal(dto.price),
         status: (dto.status ?? ProductStatus.DRAFT) as ProductStatus,
         publishedAt: dto.publishedAt ? new Date(dto.publishedAt) : null,
+        fileSizeMB: dto.fileSizeMB ?? 0,
+        fileBytes:
+          dto.fileBytes !== undefined && dto.fileBytes !== null
+            ? BigInt(dto.fileBytes)
+            : null,
+        ...(fileRelation ? { file: fileRelation } : {}),
 
-        // روابط
         supplierLinks: {
-          create: authorIds.map((userId) => ({ userId })),
+          create: authors.map((userId) => ({ userId })),
         },
-        categoryLinks: {
-          create: uniq(dto.categoryIds ?? []).map((cid) => ({
-            categoryId: BigInt(cid),
-          })),
-        },
-        tagLinks: {
-          create: uniq(dto.tagIds ?? []).map((tid) => ({
-            tagId: BigInt(tid),
-          })),
-        },
+        categoryLinks: categoryIds.length
+          ? {
+              create: categoryIds.map((categoryId) => ({
+                categoryId,
+              })),
+            }
+          : undefined,
+        tagLinks: tagIds.length
+          ? {
+              create: tagIds.map((tagId) => ({
+                tagId,
+              })),
+            }
+          : undefined,
+        topics: topics.length
+          ? {
+              create: topics.map((topic) => ({
+                topicId: topic.topicId,
+                order: topic.order,
+              })),
+            }
+          : undefined,
+        assets: assetPayloads.length
+          ? {
+              create: assetPayloads,
+            }
+          : undefined,
       },
       include: productInclude,
     });
@@ -141,9 +164,6 @@ export class ProductService {
     return ProductMapper.toDetail(created as ProductWithRelations);
   }
 
-  /* ------------------------------
-   * Update
-   * ---------------------------- */
   async update(
     idOrSlug: string,
     dto: UpdateProductDto,
@@ -154,16 +174,32 @@ export class ProductService {
     if (!(await this.canEdit(product.id, actor))) {
       throw new ForbiddenException('You are not allowed to edit this product.');
     }
-    if (dto.authorIds && uniq(dto.authorIds).length > 3) {
-      throw new BadRequestException('A product can have at most 3 authors.');
+    if (dto.authorIds && uniq(dto.authorIds).length > MAX_AUTHORS) {
+      throw new BadRequestException(
+        `A product can have at most ${MAX_AUTHORS} authors.`,
+      );
     }
 
+    const nextTitle =
+      dto.title !== undefined ? normalizeFaText(dto.title) : undefined;
+    const slugSource =
+      dto.slug !== undefined
+        ? dto.slug
+        : dto.title !== undefined
+          ? dto.title
+          : undefined;
+    const nextSlug = slugSource
+      ? await this.ensureUniqueSlug(slugSource, product.id)
+      : undefined;
+
+    const fileRelation = await this.buildFileRelationForUpdate(dto);
+
     const data: Prisma.ProductUpdateInput = {
-      slug: dto.slug ?? undefined,
-      title: dto.title ?? undefined,
+      slug: nextSlug ?? undefined,
+      title: nextTitle ?? undefined,
       description: dto.description ?? undefined,
       coverUrl: dto.coverUrl ?? undefined,
-      topic: dto.topic ?? undefined,
+      shortLink: dto.shortLink ?? undefined,
       seoTitle: dto.seoTitle ?? undefined,
       seoDescription: dto.seoDescription ?? undefined,
       seoKeywords: dto.seoKeywords ? { set: dto.seoKeywords } : undefined,
@@ -172,18 +208,29 @@ export class ProductService {
         dto.price !== undefined
           ? dto.price === null
             ? null
-            : new Prisma.Decimal(dto.price)
+            : this.toDecimal(dto.price)
           : undefined,
       status: dto.status ?? undefined,
-      publishedAt: dto.publishedAt ? new Date(dto.publishedAt) : undefined,
-      graphicFormat: dto.graphicFormat ?? undefined,
-
-      // ✅ مدیریت رابطه فایل
-      ...(dto.fileId === undefined
-        ? {}
-        : dto.fileId
-          ? { file: { connect: { id: BigInt(dto.fileId) } } }
-          : { file: { disconnect: true } }),
+      publishedAt:
+        dto.publishedAt !== undefined
+          ? dto.publishedAt
+            ? new Date(dto.publishedAt)
+            : null
+          : undefined,
+      graphicFormats:
+        dto.graphicFormats !== undefined
+          ? { set: dto.graphicFormats }
+          : undefined,
+      colors: dto.colors !== undefined ? { set: dto.colors ?? [] } : undefined,
+      fileSizeMB:
+        dto.fileSizeMB !== undefined ? (dto.fileSizeMB ?? 0) : undefined,
+      fileBytes:
+        dto.fileBytes !== undefined
+          ? dto.fileBytes === null
+            ? null
+            : BigInt(dto.fileBytes)
+          : undefined,
+      ...(fileRelation ? { file: fileRelation } : {}),
     };
 
     const updated = await this.prisma.$transaction(async (trx) => {
@@ -244,22 +291,53 @@ export class ProductService {
         }
       }
 
-      return trx.product.update({
+      if (dto.topics) {
+        await trx.productTopic.deleteMany({ where: { productId: product.id } });
+        const nextTopics = this.buildTopicLinks(dto.topics);
+        if (nextTopics.length > 0) {
+          await trx.productTopic.createMany({
+            data: nextTopics.map((topic) => ({
+              productId: product.id,
+              topicId: topic.topicId,
+              order: topic.order,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      if (dto.assets) {
+        await trx.productAsset.deleteMany({ where: { productId: product.id } });
+        const nextAssets = this.buildAssetCreateInput(dto.assets);
+        if (nextAssets.length > 0) {
+          await trx.productAsset.createMany({
+            data: nextAssets.map((asset) => ({
+              productId: product.id,
+              url: asset.url,
+              alt: asset.alt,
+              sortOrder: asset.sortOrder,
+            })),
+          });
+        }
+      }
+
+      const result = await trx.product.update({
         where: { id: product.id },
         data,
         include: productInclude,
       });
+      if (nextSlug && nextSlug !== product.slug) {
+        await this.createSlugRedirect(trx, product.id, product.slug, nextSlug);
+      }
+      return result;
     });
 
     return ProductMapper.toDetail(updated as ProductWithRelations);
   }
 
-  /* ------------------------------
-   * FindOne
-   * ---------------------------- */
-  async findOne(
+  async findByIdOrSlug(
     idOrSlug: string,
-    viewerId?: string,
+    _viewerId?: string,
   ): Promise<ProductDetailDto> {
     const prod = await this.prisma.product.findFirst({
       where: this.idOrSlugWhere(idOrSlug),
@@ -269,9 +347,29 @@ export class ProductService {
     return ProductMapper.toDetail(prod as ProductWithRelations);
   }
 
-  /* ------------------------------
-   * FindAll — Load More with cursor
-   * ---------------------------- */
+  async findBySlug(
+    slug: string,
+    viewerId?: string,
+  ): Promise<{ product?: ProductDetailDto; redirectTo?: string }> {
+    const product = await this.prisma.product.findUnique({
+      where: { slug },
+      include: productInclude,
+    });
+    if (product) {
+      return {
+        product: ProductMapper.toDetail(product as ProductWithRelations),
+      };
+    }
+    const redirect = await this.prisma.slugRedirect.findUnique({
+      where: { fromSlug: slug },
+      select: { entityType: true, toSlug: true },
+    });
+    if (redirect?.entityType === PRODUCT_ENTITY_TYPE) {
+      return { redirectTo: redirect.toSlug };
+    }
+    throw new NotFoundException('Product not found');
+  }
+
   async findAll(query: ProductFindQueryDto): Promise<ProductListResultDto> {
     const limit = Math.min(Math.max(query.limit ?? 24, 1), 60);
     const sort: ProductSort = (query.sort ?? 'latest') as ProductSort;
@@ -282,9 +380,19 @@ export class ProductService {
 
     if (query.pricingType)
       ands.push({ pricingType: query.pricingType as PricingType });
-    if (query.graphicFormat)
-      ands.push({ graphicFormat: query.graphicFormat as GraphicFormat });
+    if (query.graphicFormat) {
+      ands.push({
+        graphicFormats: {
+          has: query.graphicFormat as GraphicFormat,
+        },
+      });
+    }
     if (query.status) ands.push({ status: query.status as ProductStatus });
+
+    const colorFilter = normalizeColorFilter(query.color);
+    if (colorFilter) {
+      ands.push({ colors: { has: colorFilter } });
+    }
 
     if (query.categoryId) {
       const cid = toBigIntNullable(query.categoryId);
@@ -294,8 +402,27 @@ export class ProductService {
       const tid = toBigIntNullable(query.tagId);
       if (tid) ands.push({ tagLinks: { some: { tagId: tid } } });
     }
-    if (query.authorId)
+    if (query.topicId) {
+      const topicId = toBigIntNullable(query.topicId);
+      if (topicId) ands.push({ topics: { some: { topicId } } });
+    }
+    if (query.authorId) {
       ands.push({ supplierLinks: { some: { userId: query.authorId } } });
+    }
+
+    const hasFile = parseBooleanFlag(query.hasFile);
+    if (hasFile !== undefined) {
+      ands.push(
+        hasFile ? { fileId: { not: null } } : { fileId: { equals: null } },
+      );
+    }
+
+    const hasAssets = parseBooleanFlag(query.hasAssets);
+    if (hasAssets !== undefined) {
+      ands.push(
+        hasAssets ? { assets: { some: {} } } : { assets: { none: {} } },
+      );
+    }
 
     const baseWhere: Prisma.ProductWhereInput = ands.length
       ? { AND: ands }
@@ -316,7 +443,7 @@ export class ProductService {
         cursorWhere = {
           OR: [
             { createdAt: { lt: createdAt } },
-            { AND: [{ createdAt: createdAt }, { id: { lt: id } }] },
+            { AND: [{ createdAt }, { id: { lt: id } }] },
           ],
         };
       }
@@ -409,9 +536,6 @@ export class ProductService {
     return { items, nextCursor };
   }
 
-  /* ------------------------------
-   * Remove (Archive)
-   * ---------------------------- */
   async remove(idOrSlug: string, actor: Actor): Promise<ProductDetailDto> {
     const product = await this.getByIdOrSlugStrict(idOrSlug);
     if (!(await this.canEdit(product.id, actor))) {
@@ -427,9 +551,6 @@ export class ProductService {
     return ProductMapper.toDetail(updated as ProductWithRelations);
   }
 
-  /* ------------------------------
-   * Toggle Like
-   * ---------------------------- */
   async toggleLike(
     productIdStr: string,
     userId: string,
@@ -464,9 +585,6 @@ export class ProductService {
     return { liked: true };
   }
 
-  /* ------------------------------
-   * Toggle Bookmark
-   * ---------------------------- */
   async toggleBookmark(
     productIdStr: string,
     userId: string,
@@ -489,9 +607,6 @@ export class ProductService {
     return { bookmarked: true };
   }
 
-  /* ------------------------------
-   * Increment View (analytics-lite)
-   * ---------------------------- */
   async incrementView(
     productId: bigint,
     viewerId?: string,
@@ -514,9 +629,6 @@ export class ProductService {
     ]);
   }
 
-  /* ------------------------------
-   * Register Download (and count)
-   * ---------------------------- */
   async registerDownload(
     productIdStr: string,
     userId: string,
@@ -544,10 +656,6 @@ export class ProductService {
     ]);
   }
 
-  /* ============================================================
-   * Helpers
-   * ========================================================== */
-
   private async canEdit(productId: bigint, actor: Actor): Promise<boolean> {
     if (actor.isAdmin) return true;
     const link = await this.prisma.productSupplier.findFirst({
@@ -568,9 +676,189 @@ export class ProductService {
   }
 
   private idOrSlugWhere(idOrSlug: string): Prisma.ProductWhereInput {
-    if (/^\d+$/.test(idOrSlug)) {
+    if (/^\d+$/u.test(idOrSlug)) {
       return { id: BigInt(idOrSlug) };
     }
-    return { slug: idOrSlug };
+    return { slug: normalizeFaText(idOrSlug) };
+  }
+
+  private async buildFileRelationForCreate(
+    dto: CreateProductDto,
+  ): Promise<Prisma.ProductFileCreateNestedOneWithoutProductInput | undefined> {
+    if (!dto.file && !dto.fileId) {
+      return undefined;
+    }
+    if (dto.file && dto.fileId) {
+      throw new BadRequestException('Provide either fileId or file, not both.');
+    }
+    if (dto.file) {
+      return { create: this.mapFileCreateInput(dto.file) };
+    }
+    if (!dto.fileId) {
+      return undefined;
+    }
+    const fileId = this.parseFileIdOrThrow(dto.fileId);
+    await this.ensureProductFileExists(fileId);
+    return { connect: { id: fileId } };
+  }
+
+  private async buildFileRelationForUpdate(
+    dto: UpdateProductDto,
+  ): Promise<Prisma.ProductFileUpdateOneWithoutProductNestedInput | undefined> {
+    if (dto.file && dto.fileId !== undefined && dto.fileId !== null) {
+      throw new BadRequestException('Provide either fileId or file, not both.');
+    }
+    if (dto.file) {
+      return { create: this.mapFileCreateInput(dto.file) };
+    }
+    if (dto.fileId === null) {
+      return { disconnect: true };
+    }
+    if (!dto.fileId) {
+      return undefined;
+    }
+    const fileId = this.parseFileIdOrThrow(dto.fileId);
+    await this.ensureProductFileExists(fileId);
+    return { connect: { id: fileId } };
+  }
+
+  private mapFileCreateInput(
+    file: ProductFileInputDto,
+  ): Prisma.ProductFileCreateWithoutProductInput {
+    return {
+      storageKey: file.storageKey,
+      originalName: file.originalName ?? null,
+      size:
+        file.size !== undefined && file.size !== null
+          ? BigInt(file.size)
+          : null,
+      mimeType: file.mimeType ?? null,
+      meta: Prisma.JsonNull,
+    };
+  }
+
+  private parseFileIdOrThrow(fileId: string): bigint {
+    const parsed = toBigIntNullable(fileId);
+    if (parsed === null) {
+      throw new BadRequestException('Invalid fileId: expected numeric string');
+    }
+    return parsed;
+  }
+
+  private async ensureProductFileExists(fileId: bigint): Promise<void> {
+    const exists = await this.prisma.productFile.findUnique({
+      where: { id: fileId },
+      select: { id: true },
+    });
+    if (!exists) {
+      throw new BadRequestException('Invalid fileId: ProductFile not found');
+    }
+  }
+
+  private resolveAuthors(
+    authorIds: string[] | undefined,
+    actor: Actor,
+  ): string[] {
+    const authors = uniq(authorIds ?? []);
+    if (authors.length === 0) {
+      authors.push(actor.id);
+    }
+    if (authors.length > MAX_AUTHORS) {
+      throw new BadRequestException(
+        `A product can have at most ${MAX_AUTHORS} authors.`,
+      );
+    }
+    return authors;
+  }
+
+  private buildAssetCreateInput(
+    assets: CreateProductDto['assets'] | UpdateProductDto['assets'],
+  ): Array<{ url: string; alt: string | null; sortOrder: number }> {
+    if (!assets) return [];
+    return assets.map((asset, index) => ({
+      url: asset.url,
+      alt: asset.alt ?? null,
+      sortOrder:
+        asset.order !== undefined && asset.order !== null ? asset.order : index,
+    }));
+  }
+
+  private buildTopicLinks(
+    topics: CreateProductDto['topics'] | UpdateProductDto['topics'],
+  ): Array<{ topicId: bigint; order: number }> {
+    if (!topics) return [];
+    const seen = new Set<string>();
+    const out: Array<{ topicId: bigint; order: number }> = [];
+    topics.forEach((topic, index) => {
+      if (!topic.topicId) return;
+      if (seen.has(topic.topicId)) return;
+      seen.add(topic.topicId);
+      out.push({
+        topicId: BigInt(topic.topicId),
+        order:
+          topic.order !== undefined && topic.order !== null
+            ? topic.order
+            : index,
+      });
+    });
+    return out;
+  }
+
+  private async ensureUniqueSlug(
+    source: string,
+    ignoreId?: bigint,
+  ): Promise<string> {
+    const base = makeFaSlug(source);
+    if (!base) {
+      throw new BadRequestException('Slug cannot be resolved from title.');
+    }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const candidate =
+        attempt === 0 ? base : clampFaSlug(`${base}-${attempt + 1}`);
+      const existing = await this.prisma.product.findUnique({
+        where: { slug: candidate },
+        select: { id: true },
+      });
+      if (!existing || (ignoreId && existing.id === ignoreId)) {
+        return candidate;
+      }
+    }
+    return clampFaSlug(`${base}-${Date.now()}`);
+  }
+
+  private async createSlugRedirect(
+    trx: Prisma.TransactionClient,
+    entityId: bigint,
+    fromSlug: string,
+    toSlug: string,
+  ): Promise<void> {
+    if (fromSlug === toSlug) {
+      return;
+    }
+    try {
+      await trx.slugRedirect.create({
+        data: {
+          entityType: PRODUCT_ENTITY_TYPE,
+          entityId: entityId.toString(),
+          fromSlug,
+          toSlug,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          `A redirect already exists for slug "${fromSlug}"`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private toDecimal(value?: number | null): Decimal | null {
+    if (value === undefined || value === null) return null;
+    return new Decimal(value);
   }
 }

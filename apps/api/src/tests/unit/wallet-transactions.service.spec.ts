@@ -7,7 +7,7 @@ import { WalletRateLimitService } from '@app/core/wallet/wallet-rate-limit.servi
 import {
   createWalletPrismaStub,
   WalletPrismaStub,
-} from '../utils/prisma-wallet.stub';
+} from '@app/tests/utils/prisma-wallet.stub';
 
 const userId = 'user-1';
 

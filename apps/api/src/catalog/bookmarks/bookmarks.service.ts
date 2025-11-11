@@ -1,17 +1,17 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Buffer } from 'buffer';
-import { PrismaService } from '../../prisma/prisma.service';
-import { BookmarkListQueryDto } from './dtos/bookmark-query.dto';
+import { PrismaService } from '@app/prisma/prisma.service';
+import { BookmarkListQueryDto } from '@app/catalog/bookmarks/dtos/bookmark-query.dto';
 import {
   UserBookmarkItemDto,
   UserBookmarksResultDto,
-} from './dtos/bookmark-response.dto';
+} from '@app/catalog/bookmarks/dtos/bookmark-response.dto';
 import {
   ProductMapper,
   productInclude,
   type ProductWithRelations,
-} from '../product/product.mapper';
+} from '@app/catalog/product/product.mapper';
 
 function toBigIntNullable(id?: string): bigint | null {
   if (!id || !/^\d+$/.test(id)) return null;

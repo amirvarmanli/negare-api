@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EmailPort } from '../ports/email.port';
+import { EmailPort } from '@app/notifications/ports/email.port';
 
 @Injectable()
 export class FakeEmailAdapter implements EmailPort {

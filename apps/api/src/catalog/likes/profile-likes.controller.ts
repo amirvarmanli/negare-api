@@ -1,22 +1,20 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { LikesService } from './likes.service';
-import { UserLikesResultDto } from './dtos/likes-response.dto';
-
-// جایگزین با گارد واقعی‌ات مثلاً AuthGuard('jwt')
-class AuthGuardRequired {}
-function currentUserId(req: any): string {
-  return req?.user?.sub ?? req?.user?.id;
-}
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
+import { requireUserId } from '@app/catalog/utils/current-user.util';
+import { LikesService } from '@app/catalog/likes/likes.service';
+import { UserLikesResultDto } from '@app/catalog/likes/dtos/likes-response.dto';
 
 @ApiTags('Profile / Likes')
 @ApiBearerAuth()
-@UseGuards(AuthGuardRequired as any)
 @Controller('catalog/profile/likes')
 export class ProfileLikesController {
   constructor(private readonly service: LikesService) {}
@@ -25,11 +23,11 @@ export class ProfileLikesController {
   @ApiOperation({ summary: 'List current user liked products' })
   @ApiOkResponse({ type: UserLikesResultDto })
   async listMine(
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload | undefined,
     @Query('limit') limit = '24',
     @Query('cursor') cursor?: string,
   ): Promise<UserLikesResultDto> {
-    const userId = currentUserId(req);
+    const userId = requireUserId(user);
     return this.service.listForUser(userId, Number(limit), cursor);
   }
 }

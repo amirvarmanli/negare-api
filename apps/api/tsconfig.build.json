@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../",
+    "rootDirs": ["./src", "../../libs/shared/src"],
+    "outDir": "../../dist/apps/api",
+    "types": ["node"],
+    "strictPropertyInitialization": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["test", "**/*.spec.ts", "**/*.e2e-spec.ts"]
+}

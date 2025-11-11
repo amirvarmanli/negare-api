@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { z } from 'zod';
-import { authConfig, AuthConfig } from './auth.config';
+import { authConfig, AuthConfig } from '@app/config/auth.config';
 
 /**
  * Base ENV schema

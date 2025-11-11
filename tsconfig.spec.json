@@ -1,15 +1,3 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "allowJs": true,
-    "outDir": "./dist/spec"
-  },
-  "include": [
-    "apps/api/src/**/*.ts",
-    "apps/api/src/**/*.js",
-    "apps/api/src/tests/**/*.ts",
-    "apps/api/src/tests/**/*.js",
-    "apps/api/test/**/*.ts",
-    "test/**/*.ts"
-  ]
+  "extends": "./apps/api/tsconfig.spec.json"
 }

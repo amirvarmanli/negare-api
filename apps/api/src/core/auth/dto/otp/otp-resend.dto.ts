@@ -1,56 +1,64 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   IsEnum,
   IsString,
   IsEmail,
-  IsMobilePhone,
-  IsOptional,
   ValidateIf,
   IsPhoneNumber,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { OtpChannel, OtpPurpose } from '@prisma/client';
 
+/** نرمال‌سازی شماره ایران به E164 (+989xxxxxxxxx) */
+function normalizePhoneIR(raw: string): string {
+  if (!raw) return raw;
+  let v = String(raw).replace(/\s+/g, '');
+  if (/^09\d{9}$/.test(v)) return '+98' + v.slice(1); // 09xxxxxxxxx -> +989xxxxxxxxx
+  if (/^9\d{9}$/.test(v)) return '+98' + v; // 9xxxxxxxxx  -> +989xxxxxxxxx
+  if (/^0098/.test(v)) return v.replace(/^00/, '+'); // 0098...     -> +98...
+  if (/^0\+98/.test(v)) return v.replace(/^0\+/, '+'); // 0+98...     -> +98...
+  return v;
+}
+
 /**
  * DTO for resending an OTP code.
- * Behavior: same as request, but checks resend cooldown instead of rate-limit window.
+ * Must match the channel/identifier used in the original request.
  */
 export class ResendOtpDto {
   @ApiProperty({
     enum: OtpChannel,
     example: OtpChannel.sms,
-    description:
-      'Delivery channel — must match the one used in original request.',
+    description: 'sms | email',
   })
   @IsEnum(OtpChannel)
-  channel: OtpChannel;
+  channel!: OtpChannel;
 
   @ApiProperty({
-    example: '09123456789',
+    example: '09123456789 یا user@example.com',
     description:
-      'Recipient identifier (email or phone). Validation depends on channel.',
+      'گیرنده (ایمیل یا موبایل). براساس channel اعتبارسنجی می‌شود. ایمیل lowercase و موبایل E164 می‌شود.',
   })
   @IsString()
   @Transform(({ value, obj }) => {
-    let v = typeof value === 'string' ? value.trim() : value;
-    if (obj?.channel === OtpChannel.sms && typeof v === 'string')
-      v = v.replace(/\s+/g, '');
-    if (obj?.channel === OtpChannel.email && typeof v === 'string')
-      v = v.toLowerCase();
-    return v;
+    if (obj?.channel === OtpChannel.email && typeof value === 'string') {
+      return value.trim().toLowerCase();
+    }
+    if (obj?.channel === OtpChannel.sms && typeof value === 'string') {
+      return normalizePhoneIR(value);
+    }
+    return value;
   })
   @ValidateIf((o) => o.channel === OtpChannel.email)
   @IsEmail({}, { message: 'Invalid email format.' })
   @ValidateIf((o) => o.channel === OtpChannel.sms)
   @IsPhoneNumber('IR', { message: 'Invalid phone number format.' })
-  identifier: string;
+  identifier!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: OtpPurpose,
-    example: OtpPurpose.login,
-    description: 'Purpose of OTP (signup, login, reset). Default = signup.',
+    example: OtpPurpose.signup,
+    description: 'Purpose of OTP (signup, login, reset) — REQUIRED',
   })
-  @IsOptional()
-  @IsEnum(OtpPurpose)
-  purpose?: OtpPurpose;
+  @IsEnum(OtpPurpose, { message: 'purpose must be one of signup|login|reset' })
+  purpose!: OtpPurpose; // ⬅️ اجباری
 }

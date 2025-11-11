@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { TokenService } from './token.service';
+import { TokenService } from '@app/core/auth/token/token.service';
 import { RedisModule } from '@app/redis/redis.module';
 
 @Module({

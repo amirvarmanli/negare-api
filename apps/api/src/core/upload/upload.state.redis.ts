@@ -1,6 +1,6 @@
 // apps/api/src/core/upload/redis-upload-state.store.ts
 import type Redis from 'ioredis';
-import { type UploadStatus, type UploadStateStore } from './upload.types';
+import { type UploadStatus, type UploadStateStore } from '@app/core/upload/upload.types';
 
 // Small helpers
 const PREFIX = 'upload:';

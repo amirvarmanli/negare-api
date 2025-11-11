@@ -1,8 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe, ConflictException } from '@nestjs/common';
 import * as request from 'supertest';
-import { UploadController } from './upload.controller';
-import { UploadService } from './upload.service';
+import { UploadController } from '@app/core/upload/upload.controller';
+import { UploadService } from '@app/core/upload/upload.service';
 
 describe('UploadController', () => {
   let app: INestApplication;

@@ -20,6 +20,6 @@ module.exports = {
   ignorePatterns: ['dist', 'node_modules'],
   rules: {
     'prettier/prettier': ['error', { endOfLine: 'lf' }],
-    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-explicit-any': 'error',
   },
 };

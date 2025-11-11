@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma as PrismaNS } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateProfileDto } from '@app/core/users/profile/dto/update-profile.dto';
 
 // قوانین نام‌کاربری (قبلاً ساختیم)
 import {
@@ -15,7 +15,7 @@ import {
   USERNAME_MAX,
   USERNAME_REGEX,
   RESERVED_USERNAMES,
-} from './username.rules';
+} from '@app/core/users/profile/username.rules';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 type RoleSlim = { id: string; name: string };

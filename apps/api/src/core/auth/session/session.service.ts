@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { AllConfig } from '@app/config/config.module';
 import { parseDurationToSeconds } from '@app/shared/utils/parse-duration.util';
-import { refreshAllowKey } from '../auth.constants';
+import { refreshAllowKey } from '@app/core/auth/auth.constants';
 
 /**
  * رکورد سشن که در Redis ذخیره می‌شود.
@@ -327,5 +327,4 @@ export class SessionService {
   private keyJtiIndex(jti: string): string {
     return `${SessionService.NS}:session:jti:index:${jti}`;
   }
-
 }

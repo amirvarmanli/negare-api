@@ -18,6 +18,7 @@ export class ProductCategoryDto {
   @ApiProperty() name!: string;
   @ApiProperty() slug!: string;
   @ApiPropertyOptional() parentId?: string | null; // BigInt → string
+  @ApiPropertyOptional() coverUrl?: string | null;
 }
 
 export class ProductAssetDto {
@@ -27,13 +28,37 @@ export class ProductAssetDto {
   @ApiProperty() order!: number;
 }
 
+export class ProductTopicDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() slug!: string;
+  @ApiPropertyOptional() coverUrl?: string | null;
+  @ApiProperty() order!: number;
+}
+
+export class ProductFileDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() storageKey!: string;
+  @ApiPropertyOptional() originalName?: string | null;
+  @ApiPropertyOptional({
+    description: 'Size stored for the source file in bytes (stringified BigInt)',
+  })
+  size?: string;
+  @ApiPropertyOptional() mimeType?: string | null;
+  @ApiPropertyOptional({ description: 'Arbitrary metadata saved with the file' })
+  meta?: Record<string, unknown> | null;
+}
+
 export class ProductBriefDto {
   @ApiProperty() id!: string; // BigInt → string
   @ApiProperty() slug!: string;
   @ApiProperty() title!: string;
   @ApiPropertyOptional() coverUrl?: string | null;
 
-  @ApiProperty({ enum: GraphicFormat }) graphicFormat!: GraphicFormat;
+  @ApiProperty({ enum: GraphicFormat, isArray: true })
+  graphicFormats!: GraphicFormat[];
+  @ApiProperty({ type: [String], description: 'Array of HEX colors (#RRGGBB)' })
+  colors!: string[];
   @ApiProperty({ enum: PricingType }) pricingType!: PricingType;
   @ApiPropertyOptional() price?: number | null;
 
@@ -44,11 +69,20 @@ export class ProductBriefDto {
   @ApiProperty() likesCount!: number;
 
   @ApiPropertyOptional() shortLink?: string | null;
-  @ApiPropertyOptional() topic?: string | null;
 
   @ApiPropertyOptional({ type: [String] }) seoKeywords?: string[];
   @ApiPropertyOptional() seoTitle?: string | null;
   @ApiPropertyOptional() seoDescription?: string | null;
+
+  @ApiProperty({
+    description: 'Convenience size selector exposed to clients',
+    example: 24,
+  })
+  fileSizeMB!: number;
+  @ApiPropertyOptional({
+    description: 'File size in bytes represented as a string',
+  })
+  fileBytes?: string;
 
   @ApiPropertyOptional() createdAt?: string;
   @ApiPropertyOptional() updatedAt?: string;
@@ -57,7 +91,6 @@ export class ProductBriefDto {
 export class ProductDetailDto extends ProductBriefDto {
   @ApiPropertyOptional() description?: string | null;
   @ApiPropertyOptional() fileId?: string | null; // BigInt → string
-  @ApiPropertyOptional() fileBytes?: string | null; // اگر می‌فرستی
 
   @ApiPropertyOptional({ type: [ProductAssetDto] }) assets?: ProductAssetDto[];
   @ApiPropertyOptional({ type: [ProductCategoryDto] })
@@ -65,6 +98,8 @@ export class ProductDetailDto extends ProductBriefDto {
   @ApiPropertyOptional({ type: [ProductTagDto] }) tags?: ProductTagDto[];
   @ApiPropertyOptional({ type: [ProductAuthorDto] })
   authors?: ProductAuthorDto[];
+  @ApiPropertyOptional({ type: [ProductTopicDto] }) topics?: ProductTopicDto[];
+  @ApiPropertyOptional({ type: ProductFileDto }) file?: ProductFileDto;
 }
 
 export class ProductListResultDto {

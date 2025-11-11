@@ -3,7 +3,7 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join, dirname, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { StorageService, StoredFileMetadata, UploadedFile } from './storage.service';
+import { StorageService, StoredFileMetadata, UploadedFile } from '@app/catalog/storage/storage.service';
 
 @Injectable()
 export class LocalStorageService extends StorageService {

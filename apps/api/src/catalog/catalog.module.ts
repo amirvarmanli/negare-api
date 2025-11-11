@@ -2,42 +2,45 @@
 import { Module } from '@nestjs/common';
 
 // Product
-import { ProductController } from './product/products.controller';
-import { ProductService } from './product/product.service';
+import { ProductController } from '@app/catalog/product/products.controller';
+import { ProductService } from '@app/catalog/product/product.service';
 
 // Categories
-import { CategoriesController } from './categories/categories.controller';
-import { CategoriesService } from './categories/categories.service';
+import { CategoriesController } from '@app/catalog/categories/categories.controller';
+import { CategoriesService } from '@app/catalog/categories/categories.service';
 
-// Tags
-import { TagsController } from './tags/tags.controller';
-import { TagsService } from './tags/tags.service';
+// Tags & Topics
+import { TagsController } from '@app/catalog/tags/tags.controller';
+import { TagsService } from '@app/catalog/tags/tags.service';
+import { TopicsController } from '@app/catalog/topics/topics.controller';
+import { TopicsService } from '@app/catalog/topics/topics.service';
 
 // Likes
-import { LikesController } from './likes/likes.controller';
-import { ProfileLikesController } from './likes/profile-likes.controller';
-import { LikesService } from './likes/likes.service';
+import { LikesController } from '@app/catalog/likes/likes.controller';
+import { ProfileLikesController } from '@app/catalog/likes/profile-likes.controller';
+import { LikesService } from '@app/catalog/likes/likes.service';
 
 // Bookmarks
-import { BookmarksController } from './bookmarks/bookmarks.controller';
-import { ProfileBookmarksController } from './bookmarks/profile-bookmarks.controller';
-import { BookmarksService } from './bookmarks/bookmarks.service';
+import { BookmarksController } from '@app/catalog/bookmarks/bookmarks.controller';
+import { ProfileBookmarksController } from '@app/catalog/bookmarks/profile-bookmarks.controller';
+import { BookmarksService } from '@app/catalog/bookmarks/bookmarks.service';
 
 // Downloads
-import { DownloadsController } from './downloads/downloads.controller';
-import { ProfileDownloadsController } from './downloads/profile-downloads.controller';
-import { DownloadsService } from './downloads/downloads.service';
+import { DownloadsController } from '@app/catalog/downloads/downloads.controller';
+import { ProfileDownloadsController } from '@app/catalog/downloads/profile-downloads.controller';
+import { DownloadsService } from '@app/catalog/downloads/downloads.service';
 
 // Guards / Counters
-import { SupplierOwnershipGuard } from './guards/supplier-ownership.guard';
-import { CountersService } from './counters/counters.service';
+import { SupplierOwnershipGuard } from '@app/catalog/guards/supplier-ownership.guard';
+import { CountersService } from '@app/catalog/counters/counters.service';
 
 // Storage (فعلاً داخل همین ماژول؛ اگر به core بردی، StorageModule رو import کن)
-import { StorageService } from './storage/storage.service';
-import { LocalStorageService } from './storage/local-storage.service';
+import { StorageService } from '@app/catalog/storage/storage.service';
+import { LocalStorageService } from '@app/catalog/storage/local-storage.service';
 
-// Prisma
-import { PrismaService } from '../prisma/prisma.service'; // مسیر را با ساختار پروژه‌ات هماهنگ کن
+// Comments
+import { CommentsController } from '@app/catalog/comments/comments.controller';
+import { CommentsService } from '@app/catalog/comments/comments.service';
 
 @Module({
   imports: [
@@ -50,23 +53,26 @@ import { PrismaService } from '../prisma/prisma.service'; // مسیر را با 
     ProductController,
     CategoriesController,
     TagsController,
+    TopicsController,
     LikesController,
     ProfileLikesController,
     BookmarksController,
     ProfileBookmarksController,
     DownloadsController,
     ProfileDownloadsController,
+    CommentsController,
   ],
   providers: [
-    PrismaService, // اگر PrismaModule نداری، اینجا لازم است
     ProductService,
     CategoriesService,
     TagsService,
+    TopicsService,
     LikesService,
     BookmarksService,
     DownloadsService,
     SupplierOwnershipGuard,
     CountersService,
+    CommentsService,
     // اگر Storage به core نرفته:
     { provide: StorageService, useClass: LocalStorageService },
   ],
@@ -75,9 +81,11 @@ import { PrismaService } from '../prisma/prisma.service'; // مسیر را با 
     ProductService,
     CategoriesService,
     TagsService,
+    TopicsService,
     LikesService,
     BookmarksService,
     DownloadsService,
+    CommentsService,
     CountersService,
     StorageService, // اگر اینجا بایند کردی
   ],
