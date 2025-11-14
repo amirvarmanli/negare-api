@@ -257,7 +257,7 @@ export class PasswordService {
           persisted.email,
           persisted.name ?? persisted.username ?? identifier,
         )
-        .catch(() => undefined);
+        .catch((): undefined => undefined);
     }
 
     this.logger.debug(`SET_PWD success userId=${persisted.id}`);

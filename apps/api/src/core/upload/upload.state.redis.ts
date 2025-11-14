@@ -43,6 +43,7 @@ export class RedisUploadStateStore implements UploadStateStore {
       ...status,
       receivedIndexes: ensureSortedUnique(status.receivedIndexes ?? []),
       receivedBytes: status.receivedBytes ?? 0,
+      chunkHashes: { ...(status.chunkHashes ?? {}) },
       createdAt: status.createdAt ?? nowMs(),
       expiresAt:
         status.expiresAt ?? nowMs() + 1000 * (ttlSec ?? this.defaultTtlSeconds),
@@ -70,6 +71,7 @@ export class RedisUploadStateStore implements UploadStateStore {
       // minimal normalization (never mutates Redis here)
       obj.receivedIndexes = ensureSortedUnique(obj.receivedIndexes ?? []);
       (obj as any).version = (obj as any).version ?? 1;
+      obj.chunkHashes = obj.chunkHashes ?? {};
 
       return obj;
     } catch {
@@ -202,6 +204,15 @@ export class RedisUploadStateStore implements UploadStateStore {
       ]);
     } else {
       merged.receivedIndexes = ensureSortedUnique(cur.receivedIndexes ?? []);
+    }
+
+    if (patch.chunkHashes) {
+      merged.chunkHashes = {
+        ...(cur.chunkHashes ?? {}),
+        ...patch.chunkHashes,
+      };
+    } else {
+      merged.chunkHashes = cur.chunkHashes ?? {};
     }
 
     // progress: pick max to be race-safe

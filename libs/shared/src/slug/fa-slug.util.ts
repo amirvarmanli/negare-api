@@ -3,22 +3,21 @@
  * Persian slug normalization utilities shared across Category/Topic/Product modules.
  */
 
-/**
- * Regex used by DTO validation to ensure slug segments only contain whitelisted characters.
- * Pattern: at least one segment, segments separated by single hyphen,
- * each segment limited to Persian letters, digits, or ASCII letters.
- */
-export const FA_SLUG_REGEX =
+/** Regex: segments joined by '-', each segment Persian letters / digits / ASCII letters */
+export const FA_SLUG_REGEX: RegExp =
   /^[\u0600-\u06FF0-9a-zA-Z]+(?:-[\u0600-\u06FF0-9a-zA-Z]+)*$/u;
 
 export const FA_SLUG_MAX_LENGTH = 200;
 
+/** Clamp slug length to FA_SLUG_MAX_LENGTH */
 export function clampFaSlug(slug: string): string {
-  return slug.length > FA_SLUG_MAX_LENGTH ? slug.slice(0, FA_SLUG_MAX_LENGTH) : slug;
+  return slug.length > FA_SLUG_MAX_LENGTH
+    ? slug.slice(0, FA_SLUG_MAX_LENGTH)
+    : slug;
 }
 
 /**
- * Persian slug normalization:
+ * Persian text normalization:
  * - NFC normalize
  * - Arabic ya/kaf -> Persian ی/ک
  * - remove zero-width & diacritics
@@ -26,25 +25,31 @@ export function clampFaSlug(slug: string): string {
  * - trim
  */
 export function normalizeFaText(input: string): string {
-  return input
-    .normalize('NFC')
-    .replace(/ي/gu, 'ی')
-    .replace(/ك/gu, 'ک')
-    .replace(/[\u200B-\u200F\u061C\u06D4]/gu, '') // zero-width & Arabic full stop
-    .replace(/\s+/gu, ' ')
-    .trim();
+  return (
+    input
+      .normalize('NFC')
+      .replace(/ي/gu, 'ی')
+      .replace(/ك/gu, 'ک')
+      // remove zero-width marks & Arabic full stop
+      .replace(/[\u200B-\u200F\u061C\u06D4]/gu, '')
+      .replace(/\s+/gu, ' ')
+      .trim()
+  );
 }
 
+/** Make a whitelisted, compact Persian slug */
 export function makeFaSlug(input: string): string {
   const s = normalizeFaText(input)
     .replace(/\s+/gu, '-')
     .replace(/-+/gu, '-')
     .replace(/^-+|-+$/gu, '');
-  // whitelist allowed characters only
+
+  // keep only allowed chars: Persian letters, digits, ASCII letters, and '-'
   const whitelisted = s
     .split('')
-    .filter((ch) => /[\u0600-\u06FF0-9a-zA-Z-]/u.test(ch)) // allow Persian letters, digits, optional Latin, and '-'
+    .filter((ch) => /[\u0600-\u06FF0-9a-zA-Z-]/u.test(ch))
     .join('');
+
   const compacted = whitelisted.replace(/-+/gu, '-').replace(/^-+|-+$/gu, '');
   return clampFaSlug(compacted);
 }
@@ -57,3 +62,6 @@ export function safeDecodeSlug(raw: string): string {
     return raw;
   }
 }
+
+/** Optional default export for convenience */
+export default makeFaSlug;

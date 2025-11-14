@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export class UploadFinishDto {
   @ApiProperty({
@@ -17,4 +17,15 @@ export class UploadFinishDto {
   @IsOptional()
   @IsString()
   subdir?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional final-file SHA-256 checksum (hex). Required when integrity.fileHash mode is "required".',
+    example: '7b502c3a1f48c8609ae212cdfb639dee39673f5e3e593ef1bdc5274f',
+  })
+  @IsOptional()
+  @Matches(/^[a-f0-9]{64}$/i, {
+    message: 'sha256 must be a 64-length hex string',
+  })
+  sha256?: string;
 }

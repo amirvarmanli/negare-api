@@ -35,6 +35,8 @@ import {
 
 import { UploadInitDto } from '@app/core/upload/dto/upload-init.dto';
 import { UploadFinishDto } from '@app/core/upload/dto/upload-finish.dto';
+import { UploadSessionActionDto } from '@app/core/upload/dto/upload-session-action.dto';
+import { Public } from '@app/common/decorators/public.decorator';
 
 type RequestWithUser = Request & { user?: { id?: string } };
 
@@ -79,6 +81,7 @@ export class UploadController {
   constructor(private readonly upload: UploadService) {}
 
   @Post('init')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Start upload session',
@@ -108,17 +111,13 @@ export class UploadController {
     description: 'Failed to create temp file',
   })
   async init(@Body() dto: UploadInitDto, @Req() req: RequestWithUser) {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new BadRequestException(
-        'userId is required (auth context missing)',
-      );
-    }
+    const userId = req.user?.id ?? 'public-anonymous'; // ← اجازه به مهمان
     const out = await this.upload.init(dto, userId);
     return { success: true, data: out };
   }
 
   @Post('chunk')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Upload a chunk',
@@ -126,6 +125,13 @@ export class UploadController {
   })
   @ApiQuery({ name: 'uploadId', required: true, type: String })
   @ApiQuery({ name: 'index', required: true, type: Number })
+  @ApiQuery({
+    name: 'sha256',
+    required: false,
+    type: String,
+    description:
+      'Optional chunk SHA-256 (hex). Required when integrity.chunkHash=required.',
+  })
   @ApiConsumes('application/octet-stream')
   @ApiProduces('application/json')
   @ApiBody({
@@ -153,6 +159,7 @@ export class UploadController {
     @Res() res: Response,
     @Query('uploadId') uploadId?: string,
     @Query('index', ParseIntPipe) index?: number,
+    @Query('sha256') chunkSha?: string,
   ) {
     if (!uploadId || typeof index !== 'number' || index < 0) {
       throw new BadRequestException('uploadId & index are required');
@@ -186,11 +193,12 @@ export class UploadController {
       // فقط لاگ می‌گیریم؛ صحت سایز chunk در سرویس چک می‌شود
     }
 
-    const out = await this.upload.writeChunk(uploadId, index, buf);
+    const out = await this.upload.writeChunk(uploadId, index, buf, chunkSha);
     return res.json({ success: true, data: out });
   }
 
   @Get('status')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get upload status',
@@ -211,6 +219,7 @@ export class UploadController {
   }
 
   @Post('finish')
+  @Public()
   @ApiOperation({
     summary: 'Finalize upload',
     description:
@@ -223,7 +232,9 @@ export class UploadController {
     description: 'Upload finalized',
   })
   @ApiBadRequestResponse({ description: 'Invalid uploadId or state' })
-  @ApiConflictResponse({ description: 'Upload already finished or invalid state' })
+  @ApiConflictResponse({
+    description: 'Upload already finished or invalid state',
+  })
   @ApiGoneResponse({ description: 'Upload session expired' })
   @ApiInternalServerErrorResponse({
     description: 'Remote upload or persistence failed',
@@ -232,11 +243,44 @@ export class UploadController {
     const out = await this.upload.finish(
       body.uploadId,
       body.subdir ?? 'uploads',
+      body.sha256,
     );
     return { success: true, data: out };
   }
 
+  @Post('pause')
+  @Public()
+  @ApiOperation({
+    summary: 'Pause upload session',
+    description:
+      'Marks the session as paused; existing chunks remain intact for resume.',
+  })
+  @ApiBody({ type: UploadSessionActionDto })
+  @ApiOkResponse({ description: 'Upload paused' })
+  @ApiBadRequestResponse({ description: 'uploadId is missing or invalid' })
+  @ApiConflictResponse({ description: 'Upload cannot be paused in current state' })
+  async pause(@Body() body: UploadSessionActionDto) {
+    const out = await this.upload.pause(body.uploadId);
+    return { success: true, data: out };
+  }
+
+  @Post('resume')
+  @Public()
+  @ApiOperation({
+    summary: 'Resume paused upload session',
+    description: 'Allows chunk uploads again by flipping the session to receiving.',
+  })
+  @ApiBody({ type: UploadSessionActionDto })
+  @ApiOkResponse({ description: 'Upload resumed' })
+  @ApiBadRequestResponse({ description: 'uploadId is missing or invalid' })
+  @ApiConflictResponse({ description: 'Upload is not paused' })
+  async resume(@Body() body: UploadSessionActionDto) {
+    const out = await this.upload.resume(body.uploadId);
+    return { success: true, data: out };
+  }
+
   @Post('abort')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Abort upload session',

@@ -1,56 +1,23 @@
 /**
- * RolesGuard enforces RBAC metadata by comparing required role names with the user payload.
+ * RolesGuard (TEMP DISABLED)
+ *
+ * فعلاً سیستم نقش‌ها (RBAC) غیرفعال شده و این گارد
+ * همیشه اجازه‌ی دسترسی می‌دهد.
+ *
+ * بعداً که نقش‌ها و سطح دسترسی‌ها را دقیق طراحی کردیم
+ * می‌توانیم لاجیک قبلی را (یا نسخه‌ی بهتر) دوباره برگردانیم.
  */
-import {
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { Request } from 'express';
-import { CurrentUserPayload } from '@app/common/decorators/current-user.decorator';
-import { ROLES_KEY } from '@app/common/decorators/roles.decorator';
-import { RoleName } from '@prisma/client';
+
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 
 @Injectable()
-/**
- * Checks whether the authenticated user satisfies the roles declared via the Roles decorator.
- */
 export class RolesGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
-
   /**
-   * Resolves required roles metadata and verifies that the current user possesses at least one.
-   * @throws ForbiddenException when no user context exists or required roles are missing.
+   * در حالت فعلی، برای همهٔ درخواست‌ها true برمی‌گردانیم
+   * و هیچ چک نقشی انجام نمی‌شود.
    */
-  canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<RoleName[]>(
-      ROLES_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-
-    if (!requiredRoles || requiredRoles.length === 0) {
-      return true;
-    }
-
-    const request = context
-      .switchToHttp()
-      .getRequest<Request & { user?: CurrentUserPayload }>();
-    const user = request.user;
-
-    if (!user) {
-      throw new ForbiddenException('دسترسی برای کاربر ناشناس مجاز نیست.');
-    }
-
-    const hasRole = user.roles?.some((role) =>
-      requiredRoles.includes(role as RoleName),
-    );
-
-    if (!hasRole) {
-      throw new ForbiddenException('دسترسی به این منبع مجاز نیست.');
-    }
-
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  canActivate(_context: ExecutionContext): boolean {
     return true;
   }
 }

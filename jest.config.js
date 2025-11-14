@@ -18,7 +18,7 @@ const config = {
         '^.+\\.(t|j)s$': [
             'ts-jest',
             {
-                tsconfig: '<rootDir>/apps/api/tsconfig.spec.json',
+                tsconfig: '<rootDir>/tsconfig.json',
                 diagnostics: false,
             },
         ],

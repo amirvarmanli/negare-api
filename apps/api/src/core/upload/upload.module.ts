@@ -20,6 +20,7 @@ import { FTPStorageDriver } from '@app/core/upload/storage.ftp';
 import { UploadGateway } from '@app/core/upload/upload.gateway';
 import { UploadCleanup } from '@app/core/upload/upload.cleanup';
 import { MediaModule } from '@app/core/media/media.module';
+import type { IntegrityMode } from '@app/core/upload/upload.types';
 
 /* -------------------------------------------------------------------------- */
 /*                              Helper functions                              */
@@ -41,6 +42,65 @@ function toList(v?: string): string[] | undefined {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   return arr.length ? arr : undefined;
+}
+
+const DEFAULT_ALLOWED_EXTS = [
+  'rar',
+  'zip',
+  'pdf',
+  'ai',
+  'eps',
+  'svg',
+  'psd',
+  'cdr',
+  'aep',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'ttf',
+  'otf',
+  'woff',
+  'woff2',
+  'mp4',
+  'mkv',
+];
+
+const DEFAULT_ALLOWED_MIME = [
+  'application/vnd.rar',
+  'application/x-rar-compressed',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/postscript',
+  'application/pdf',
+  'image/svg+xml',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/vnd.adobe.photoshop',
+  'application/cdr',
+  'application/vnd.corel-draw',
+  'application/vnd.adobe.aftereffects.project',
+  'font/ttf',
+  'application/x-font-ttf',
+  'font/otf',
+  'application/x-font-otf',
+  'font/woff',
+  'font/woff2',
+  'video/mp4',
+  'video/x-matroska',
+  'application/octet-stream',
+];
+
+function parseIntegrityMode(
+  name: string,
+  fallback: IntegrityMode,
+): IntegrityMode {
+  const raw = (process.env[name] ?? fallback).toString().toLowerCase();
+  if (raw === 'required' || raw === 'optional' || raw === 'off') {
+    return raw;
+  }
+  return fallback;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -106,8 +166,13 @@ const uploadConfigProvider: Provider = {
       baseDir: process.env.UPLOAD_BASE_DIR ?? 'uploads',
 
       // ✅ فیلتر MIME / EXT
-      allowedExts: toList(process.env.ALLOWED_EXTS),
-      allowedMime: toList(process.env.ALLOWED_MIME),
+      allowedExts: toList(process.env.ALLOWED_EXTS) ?? DEFAULT_ALLOWED_EXTS,
+      allowedMime: toList(process.env.ALLOWED_MIME) ?? DEFAULT_ALLOWED_MIME,
+
+      integrity: {
+        chunkHash: parseIntegrityMode('UPLOAD_INTEGRITY_CHUNK', 'optional'),
+        fileHash: parseIntegrityMode('UPLOAD_INTEGRITY_FILE', 'off'),
+      },
 
       backend: 'ftp',
     };

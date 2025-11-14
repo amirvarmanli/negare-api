@@ -1,3 +1,13 @@
 {
-  "extends": "./tsconfig.build.json"
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "../../dist/apps/api",
+    "tsBuildInfoFile": "../../dist/apps/api/tsconfig.tsbuildinfo",
+    "declaration": false,
+    "types": ["node"],
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["test", "**/*.spec.ts", "**/*.e2e-spec.ts", "node_modules"]
 }

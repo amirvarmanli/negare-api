@@ -83,6 +83,7 @@ export const validateEnv = (config: Record<string, unknown>): AppConfig => {
 
   return {
     ...env,
+    PORT: env.PORT,
     REDIS_URL: redisUrl,
     corsOrigins:
       corsOrigins.length > 0 ? corsOrigins : ['http://localhost:3000'],

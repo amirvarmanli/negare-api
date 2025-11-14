@@ -13,9 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { JwtPayload, verify } from 'jsonwebtoken';
-import {
-  CurrentUserPayload,
-} from '@app/common/decorators/current-user.decorator';
+import { CurrentUserPayload } from '@app/common/decorators/current-user.decorator';
 import { IS_PUBLIC_KEY } from '@app/common/decorators/public.decorator';
 import { AllConfig } from '@app/config/config.module';
 import { AuthConfig } from '@app/config/auth.config';
@@ -61,9 +59,9 @@ export class HybridAuthGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    const request = context.switchToHttp().getRequest<
-      Request & { user?: CurrentUserPayload }
-    >();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: CurrentUserPayload }>();
 
     if (isPublic || this.isPublicPath(request)) {
       return true;

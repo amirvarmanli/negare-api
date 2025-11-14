@@ -80,7 +80,7 @@ export class AuthService {
       (res as any).__refreshToken = pair.refreshToken;
 
       // 5) خلاصه کاربر
-      const me = await this.users.findById(userId).catch(() => null);
+      const me = await this.users.findById(userId).catch((): null => null);
 
       return {
         accessToken: pair.accessToken,
@@ -125,15 +125,15 @@ export class AuthService {
       if (payload?.sub && payload?.sid) {
         await this.sessions
           .revoke(payload.sub, payload.sid)
-          .catch(() => undefined);
+          .catch((): undefined => undefined);
       } else if (payload?.jti) {
         const loc = await this.sessions
           .findSessionByJti(payload.jti)
-          .catch(() => null);
+          .catch((): null => null);
         if (loc) {
           await this.sessions
             .revoke(loc.userId, loc.sessionId)
-            .catch(() => undefined);
+            .catch((): undefined => undefined);
         }
       }
 
@@ -176,15 +176,15 @@ export class AuthService {
       if (payload?.sub && payload?.sid) {
         await this.sessions
           .touch(payload.sub, payload.sid)
-          .catch(() => undefined);
+          .catch((): undefined => undefined);
       } else if (payload?.jti) {
         const loc = await this.sessions
           .findSessionByJti(payload.jti)
-          .catch(() => null);
+          .catch((): null => null);
         if (loc) {
           await this.sessions
             .touch(loc.userId, loc.sessionId)
-            .catch(() => undefined);
+            .catch((): undefined => undefined);
         }
       }
 

@@ -1,4 +1,5 @@
 -- Adjust slug columns to 200 chars and add parent index for categories
+
 ALTER TABLE "catalog"."categories" ALTER COLUMN "slug" TYPE VARCHAR(200);
 CREATE INDEX "categories_parent_idx" ON "catalog"."categories" ("parent_id");
 

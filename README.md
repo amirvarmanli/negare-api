@@ -107,18 +107,53 @@ Key coverage:
 
 ## Upload Module
 
-The chunked upload pipeline lives under `apps/api/src/core/upload` and now ships with:
+The chunked upload pipeline lives under `apps/api/src/core/upload` and now includes:
 
-- Strict validation for init/chunk/finish flows, MIME sniffing, CDN-safe filenames, and lock-aware state transitions.
-- WebSocket progress notifications via `/upload` namespace (`serverUploadProgress`, `uploaded`, `uploadError`).
-- Comprehensive unit/integration/e2e coverage (≥90% lines, ≥85% branches) with fakes for storage, Redis, and media persistence.
-- Swagger-ready DTOs plus a Postman collection at `postman/UploadModule.postman_collection.json`.
+- Server-confirmed progress: `receivedBytes`/`percent` are derived from persisted chunks, and `GET /upload/status` exposes `missingIndexes` so the client only retries gaps.
+- Resumable controls: `/upload/pause` keeps the temp file + state intact, `/upload/resume` re-opens the session, and `/upload/abort` still performs a full cleanup.
+- Integrity toggles: per-chunk SHA-256 is accepted via the `sha256` query (required when `UPLOAD_INTEGRITY_CHUNK=required`) and `/upload/finish` verifies the final hash when `sha256` is provided or `UPLOAD_INTEGRITY_FILE` demands it.
+- Strict allow-lists sourced from ENV (extensions + MIME, including the Negare-specific set for design/video/font assets). Incoming extensions such as `mvk` are normalised to `mkv` server-side.
+- Swagger is updated for every endpoint and the Postman collection (`postman/UploadModule.postman_collection.json`) now covers init → chunk → status → pause/resume → finish/abort.
 
-### Local workflow
+### cURL smoke-test
 
-1. `npm run test:cov` – executes unit + e2e suites and publishes coverage to `coverage/index.html`.
-2. Import the Postman collection, set `{{baseUrl}}` (e.g. `http://localhost:4000/api`), and provide `x-user-id` when hitting `/upload/init`.
-3. For WebSocket smoke-tests, connect via Socket.IO client to `ws://localhost:4000/upload`, emit `join { uploadId }`, and watch for `serverUploadProgress`/`uploaded` events.
+```bash
+# 1) init
+curl -s -X POST "${BASE_URL}/upload/init" \
+     -H 'Content-Type: application/json' \
+     -d '{"filename":"poster.ai","size":5242880,"mime":"application/postscript","sha256":"'"${FINAL_SHA}"'"}'
+
+# 2) stream chunk 0 (5 MB) with per-chunk hash when enabled
+tail -c 5242880 poster.ai | \
+  curl -s -X POST "${BASE_URL}/upload/chunk?uploadId=${UPLOAD_ID}&index=0&sha256=${CHUNK_SHA}" \
+       -H 'Content-Type: application/octet-stream' --data-binary @-
+
+# 3) poll status (returns receivedBytes + missingIndexes)
+curl -s "${BASE_URL}/upload/status?uploadId=${UPLOAD_ID}"
+
+# 4) pause / resume when the UI needs to stop
+curl -s -X POST "${BASE_URL}/upload/pause" \
+     -H 'Content-Type: application/json' \
+     -d '{"uploadId":"'"${UPLOAD_ID}"'"}'
+curl -s -X POST "${BASE_URL}/upload/resume" \
+     -H 'Content-Type: application/json' \
+     -d '{"uploadId":"'"${UPLOAD_ID}"'"}'
+
+# 5) finish (verifies final hash when supplied / required)
+curl -s -X POST "${BASE_URL}/upload/finish" \
+     -H 'Content-Type: application/json' \
+     -d '{"uploadId":"'"${UPLOAD_ID}"'","subdir":"uploads","sha256":"'"${FINAL_SHA}"'"}'
+
+# 6) abort (cleans temp file + Redis state)
+curl -s -X POST "${BASE_URL}/upload/abort?uploadId=${UPLOAD_ID}"
+```
+
+### Upload ENV knobs
+
+- `UPLOAD_TMP_DIR`, `UPLOAD_CHUNK_SIZE`, `UPLOAD_TTL_SECONDS`, `UPLOAD_MAX_SIZE_BYTES`, `UPLOAD_CLEAN_INTERVAL_MIN`, `UPLOAD_MAX_TEMP_AGE_HOURS` – storage/TTL tuning.
+- `ALLOWED_EXTS` / `ALLOWED_MIME` – defaulted to Negare’s allow-list (`rar, zip, pdf, ai, eps, svg, psd, cdr, aep, png, jpg, jpeg, webp, ttf, otf, woff, woff2, mp4, mkv` plus matching MIME types).
+- `UPLOAD_INTEGRITY_CHUNK` (`off|optional|required`) and `UPLOAD_INTEGRITY_FILE` (`off|optional|required`) – gate per-chunk and final SHA-256 verification.
+- `FTP_*`, `FILE_PUBLIC_BASE_URL`, `UPLOAD_PUBLIC_SUBDIR`, `UPLOAD_BASE_DIR` – pluggable storage driver settings (FTP today, S3/others can plug into `StorageDriver`).
 
 ## Docs & Tooling
 

@@ -45,7 +45,7 @@ import { UserLookupProvider } from '@app/core/auth/otp/user-lookup.provider';
 
     {
       provide: 'AuditService',
-      useValue: { log: async () => void 0 },
+      useValue: { log: async (): Promise<void> => void 0 },
     },
     {
       provide: APP_GUARD,

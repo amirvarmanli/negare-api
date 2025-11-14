@@ -114,7 +114,7 @@ export class ProductMapper {
 
     const authors: ProductAuthorDto[] = (p.supplierLinks ?? []).map((ps) => ({
       userId: ps.userId,
-      role: null,
+      role: null as string | null,
     }));
 
     const topics: ProductTopicDto[] = (p.topics ?? []).map((link) => ({

@@ -235,7 +235,10 @@ export class PasswordController {
   async status() {
     return {
       success: true as const,
-      data: { expiresIn: null, resendAvailableIn: null },
+      data: {
+        expiresIn: null as number | null,
+        resendAvailableIn: null as number | null,
+      },
     };
   }
 

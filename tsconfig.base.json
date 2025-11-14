@@ -1,20 +1,33 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "strict": true,
-    "noImplicitAny": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "resolveJsonModule": true,
     "esModuleInterop": true,
-    "emitDecoratorMetadata": true,
+    "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    "strictNullChecks": false,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
       "@app/*": ["apps/api/src/*"],
-      "@shared-slug/*": ["libs/shared/src/*"]
-    }
+      "@shared-slug/*": ["libs/shared/src/*"],
+      "@test/*": ["apps/api/test/*"]
+    },
+    "incremental": true,
+    "sourceMap": true,
+    "useDefineForClassFields": false
   },
+  "exclude": ["node_modules", "dist", "coverage"],
   "ignoreDeprecations": "6.0"
 }

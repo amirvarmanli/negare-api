@@ -33,7 +33,10 @@ import { TopicsService } from '@app/catalog/topics/topics.service';
 import { CreateTopicDto } from '@app/catalog/topics/dtos/topic-create.dto';
 import { UpdateTopicDto } from '@app/catalog/topics/dtos/topic-update.dto';
 import { TopicQueryDto } from '@app/catalog/topics/dtos/topic-query.dto';
-import { TopicDto, TopicListDto } from '@app/catalog/topics/dtos/topic-response.dto';
+import {
+  TopicDto,
+  TopicListDto,
+} from '@app/catalog/topics/dtos/topic-response.dto';
 
 @ApiTags('Catalog / Topics')
 @Controller('catalog/topics')

@@ -13,6 +13,7 @@ export type MimeType = Brand<string, 'MimeType'>;
 export type UploadState =
   | 'init'
   | 'receiving'
+  | 'paused'
   | 'ready-to-upload'
   | 'uploading'
   | 'uploaded'
@@ -23,6 +24,7 @@ export interface UploadInitInput {
   filename: string; // original filename from client
   size: number; // total bytes expected
   mime?: string | null; // optional client-declared MIME (hint only; server decides)
+  sha256?: string | null; // optional final checksum hint
 }
 
 /** Server → Client: created session info (public-safe) */
@@ -68,6 +70,10 @@ export interface UploadStatus {
   // Integrity (optional but recommended)
   /** Expected SHA-256 of the final file (hex/base64). If present, verify at finish. */
   sha256?: string;
+  /** Stored SHA-256 per chunk index (hex). Used for idempotent resume. */
+  chunkHashes?: Record<number, string>;
+  /** Timestamp when the upload was paused (ms epoch). */
+  pausedAt?: number;
 }
 
 /** Server → Client: response after accepting a chunk */
@@ -188,3 +194,10 @@ export type PublicUploadStatus = Pick<
   | 'createdAt'
   | 'expiresAt'
 > & { readonly percent?: number }; // computed on-the-fly; not persisted
+
+export type IntegrityMode = 'off' | 'optional' | 'required';
+
+export interface UploadIntegrityConfig {
+  chunkHash?: IntegrityMode;
+  fileHash?: IntegrityMode;
+}

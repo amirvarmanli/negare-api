@@ -38,13 +38,11 @@ async function bootstrap() {
 
   // ---- Global prefix ----
   const globalPrefix = config.get<string>('GLOBAL_PREFIX') ?? 'api';
-  if (globalPrefix) {
-    app.setGlobalPrefix(globalPrefix);
-  }
+  if (globalPrefix) app.setGlobalPrefix(globalPrefix);
 
   // ---- Trust proxy in production (for correct req.secure / HTTPS) ----
   if ((process.env.NODE_ENV || '').toLowerCase() === 'production') {
-    // @ts-ignore - Express setting is available
+    // @ts-ignore
     app.set('trust proxy', 1);
   }
 
@@ -52,25 +50,41 @@ async function bootstrap() {
 
   // ---- CORS (with credentials) ----
   // Supports either an array config key (corsOrigins) or a CSV env (CORS_ORIGIN)
-  const corsFromArray =
-    (config.get<string[]>('corsOrigins', { infer: true }) as
-      | string[]
-      | undefined) ?? undefined;
+  const corsRaw = config.get<string | string[]>('corsOrigins', { infer: true });
+  const corsFromArray = Array.isArray(corsRaw)
+    ? corsRaw
+    : corsRaw
+        ?.split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0);
   const corsFromEnv = (config.get<string>('CORS_ORIGIN') ??
     'http://localhost:3000') as string;
 
-  const allowedOrigins = (corsFromArray ?? corsFromEnv.split(',')).map((s) =>
-    s.trim(),
-  );
+  const allowedOrigins = (
+    corsFromArray && corsFromArray.length > 0
+      ? corsFromArray
+      : corsFromEnv.split(',')
+  ).map((s) => s.trim());
 
   app.enableCors({
     origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    // ✅ هدرهای لازم برای احراز، CSRF و جریان آپلود (مطابق کلاینت/پستمن)
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-CSRF-Token',
+      'x-user-id', // <— اگر خواستی حذفش کنی، همین خط رو بردار
+      'upload-id', // <— فقط در صورت استفاده هدرمحور؛ اگر Query Param داری می‌تونی حذف کنی
+      'file-id',
+      'chunk-index',
+      'chunk-checksum',
+    ],
     optionsSuccessStatus: 204,
   });
 
+  // Ensure Vary: Origin (برای کش‌های میانی/CDN)
   app.use((_req: Request, res: Response, next: NextFunction) => {
     const existingVary = res.getHeader('Vary');
     const varyVal = Array.isArray(existingVary)
@@ -89,12 +103,11 @@ async function bootstrap() {
     new TransformResponseInterceptor(),
   );
 
-  // ---- Cache-Control برای مسیرهای هویتی + Vary هدرهای مرتبط ----
+  // ---- No-store & extra Vary for auth-sensitive routes ----
   app.use((req: Request, res: Response, next: NextFunction) => {
     const prefix = globalPrefix ? `/${globalPrefix}` : '';
     const path = req.path || req.url;
 
-    // کل auth + مسیرهای حساس قبلی در core
     const isAuth = path.startsWith(`${prefix}/auth`);
     const isSensitiveCore =
       path.startsWith(`${prefix}/core/profile`) ||
@@ -102,9 +115,6 @@ async function bootstrap() {
 
     if (isAuth || isSensitiveCore) {
       res.setHeader('Cache-Control', 'no-store');
-      // برای هویت، هر دو منبع تغییر محتوا هستند:
-      // - Authorization (Access در Header)
-      // - Cookie (Refresh در کوکی)
       const existingVary = res.getHeader('Vary');
       const varyList = new Set<string>(
         (existingVary ? String(existingVary) : '')
@@ -144,15 +154,14 @@ async function bootstrap() {
     SwaggerModule.setup(docsPath, app, swaggerDocument);
   }
 
-// ---- Listen ----
-const defaultPort = 3000; // پورت پیش‌فرض برای لیارا و اکثر هاست‌ها
-const port = process.env.PORT
-  ? Number(process.env.PORT)
-  : config.get<number>('PORT', { infer: true }) ?? defaultPort;
+  // ---- Listen ----
+  const defaultPort = 3000;
+  const port = process.env.PORT
+    ? Number(process.env.PORT)
+    : (config.get<number>('PORT', { infer: true }) ?? defaultPort);
 
-await app.listen(port, '0.0.0.0');
-console.log(`🚀 Server is running on port ${port}`);
-
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Server is running on port ${port}`);
 
   const appUrl = await app.getUrl();
   bootstrapLogger.log(`Application running at ${appUrl}`);

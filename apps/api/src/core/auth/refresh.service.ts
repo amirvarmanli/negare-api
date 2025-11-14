@@ -106,7 +106,7 @@ export class RefreshService {
     if (record.sessionId) {
       await this.sessions
         .unlinkRefreshJti(payload.sub, record.sessionId, payload.jti)
-        .catch(() => undefined);
+        .catch((): undefined => undefined);
     }
 
     const user = await this.usersService.ensureActiveWithRoles(payload.sub);
@@ -130,7 +130,7 @@ export class RefreshService {
     if (payload.sid) {
       await this.sessions
         .unlinkRefreshJti(payload.sub, payload.sid, payload.jti)
-        .catch(() => undefined);
+        .catch((): undefined => undefined);
     }
   }
 

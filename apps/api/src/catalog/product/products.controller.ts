@@ -63,6 +63,7 @@ export class ProductController {
   constructor(private readonly service: ProductService) {}
 
   @Post()
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Create a product',
@@ -79,6 +80,7 @@ export class ProductController {
   }
 
   @Patch(':idOrSlug')
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Update a product (partial)',
@@ -157,6 +159,7 @@ export class ProductController {
   }
 
   @Delete(':idOrSlug')
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Archive a product (soft remove)' })
   @ApiOkResponse({ type: ProductDetailDto })
@@ -169,6 +172,7 @@ export class ProductController {
   }
 
   @Post(':id/like')
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle like for current user' })
   @ApiOkResponse({ schema: { properties: { liked: { type: 'boolean' } } } })
@@ -181,6 +185,7 @@ export class ProductController {
   }
 
   @Post(':id/bookmark')
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle bookmark for current user' })
   @ApiOkResponse({
@@ -195,6 +200,7 @@ export class ProductController {
   }
 
   @Post(':id/download')
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Register a download and increment counts' })
   @HttpCode(HttpStatus.NO_CONTENT)

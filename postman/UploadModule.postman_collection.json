@@ -21,7 +21,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"filename\": \"sample.png\",\n  \"size\": 5242880,\n  \"mime\": \"image/png\"\n}"
+          "raw": "{\n  \"filename\": \"sample.ai\",\n  \"size\": 5242880,\n  \"mime\": \"application/postscript\",\n  \"sha256\": \"{{finalSha}}\"\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/upload/init",
@@ -65,7 +65,7 @@
           "raw": "{{chunkBinary}}"
         },
         "url": {
-          "raw": "{{baseUrl}}/upload/chunk?uploadId={{uploadId}}&index={{chunkIndex}}",
+          "raw": "{{baseUrl}}/upload/chunk?uploadId={{uploadId}}&index={{chunkIndex}}&sha256={{chunkSha}}",
           "host": [
             "{{baseUrl}}"
           ],
@@ -81,6 +81,10 @@
             {
               "key": "index",
               "value": "{{chunkIndex}}"
+            },
+            {
+              "key": "sha256",
+              "value": "{{chunkSha}}"
             }
           ]
         }
@@ -107,7 +111,8 @@
               "value": "{{uploadId}}"
             }
           ]
-        }
+        },
+        "description": "Returns receivedBytes + missingIndexes for resumable uploads."
       },
       "response": []
     },
@@ -123,7 +128,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"uploadId\": \"{{uploadId}}\",\n  \"subdir\": \"uploads\"\n}"
+          "raw": "{\n  \"uploadId\": \"{{uploadId}}\",\n  \"subdir\": \"uploads\",\n  \"sha256\": \"{{finalSha}}\"\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/upload/finish",
@@ -133,6 +138,60 @@
           "path": [
             "upload",
             "finish"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Pause Upload",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uploadId\": \"{{uploadId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/upload/pause",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "pause"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Resume Upload",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uploadId\": \"{{uploadId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/upload/resume",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "upload",
+            "resume"
           ]
         }
       },
@@ -179,6 +238,14 @@
     {
       "key": "chunkBinary",
       "value": "<binary data>"
+    },
+    {
+      "key": "chunkSha",
+      "value": ""
+    },
+    {
+      "key": "finalSha",
+      "value": ""
     }
   ]
 }

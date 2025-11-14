@@ -1,3 +1,5 @@
+import type { UploadIntegrityConfig } from '@app/core/upload/upload.types';
+
 // ==============================
 // Injection tokens
 // ==============================
@@ -114,4 +116,5 @@ export interface UploadConfig extends BaseUploadConfig {
   ftp?: FtpConfig; // required if backend === 'ftp'
   s3?: S3Config; // required if backend === 's3'
   local?: LocalConfig; // required if backend === 'local'
+  integrity?: UploadIntegrityConfig;
 }

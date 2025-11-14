@@ -16,24 +16,26 @@ import {
   ApiTags,
   ApiCreatedResponse,
   ApiNoContentResponse,
-  ApiBearerAuth,
 } from '@nestjs/swagger';
-import { RoleName } from '@prisma/client';
-import { Roles } from '@app/common/decorators/roles.decorator';
 import { TagsService } from '@app/catalog/tags/tags.service';
 import { CreateTagDto } from '@app/catalog/tags/dtos/tag-create.dto';
 import { UpdateTagDto } from '@app/catalog/tags/dtos/tag-update.dto';
 import { TagFindQueryDto } from '@app/catalog/tags/dtos/tag-query.dto';
-import { TagDto, TagListResultDto } from '@app/catalog/tags/dtos/tag-response.dto';
+import {
+  TagDto,
+  TagListResultDto,
+} from '@app/catalog/tags/dtos/tag-response.dto';
+import { Public } from '@app/common/decorators/public.decorator';
 
 @ApiTags('Catalog / Tags')
 @Controller('catalog/tags')
 export class TagsController {
   constructor(private readonly service: TagsService) {}
 
+  // --------- فعلاً همه‌چیز پابلیک ----------
+
   @Post()
-  @ApiBearerAuth()
-  @Roles(RoleName.admin)
+  @Public()
   @ApiOperation({ summary: 'Create a tag' })
   @ApiCreatedResponse({ type: TagDto })
   async create(@Body() dto: CreateTagDto): Promise<TagDto> {
@@ -41,8 +43,7 @@ export class TagsController {
   }
 
   @Patch(':id')
-  @ApiBearerAuth()
-  @Roles(RoleName.admin)
+  @Public()
   @ApiOperation({ summary: 'Update a tag' })
   @ApiOkResponse({ type: TagDto })
   async update(
@@ -52,34 +53,37 @@ export class TagsController {
     return this.service.update(id, dto);
   }
 
-  @Get(':idOrSlug')
-  @ApiOperation({ summary: 'Find a tag by id or slug' })
-  @ApiOkResponse({ type: TagDto })
-  async findOne(@Param('idOrSlug') idOrSlug: string): Promise<TagDto> {
-    return this.service.findOne(idOrSlug);
+  @Delete(':id')
+  @Public()
+  @ApiOperation({ summary: 'Delete a tag (removes product links first)' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse()
+  async remove(@Param('id') id: string): Promise<void> {
+    await this.service.remove(id);
   }
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'List tags (flat)' })
   @ApiOkResponse({ type: TagListResultDto })
   async findAll(@Query() q: TagFindQueryDto): Promise<TagListResultDto> {
     return this.service.findAll(q);
   }
 
-  @Get('/popular/top')
+  // حتماً قبل از :idOrSlug بیاد
+  @Get('popular/top')
+  @Public()
   @ApiOperation({ summary: 'Top tags by usage count' })
   @ApiOkResponse({ type: TagListResultDto })
   async popular(@Query('limit') limit = '20'): Promise<TagListResultDto> {
     return this.service.popular(Number(limit));
   }
 
-  @Delete(':id')
-  @ApiBearerAuth()
-  @Roles(RoleName.admin)
-  @ApiOperation({ summary: 'Delete a tag (removes product links first)' })
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiNoContentResponse()
-  async remove(@Param('id') id: string): Promise<void> {
-    await this.service.remove(id);
+  @Get(':idOrSlug')
+  @Public()
+  @ApiOperation({ summary: 'Find a tag by id or slug' })
+  @ApiOkResponse({ type: TagDto })
+  async findOne(@Param('idOrSlug') idOrSlug: string): Promise<TagDto> {
+    return this.service.findOne(idOrSlug);
   }
 }

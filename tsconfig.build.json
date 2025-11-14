@@ -1,3 +1,0 @@
-{
-  "extends": "./apps/api/tsconfig.build.json"
-}

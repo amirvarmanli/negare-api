@@ -198,15 +198,19 @@ export class ProfileService {
     const check = await this.checkUsernameAvailability(raw);
 
     if (!check.ok) {
+      const reason =
+        'reason' in check ? check.reason : 'نام کاربری نامعتبر است.';
       throw new BadRequestException({
         code: 'InvalidUsername',
-        message: check.reason,
+        message: reason,
       });
     }
     if (!check.available) {
+      const reason =
+        'reason' in check ? check.reason : 'این نام کاربری قابل استفاده نیست.';
       throw new BadRequestException({
         code: 'UsernameTakenOrReserved',
-        message: check.reason,
+        message: reason,
       });
     }
 
