@@ -209,6 +209,29 @@ export class UploadController {
   @ApiProduces('application/json')
   @ApiOkResponse({
     description: 'Current status',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          uploadId: '1d8e9ad6-0a86-42ad-8c75-18dbb6d64142',
+          userId: 'user_123',
+          filename: 'avatar.png',
+          mime: 'image/png',
+          size: 524288,
+          chunkSize: 5242880,
+          totalChunks: 1,
+          receivedBytes: 524288,
+          receivedIndexes: [0],
+          state: 'receiving',
+          createdAt: 1730712000000,
+          expiresAt: 1730798400000,
+          remoteRelativePath: null,
+          sha256: 'd1f9f6a4b5c3f2e1d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b4a5f6d7',
+          percent: 100,
+          missingIndexes: [],
+        },
+      },
+    },
   })
   @ApiBadRequestResponse({ description: 'uploadId is required' })
   @ApiGoneResponse({ description: 'Upload session expired' })
@@ -230,6 +253,19 @@ export class UploadController {
   @ApiBody({ type: UploadFinishDto })
   @ApiOkResponse({
     description: 'Upload finalized',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          id: 'file_01j81s7qkjg36s1d9fbg3m3p6y',
+          url: 'https://cdn.negare.ir/uploads/2024-11-03/uuid-avatar.png',
+          path: 'uploads/2024-11-03/uuid-avatar.png',
+          mime: 'image/png',
+          size: 245760,
+          sha256: '6d7f5a2b1c3d4e5f6a7b8c9d0e1f23456789abcd0123456789abcdef01234567',
+        },
+      },
+    },
   })
   @ApiBadRequestResponse({ description: 'Invalid uploadId or state' })
   @ApiConflictResponse({

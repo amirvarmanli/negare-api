@@ -201,6 +201,7 @@ model File {
   status    String   @default("uploaded")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  productFiles ProductFile[]
 
   @@index([userId, createdAt])
   @@schema("core")
@@ -212,7 +213,6 @@ model Product {
   title          String            @db.VarChar(255)
   description    String?
   coverUrl       String?           @db.VarChar(255)
-  fileId         BigInt?           @unique @map("file_id")
   graphicFormats GraphicFormat[]   @default([])
   colors         String[]          @default([])
   shortLink      String?           @unique @db.VarChar(80)
@@ -240,7 +240,7 @@ model Product {
   supplierLinks  ProductSupplier[] @relation("ProductSuppliersProduct")
   tagLinks       ProductTag[]
   topics         ProductTopic[]
-  file           ProductFile?      @relation("ProductFile", fields: [fileId], references: [id])
+  file           ProductFile?
 
   @@index([status, pricingType], map: "products_status_pricing_idx")
   @@index([createdAt], map: "products_created_at_idx")
@@ -263,13 +263,16 @@ model ProductAsset {
 
 model ProductFile {
   id           BigInt   @id @default(autoincrement())
+  productId    BigInt   @unique @map("product_id")
+  fileUuid     String?  @map("file_id")
   storageKey   String   @db.VarChar(255)
   originalName String?  @db.VarChar(255)
   size         BigInt?
   mimeType     String?  @db.VarChar(255)
   meta         Json?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  product      Product? @relation("ProductFile")
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceFile   File?    @relation(fields: [fileUuid], references: [id], onDelete: SetNull)
 
   @@map("product_files")
   @@schema("catalog")
@@ -578,12 +581,18 @@ enum ProductStatus {
 }
 
 enum GraphicFormat {
-  SVG
-  EPS
-  AI
   PSD
-  PNG
+  EPS
   JPG
+  PNG
+  PDF
+  MP4
+  AI
+  CDR
+  TTF
+  TIF
+  SVG
+  OBJ
   WEBP
 
   @@map("enum_content_products_graphicFormat")

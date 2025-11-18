@@ -90,6 +90,7 @@ export interface UploadFinishResult {
   readonly mime: MimeType;
   readonly size: number;
   readonly sha256?: string; // final checksum if computed
+  readonly id: string; // DB record identifier from MediaService
 }
 
 /** Progress callback payload from the storage driver */

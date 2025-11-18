@@ -333,7 +333,7 @@ export class UploadService {
     uploadId: string,
     subdir = 'uploads',
     sha256Hint?: string | null,
-  ): Promise<UploadFinishResult & { id: string }> {
+  ): Promise<UploadFinishResult> {
     if (!uploadId) throw new BadRequestException('uploadId is required');
     const normalizedFinishSha = this.normalizeSha256(sha256Hint ?? undefined);
 
@@ -558,7 +558,7 @@ export class UploadService {
 
       this.gateway.emitUploaded({ uploadId, url, path: relativePath });
 
-      // توجه: UploadFinishResult شما ظاهراً الان شامل mime و size هم هست
+      // UploadFinishResult carries persisted metadata for the frontend.
       return {
         url,
         path: relativePath,
@@ -674,7 +674,7 @@ export class UploadService {
       state: s.state,
       createdAt: s.createdAt,
       expiresAt: s.expiresAt,
-      remoteRelativePath: s.remoteRelativePath,
+      remoteRelativePath: s.remoteRelativePath ?? null,
       sha256: s.sha256,
       percent,
       missingIndexes: this.computeMissingIndexes(s),

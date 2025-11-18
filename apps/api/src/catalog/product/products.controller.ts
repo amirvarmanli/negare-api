@@ -63,12 +63,11 @@ export class ProductController {
   constructor(private readonly service: ProductService) {}
 
   @Post()
-  @Public()
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Create a product',
     description:
-      'Either connect an existing ProductFile using fileId or provide file payload to create one inline.',
+      'Either link an uploaded file via fileId (UUID from upload/finish) or provide inline file payload to create one.',
   })
   @ApiCreatedResponse({ type: ProductDetailDto })
   async create(
@@ -80,12 +79,11 @@ export class ProductController {
   }
 
   @Patch(':idOrSlug')
-  @Public()
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Update a product (partial)',
     description:
-      'Supports switching ProductFile via fileId, creating a new file inline, or disconnecting the current file (fileId: null).',
+      'Supports switching ProductFile via uploaded fileId, creating a new file inline, or disconnecting the current file (fileId: null).',
   })
   @ApiOkResponse({ type: ProductDetailDto })
   async update(
@@ -159,7 +157,6 @@ export class ProductController {
   }
 
   @Delete(':idOrSlug')
-  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Archive a product (soft remove)' })
   @ApiOkResponse({ type: ProductDetailDto })
@@ -172,7 +169,6 @@ export class ProductController {
   }
 
   @Post(':id/like')
-  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle like for current user' })
   @ApiOkResponse({ schema: { properties: { liked: { type: 'boolean' } } } })
@@ -185,7 +181,6 @@ export class ProductController {
   }
 
   @Post(':id/bookmark')
-  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle bookmark for current user' })
   @ApiOkResponse({
@@ -200,7 +195,6 @@ export class ProductController {
   }
 
   @Post(':id/download')
-  @Public()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Register a download and increment counts' })
   @HttpCode(HttpStatus.NO_CONTENT)

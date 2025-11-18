@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Length,
   Matches,
   MaxLength,
@@ -72,12 +73,11 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     description:
-      'ID فایل اصلی (BigInt به صورت رشته). در صورت موجود نبودن فایل، از فیلد file برای ساخت رکورد جدید استفاده کنید.',
-    example: '1234567890123',
+      'UUID فایلی که پس از finish آپلود دریافت شده است. با ارسال این شناسه، فایل به عنوان ProductFile متصل می‌شود.',
+    example: '4e7e3e5d-90d7-4f61-b4fd-1a60119e2fc8',
   })
   @IsOptional()
-  @Transform(toBigIntString)
-  @IsString()
+  @IsUUID()
   fileId?: string;
 
   @ApiPropertyOptional({
@@ -171,7 +171,18 @@ export class CreateProductDto {
     example: 120,
   })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') {
+      return undefined;
+    }
+
+    const num = Number(value);
+    if (Number.isNaN(num)) {
+      return value;
+    }
+
+    return Math.round(num);
+  })
   @IsInt()
   @Min(0)
   @Max(10000)

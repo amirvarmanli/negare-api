@@ -8,11 +8,13 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Length,
   Matches,
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { GraphicFormat, PricingType, ProductStatus } from '@prisma/client';
@@ -68,11 +70,13 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional({
     description:
-      'ID فایل اصلی (BigInt به صورت رشته). برای حذف فایل، مقدار null ارسال کنید.',
+      'UUID فایل آپلود شده‌ای که باید به محصول وصل شود. ارسال مقدار null فایل فعلی را جدا می‌کند.',
+    example: '4e7e3e5d-90d7-4f61-b4fd-1a60119e2fc8',
+    nullable: true,
   })
   @IsOptional()
-  @Transform(toBigIntString)
-  @IsString()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
   fileId?: string | null;
 
   @ApiPropertyOptional({

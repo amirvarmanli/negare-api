@@ -2,6 +2,21 @@
 
 ## Persian Slug Support
 
+## Catalog Product Short Links, Files & Topics
+
+- Product short links are now numeric-friendly (`p/xxxxxx` by default). When `shortLink` is omitted the service creates a six-digit code with collision retries inside the Prisma transaction (`ProductService.resolveShortLink`). Custom values (≤32 chars) are still accepted when unique and can be updated via PATCH.
+- `catalog.product_files` now carries `product_id` plus an optional uploaded `file_id` (UUID → `core.files`). Migration `20251201000000_product_file_links` backfills existing rows, enforces a one-to-one constraint per product, and removes the legacy `products.file_id` column.
+- Product create/update flows link uploaded files via the new UUID-based `fileId` parameter or keep supporting inline payloads. The helper (`resolveFileInstruction` + `applyFileInstruction`) runs inside the surrounding transaction so `ProductFile` never lags behind a product mutation.
+- Detail responses expose the upload UUID via `ProductDetailDto.fileId` / `ProductFileDto.fileId`, `ProductTopicDto` now includes a `topicId` field alongside `id`, and `graphicFormats`/`topics` are emitted as the frontend expects to pre-populate edit forms.
+- Postman (`postman/catalog.postman_collection.json`) documents the new `{{uploadedFileId}}` variable, short-link behaviour, and shows how to disconnect (`fileId: null`) or swap the main file.
+- If Prisma reports that `20251201000000_product_file_links` previously failed (P3009), mark it as rolled back and redeploy:  
+  ```bash
+  npx prisma migrate resolve --rolled-back 20251201000000_product_file_links --schema prisma/schema.prisma
+  npx prisma migrate deploy --schema prisma/schema.prisma
+  ```
+
+
+
 - Categories, topics, and products now accept Persian (UTF-8) slugs with NFC normalisation, Arabic→Persian character fixes, and zero-width stripping.
 - `/catalog/{categories|topics|products}/:slug` endpoints decode, normalise, and either return `200` or emit a `301` redirect when a slug changes (see `docs/fa-slug-support.md`).
 - Prisma migration `20250212000000_fa_slug_support` introduces the `SlugRedirect` table, clamps slug columns to 200 chars, and indexes `parentId`.

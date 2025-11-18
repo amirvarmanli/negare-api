@@ -1,3 +1,6 @@
+-- Ensure schemas exist for local development / shadow DBs
+CREATE SCHEMA IF NOT EXISTS "catalog";
+
 -- Adjust slug columns to 200 chars and add parent index for categories
 
 ALTER TABLE "catalog"."categories" ALTER COLUMN "slug" TYPE VARCHAR(200);

@@ -117,17 +117,22 @@ export class ProductMapper {
       role: null as string | null,
     }));
 
-    const topics: ProductTopicDto[] = (p.topics ?? []).map((link) => ({
-      id: String(link.topic.id),
-      name: link.topic.name,
-      slug: link.topic.slug,
-      coverUrl: link.topic.coverUrl ?? undefined,
-      order: link.order,
-    }));
+    const topics: ProductTopicDto[] = (p.topics ?? []).map((link) => {
+      const topicId = String(link.topicId);
+      return {
+        topicId,
+        id: topicId,
+        name: link.topic.name,
+        slug: link.topic.slug,
+        coverUrl: link.topic.coverUrl ?? undefined,
+        order: link.order,
+      };
+    });
 
     const file: ProductFileDto | undefined = p.file
       ? {
           id: String(p.file.id),
+          fileId: p.file.fileUuid ?? undefined,
           storageKey: p.file.storageKey,
           originalName: p.file.originalName ?? undefined,
           // ✅ اینجا string می‌خواهیم
@@ -144,7 +149,7 @@ export class ProductMapper {
     return {
       ...brief,
       description: p.description ?? undefined,
-      fileId: p.fileId ? String(p.fileId) : undefined,
+      fileId: p.file?.fileUuid ?? undefined,
       assets,
       categories,
       tags,

@@ -26,7 +26,7 @@
             "url": "{{baseUrl}}/catalog/products",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"slug\": \"test-vector-pack\",\n  \"title\": \"وکتور تستی\",\n  \"description\": \"پک نمونه با چند دارایی\",\n  \"coverUrl\": \"https://cdn.negare.test/products/cover.png\",\n  \"shortLink\": \"p/test-vector-pack\",\n  \"fileId\": \"{{productFileId}}\",\n  \"graphicFormats\": [\"SVG\", \"PNG\"],\n  \"colors\": [\"#101010\", \"#FFAA00\"],\n  \"seoTitle\": \"پک وکتور تستی\",\n  \"seoDescription\": \"پک وکتور مناسب تمرین آزمون\",\n  \"seoKeywords\": [\"vector\", \"pack\"],\n  \"pricingType\": \"PAID\",\n  \"price\": 129000,\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2025-01-01T08:00:00.000Z\",\n  \"fileSizeMB\": 120,\n  \"fileBytes\": \"123456789\",\n  \"assets\": [\n    { \"url\": \"https://cdn.negare.test/products/cover.png\", \"alt\": \"preview\" },\n    { \"url\": \"https://cdn.negare.test/products/preview-2.png\", \"order\": 1 }\n  ],\n  \"topics\": [ { \"topicId\": \"{{topicId}}\", \"order\": 0 } ],\n  \"categoryIds\": [ \"{{categoryId}}\" ],\n  \"tagIds\": [ \"{{tagId}}\" ],\n  \"authorIds\": [ \"supplier-user\" ]\n}"
+              "raw": "{\n  \"slug\": \"test-vector-pack\",\n  \"title\": \"وکتور تستی\",\n  \"description\": \"نمونه‌ای برای تست اتصال فایل آپلود شده.\",\n  \"coverUrl\": \"https://cdn.negare.test/products/cover.png\",\n  \"shortLink\": \"p/120045\",\n  \"fileId\": \"{{uploadedFileId}}\",\n  \"graphicFormats\": [\n    \"SVG\",\n    \"PNG\"\n  ],\n  \"colors\": [\n    \"#101010\",\n    \"#FFAA00\"\n  ],\n  \"seoTitle\": \"نمونه وکتور تستی\",\n  \"seoDescription\": \"پک وکتور آماده برای تست فرم ایجاد محصول.\",\n  \"seoKeywords\": [\n    \"vector\",\n    \"pack\"\n  ],\n  \"pricingType\": \"PAID\",\n  \"price\": 129000,\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2025-01-01T08:00:00.000Z\",\n  \"fileSizeMB\": 120,\n  \"fileBytes\": \"123456789\",\n  \"assets\": [\n    {\n      \"url\": \"https://cdn.negare.test/products/cover.png\",\n      \"alt\": \"preview\"\n    },\n    {\n      \"url\": \"https://cdn.negare.test/products/preview-2.png\",\n      \"order\": 1\n    }\n  ],\n  \"topics\": [\n    {\n      \"topicId\": \"{{topicId}}\",\n      \"order\": 0\n    }\n  ],\n  \"categoryIds\": [\n    \"{{categoryId}}\"\n  ],\n  \"tagIds\": [\n    \"{{tagId}}\"\n  ],\n  \"authorIds\": [\n    \"supplier-user\"\n  ]\n}"
             }
           }
         },
@@ -122,7 +122,7 @@
             "url": "{{baseUrl}}/catalog/products/{{productId}}",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"نسخه با فایل موجود\",\n  \"fileId\": \"{{productFileId}}\",\n  \"status\": \"PUBLISHED\"\n}"
+              "raw": "{\n  \"title\": \"به‌روزرسانی فایل اصلی\",\n  \"fileId\": \"{{uploadedFileId}}\",\n  \"status\": \"PUBLISHED\"\n}"
             }
           }
         },

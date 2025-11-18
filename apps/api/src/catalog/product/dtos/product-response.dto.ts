@@ -29,7 +29,15 @@ export class ProductAssetDto {
 }
 
 export class ProductTopicDto {
-  @ApiProperty() id!: string;
+  @ApiProperty({
+    description: 'Topic id (BigInt as string) used when editing topics',
+  })
+  topicId!: string;
+  @ApiProperty({
+    description:
+      'Alias for topicId kept for backward compatibility with older clients',
+  })
+  id!: string;
   @ApiProperty() name!: string;
   @ApiProperty() slug!: string;
   @ApiPropertyOptional() coverUrl?: string | null;
@@ -38,6 +46,10 @@ export class ProductTopicDto {
 
 export class ProductFileDto {
   @ApiProperty() id!: string;
+  @ApiPropertyOptional({
+    description: 'UUID of the uploaded file (core.files.id) powering this entry',
+  })
+  fileId?: string | null;
   @ApiProperty() storageKey!: string;
   @ApiPropertyOptional() originalName?: string | null;
   @ApiPropertyOptional({
@@ -90,7 +102,10 @@ export class ProductBriefDto {
 
 export class ProductDetailDto extends ProductBriefDto {
   @ApiPropertyOptional() description?: string | null;
-  @ApiPropertyOptional() fileId?: string | null; // BigInt → string
+  @ApiPropertyOptional({
+    description: 'UUID of the uploaded file linked to this product',
+  })
+  fileId?: string | null;
 
   @ApiPropertyOptional({ type: [ProductAssetDto] }) assets?: ProductAssetDto[];
   @ApiPropertyOptional({ type: [ProductCategoryDto] })
