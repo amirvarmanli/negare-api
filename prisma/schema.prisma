@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  schemas   = ["analytics", "catalog", "core", "public"]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["analytics", "catalog", "core", "public"]
 }
 
 model User {
@@ -31,6 +31,8 @@ model User {
   bookmarks           Bookmark[]
   comments            Comment[]
   likes               Like[]
+  artistFollowings    ArtistFollow[]       @relation("ArtistFollowFollower")
+  artistFollowers     ArtistFollow[]       @relation("ArtistFollowArtist")
   productSuppliers    ProductSupplier[]    @relation("ProductSuppliersUser")
   auditLogs           AuditLog[]
   passwordResetTokens PasswordResetToken[]
@@ -191,16 +193,16 @@ model WalletAuditLog {
 }
 
 model File {
-  id        String   @id @default(uuid())
-  userId    String
-  filename  String
-  mime      String
-  size      BigInt
-  path      String
-  url       String
-  status    String   @default("uploaded")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String        @id @default(uuid())
+  userId       String
+  filename     String
+  mime         String
+  size         BigInt
+  path         String
+  url          String
+  status       String        @default("uploaded")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
   productFiles ProductFile[]
 
   @@index([userId, createdAt])
@@ -217,7 +219,7 @@ model Product {
   colors         String[]          @default([])
   shortLink      String?           @unique @db.VarChar(80)
   seoTitle       String?           @db.VarChar(160)
-  seoDescription String?           @db.VarChar(240)
+  seoDescription String?           @db.VarChar(550)
   seoKeywords    String[]          @default([])
   pricingType    PricingType
   price          Decimal?          @db.Decimal(12, 2)
@@ -344,7 +346,7 @@ model Topic {
   slug           String         @unique @db.VarChar(200)
   coverUrl       String?        @db.VarChar(255)
   seoTitle       String?        @db.VarChar(160)
-  seoDescription String?        @db.VarChar(240)
+  seoDescription String?        @db.VarChar(550)
   productLinks   ProductTopic[]
 
   @@map("topics")
@@ -401,6 +403,20 @@ model Like {
   @@index([productId], map: "likes_product_idx")
   @@index([userId, createdAt], map: "likes_user_time_idx")
   @@map("likes")
+  @@schema("catalog")
+}
+
+model ArtistFollow {
+  followerId String   @map("follower_id") @db.Uuid
+  artistId   String   @map("artist_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  follower   User     @relation("ArtistFollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  artist     User     @relation("ArtistFollowArtist", fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, artistId])
+  @@index([artistId, createdAt], map: "artist_follows_artist_time_idx")
+  @@index([followerId, createdAt], map: "artist_follows_follower_time_idx")
+  @@map("artist_follows")
   @@schema("catalog")
 }
 

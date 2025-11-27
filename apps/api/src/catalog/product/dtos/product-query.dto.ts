@@ -1,11 +1,12 @@
 // apps/api/src/core/catalog/product/dto/product-query.dto.ts
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import {
   IsBooleanString,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsIn,
   Length,
   Matches,
   Max,
@@ -13,7 +14,10 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PricingType, ProductStatus, GraphicFormat } from '@prisma/client';
-import { toBigIntString, toTrimmedString } from '@app/catalog/product/dtos/transformers';
+import { toTrimmedString } from '@app/catalog/product/dtos/transformers';
+import { FA_SLUG_REGEX } from '@shared-slug/slug/fa-slug.util';
+
+const TAG_NAME_REGEX = /^[\p{L}\p{N}\s_-]+$/u;
 
 export type ProductSort = 'latest' | 'popular' | 'viewed' | 'liked';
 
@@ -29,21 +33,54 @@ export class ProductFindQueryDto {
   // فیلترها
   @ApiPropertyOptional({ description: 'BigInt به صورت رشته' })
   @IsOptional()
-  @Transform(toBigIntString)
+  @Transform(toTrimmedString)
   @IsString()
   categoryId?: string;
 
   @ApiPropertyOptional({ description: 'BigInt به صورت رشته' })
   @IsOptional()
-  @Transform(toBigIntString)
+  @Transform(toTrimmedString)
   @IsString()
   tagId?: string;
 
+  @ApiPropertyOptional({
+    description: 'جستجو بر اساس نام تگ (پشتیبانی از فاصله)',
+    example: 'طراحی مینیمال',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 255)
+  @Matches(TAG_NAME_REGEX, {
+    message: 'Tag name can only contain letters, numbers, spaces, _ or -',
+  })
+  @Transform(toTrimmedString)
+  tagName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Tag slug (Persian-safe). Ignored when tagId is provided.',
+    example: 'illustration',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(FA_SLUG_REGEX, { message: 'Invalid slug format' })
+  @Transform(toTrimmedString)
+  tagSlug?: string;
+
   @ApiPropertyOptional({ description: 'آیدی تاپیک (BigInt به صورت رشته)' })
   @IsOptional()
-  @Transform(toBigIntString)
+  @Transform(toTrimmedString)
   @IsString()
   topicId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Topic slug (Persian-safe). Ignored when topicId is provided.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(FA_SLUG_REGEX, { message: 'Invalid slug format' })
+  @Transform(toTrimmedString)
+  topicSlug?: string;
 
   @ApiPropertyOptional({ description: 'UUID نویسنده' })
   @IsOptional()
@@ -81,10 +118,13 @@ export class ProductFindQueryDto {
   @IsEnum(PricingType)
   pricingType?: PricingType;
 
-  @ApiPropertyOptional({ enum: GraphicFormat })
+  @ApiPropertyOptional({
+    enum: GraphicFormat,
+    description: 'Comma-separated GraphicFormat values, e.g. "PSD,AI"',
+  })
   @IsOptional()
-  @IsEnum(GraphicFormat)
-  graphicFormat?: GraphicFormat;
+  @IsString()
+  graphicFormat?: string;
 
   @ApiPropertyOptional({ enum: ProductStatus })
   @IsOptional()
@@ -111,4 +151,64 @@ export class ProductFindQueryDto {
   @IsOptional()
   @IsString()
   cursor?: string;
+}
+
+export class ProductRelatedQueryDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 24, example: 12 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  limit?: number;
+}
+
+const PRODUCT_SEARCH_FILTER_FIELDS = [
+  'categoryId',
+  'tagId',
+  'tagName',
+  'tagSlug',
+  'topicId',
+  'topicSlug',
+  'authorId',
+  'color',
+  'hasFile',
+  'hasAssets',
+  'pricingType',
+  'graphicFormat',
+  'status',
+] as const;
+
+export class ProductSearchQueryDto extends PickType(
+  ProductFindQueryDto,
+  PRODUCT_SEARCH_FILTER_FIELDS,
+) {
+  @ApiProperty({
+    description: 'متن جستجو (الزامی)',
+    example: 'طراحی لوگو',
+  })
+  @Transform(toTrimmedString)
+  @IsString()
+  @Length(2, 255)
+  q!: string;
+
+  @ApiPropertyOptional({ minimum: 1, example: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 50, example: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  @ApiPropertyOptional({
+    enum: ['latest', 'popular', 'viewed', 'liked'],
+    example: 'latest',
+  })
+  @IsOptional()
+  @IsIn(['latest', 'popular', 'viewed', 'liked'])
+  sort?: ProductSort;
 }

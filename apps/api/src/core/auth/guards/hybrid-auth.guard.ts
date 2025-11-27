@@ -64,6 +64,7 @@ export class HybridAuthGuard implements CanActivate {
       .getRequest<Request & { user?: CurrentUserPayload }>();
 
     if (isPublic || this.isPublicPath(request)) {
+      this.attachOptionalUser(request);
       return true;
     }
 
@@ -77,9 +78,13 @@ export class HybridAuthGuard implements CanActivate {
       throw new UnauthorizedException('توکن دسترسی ارسال نشده است');
     }
 
-    const mockUser = this.authenticateWithMockHeader(request);
-    request.user = mockUser;
-    return true;
+    const mockUser = this.tryAuthenticateWithMockHeader(request);
+    if (mockUser) {
+      request.user = mockUser;
+      return true;
+    }
+
+    throw new UnauthorizedException('توکن دسترسی ارسال نشده است');
   }
 
   /**
@@ -121,15 +126,40 @@ export class HybridAuthGuard implements CanActivate {
     }
   }
 
+  private attachOptionalUser(
+    request: Request & { user?: CurrentUserPayload },
+  ): void {
+    try {
+      const user = this.tryAuthenticateWithBearer(request);
+      if (user) {
+        request.user = user;
+        return;
+      }
+    } catch {
+      /* ignore invalid public tokens so endpoint stays accessible */
+    }
+
+    if (!this.isMockEnabled()) {
+      return;
+    }
+
+    const mockUser = this.tryAuthenticateWithMockHeader(request);
+    if (mockUser) {
+      request.user = mockUser;
+    }
+  }
+
   /**
    * Parses the `x-mock-user` header and returns a user payload for local workflows.
    * @param request Current request expected to contain the header.
-   * @throws UnauthorizedException when the header is missing or malformed.
+   * Ignores invalid headers instead of throwing, to avoid polluting real auth flow.
    */
-  private authenticateWithMockHeader(request: Request): CurrentUserPayload {
+  private tryAuthenticateWithMockHeader(
+    request: Request,
+  ): CurrentUserPayload | null {
     const headerValue = request.headers['x-mock-user'];
     if (!headerValue) {
-      throw new UnauthorizedException(' x-mock-user   ');
+      return null;
     }
 
     const serialized =
@@ -140,10 +170,10 @@ export class HybridAuthGuard implements CanActivate {
     try {
       const parsed = JSON.parse(serialized) as MockUserHeaderPayload;
       if (!parsed?.id || typeof parsed.id !== 'string') {
-        throw new Error('Invalid id');
+        return null;
       }
       if (parsed.roles && !Array.isArray(parsed.roles)) {
-        throw new Error('Invalid roles array');
+        return null;
       }
       const user: CurrentUserPayload = {
         id: parsed.id,
@@ -158,7 +188,7 @@ export class HybridAuthGuard implements CanActivate {
       return user;
     } catch (error) {
       this.logger.warn(`Failed to parse x-mock-user header: ${String(error)}`);
-      throw new UnauthorizedException('  x-mock-user  ');
+      return null;
     }
   }
 

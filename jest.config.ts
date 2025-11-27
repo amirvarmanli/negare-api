@@ -26,6 +26,7 @@ const config: Config = {
   moduleNameMapper: {
     '^@app/(.*)$': '<rootDir>/apps/api/src/$1',
     '^@test/(.*)$': '<rootDir>/apps/api/test/$1',
+    '^@shared-slug/(.*)$': '<rootDir>/libs/shared/src/$1',
     '^@/(.*)$': '<rootDir>/$1',
   },
   collectCoverageFrom: [

@@ -7,6 +7,16 @@ export class ProductAuthorDto {
   @ApiPropertyOptional() role?: string | null;
 }
 
+export class ProductDetailAuthorDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ nullable: true }) avatarUrl!: string | null;
+  @ApiProperty({
+    description: 'Total number of products authored by this user',
+  })
+  productsCount!: number;
+}
+
 export class ProductTagDto {
   @ApiProperty() id!: string; // BigInt → string
   @ApiProperty() name!: string;
@@ -74,11 +84,27 @@ export class ProductBriefDto {
   @ApiProperty({ enum: PricingType }) pricingType!: PricingType;
   @ApiPropertyOptional() price?: number | null;
 
+  @ApiProperty({ nullable: true }) creatorId!: string | null;
+  @ApiProperty() creatorName!: string;
+  @ApiProperty({ nullable: true }) creatorAvatarUrl!: string | null;
+
   @ApiProperty({ enum: ProductStatus }) status!: ProductStatus;
 
   @ApiProperty() viewsCount!: number;
   @ApiProperty() downloadsCount!: number;
   @ApiProperty() likesCount!: number;
+
+  @ApiProperty({
+    description: 'Whether the current user liked this product',
+    default: false,
+  })
+  isLikedByCurrentUser!: boolean;
+
+  @ApiProperty({
+    description: 'Whether the current user bookmarked this product',
+    default: false,
+  })
+  isBookmarkedByCurrentUser!: boolean;
 
   @ApiPropertyOptional() shortLink?: string | null;
 
@@ -113,6 +139,8 @@ export class ProductDetailDto extends ProductBriefDto {
   @ApiPropertyOptional({ type: [ProductTagDto] }) tags?: ProductTagDto[];
   @ApiPropertyOptional({ type: [ProductAuthorDto] })
   authors?: ProductAuthorDto[];
+  @ApiPropertyOptional({ type: ProductDetailAuthorDto })
+  author?: ProductDetailAuthorDto;
   @ApiPropertyOptional({ type: [ProductTopicDto] }) topics?: ProductTopicDto[];
   @ApiPropertyOptional({ type: ProductFileDto }) file?: ProductFileDto;
 }
@@ -122,3 +150,13 @@ export class ProductListResultDto {
   @ApiPropertyOptional({ description: 'cursor opaque (base64)' })
   nextCursor?: string;
 }
+
+export class ProductPaginatedResultDto {
+  @ApiProperty({ type: [ProductBriefDto] }) items!: ProductBriefDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
+  @ApiProperty() hasNext!: boolean;
+}
+
+export class ProductSearchResultDto extends ProductPaginatedResultDto {}

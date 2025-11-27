@@ -20,6 +20,7 @@ import {
 } from '@app/common/decorators/current-user.decorator';
 import { requireUserId } from '@app/catalog/utils/current-user.util';
 import { BookmarksService } from '@app/catalog/bookmarks/bookmarks.service';
+import { BookmarkToggleResponseDto } from '@app/catalog/bookmarks/dtos/bookmark-toggle.dto';
 
 @ApiTags('Catalog / Bookmarks')
 @ApiBearerAuth()
@@ -29,13 +30,11 @@ export class BookmarksController {
 
   @Post(':productId/toggle')
   @ApiOperation({ summary: 'Toggle bookmark for a product' })
-  @ApiOkResponse({
-    schema: { properties: { bookmarked: { type: 'boolean' } } },
-  })
+  @ApiOkResponse({ type: BookmarkToggleResponseDto })
   async toggle(
     @Param('productId') productId: string,
     @CurrentUser() user: CurrentUserPayload | undefined,
-  ) {
+  ): Promise<BookmarkToggleResponseDto> {
     const userId = requireUserId(user);
     return this.service.toggle(userId, productId);
   }

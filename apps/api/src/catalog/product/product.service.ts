@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -17,24 +18,46 @@ import { Buffer } from 'buffer';
 
 import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
 import { UpdateProductDto } from '@app/catalog/product/dtos/product-update.dto';
-import { ProductFindQueryDto, ProductSort } from '@app/catalog/product/dtos/product-query.dto';
+import {
+  ProductFindQueryDto,
+  ProductSearchQueryDto,
+  ProductSort,
+} from '@app/catalog/product/dtos/product-query.dto';
 import {
   ProductBriefDto,
   ProductDetailDto,
   ProductListResultDto,
+  ProductPaginatedResultDto,
+  ProductSearchResultDto,
 } from '@app/catalog/product/dtos/product-response.dto';
 import { ProductFileInputDto } from '@app/catalog/product/dtos/product-shared.dto';
+import { UserProductListQueryDto } from '@app/catalog/product/dtos/product-user-list-query.dto';
 
+import {
+  clampFaSlug,
+  makeFaSlug,
+  normalizeFaText,
+  safeDecodeSlug,
+} from '@shared-slug/slug/fa-slug.util';
+import {
+  clampPagination,
+  toPaginationResult,
+} from '@app/catalog/utils/pagination.util';
 import {
   ProductMapper,
   productInclude,
   type ProductWithRelations,
 } from '@app/catalog/product/product.mapper';
-import {
-  clampFaSlug,
-  makeFaSlug,
-  normalizeFaText,
-} from '@shared-slug/slug/fa-slug.util';
+
+type ProductWithReactions = ProductWithRelations & {
+  likes?: Array<{ productId: bigint }>;
+  bookmarks?: Array<{ productId: bigint }>;
+};
+
+type ProductDetailInclude = typeof productInclude & {
+  likes?: Prisma.Product$likesArgs;
+  bookmarks?: Prisma.Product$bookmarksArgs;
+};
 
 export type Actor = { id: string; isAdmin: boolean };
 
@@ -66,6 +89,9 @@ type FileInstruction =
   | { kind: 'disconnect' }
   | { kind: 'inline'; payload: ProductFileInputDto }
   | { kind: 'link-upload'; uploaded: UploadedFileMeta };
+
+type TopicFilterInput = Pick<ProductFindQueryDto, 'topicId' | 'topicSlug'>;
+type TagFilterInput = Pick<ProductFindQueryDto, 'tagId' | 'tagSlug'>;
 
 type ProductFileMutationInput = {
   fileUuid: string | null;
@@ -149,6 +175,21 @@ export function parseGraphicFormatList(raw?: string): GraphicFormat[] {
   return Array.from(formats);
 }
 
+function makeTagSearchWhere(term: string): Prisma.ProductWhereInput {
+  return {
+    tagLinks: {
+      some: {
+        tag: {
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { slug: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+      },
+    },
+  };
+}
+
 function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
   if (!q) return undefined;
   const term = normalizeFaText(q.trim());
@@ -161,6 +202,7 @@ function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
       { seoTitle: { contains: term, mode: 'insensitive' } },
       { seoDescription: { contains: term, mode: 'insensitive' } },
       { shortLink: { contains: term, mode: 'insensitive' } },
+      makeTagSearchWhere(term),
     ],
   };
 }
@@ -168,6 +210,101 @@ function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
 @Injectable()
 export class ProductService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly logger = new Logger(ProductService.name);
+
+  private buildProductDetailInclude(
+    viewerId?: string,
+  ): ProductDetailInclude {
+    if (!viewerId) {
+      return productInclude as ProductDetailInclude;
+    }
+    return {
+      ...productInclude,
+      likes: {
+        where: { userId: viewerId },
+        select: { productId: true },
+      },
+      bookmarks: {
+        where: { userId: viewerId },
+        select: { productId: true },
+      },
+    };
+  }
+
+  private getReactionFlags(product: ProductWithReactions) {
+    return {
+      isLikedByCurrentUser: (product.likes?.length ?? 0) > 0,
+      isBookmarkedByCurrentUser: (product.bookmarks?.length ?? 0) > 0,
+    };
+  }
+
+  private mapProductDetail(
+    product: ProductWithReactions,
+    viewerId?: string,
+  ): ProductDetailDto {
+    const dto = ProductMapper.toDetail(product);
+    const reactions = this.getReactionFlags(product);
+    this.logger.debug({
+      context: 'ProductDetailFlags',
+      step: 'beforeReturn',
+      viewerId,
+      productId: product.id.toString(),
+      isLikedByCurrentUser: reactions.isLikedByCurrentUser,
+      isBookmarkedByCurrentUser: reactions.isBookmarkedByCurrentUser,
+    });
+    dto.isLikedByCurrentUser = reactions.isLikedByCurrentUser;
+    dto.isBookmarkedByCurrentUser = reactions.isBookmarkedByCurrentUser;
+    return dto;
+  }
+
+  private async resolveUserReactions(
+    productIds: bigint[],
+    userId?: string,
+    options?: { skipLiked?: boolean; skipBookmarked?: boolean },
+  ): Promise<{ liked: Set<string>; bookmarked: Set<string> }> {
+    const liked = new Set<string>();
+    const bookmarked = new Set<string>();
+
+    if (!userId || productIds.length === 0) {
+      return { liked, bookmarked };
+    }
+
+    const tasks: Array<Promise<Array<{ productId: bigint }>>> = [];
+    const resultOrder: Array<'like' | 'bookmark'> = [];
+
+    if (!options?.skipLiked) {
+      tasks.push(
+        this.prisma.like.findMany({
+          where: { userId, productId: { in: productIds } },
+          select: { productId: true },
+        }),
+      );
+      resultOrder.push('like');
+    }
+
+    if (!options?.skipBookmarked) {
+      tasks.push(
+        this.prisma.bookmark.findMany({
+          where: { userId, productId: { in: productIds } },
+          select: { productId: true },
+        }),
+      );
+      resultOrder.push('bookmark');
+    }
+
+    const rows = await Promise.all(tasks);
+    rows.forEach((row, index) => {
+      const kind = resultOrder[index];
+      if (kind === 'like') {
+        row.forEach((item) => liked.add(item.productId.toString()));
+      } else {
+        row.forEach((item) => bookmarked.add(item.productId.toString()));
+      }
+    });
+
+    return { liked, bookmarked };
+  }
 
   async create(dto: CreateProductDto, actor: Actor): Promise<ProductDetailDto> {
     const title = normalizeFaText(dto.title);
@@ -449,14 +586,67 @@ export class ProductService {
 
   async findByIdOrSlug(
     idOrSlug: string,
-    _viewerId?: string,
+    viewerId?: string,
   ): Promise<ProductDetailDto> {
-    const prod = await this.prisma.product.findFirst({
+    const include = this.buildProductDetailInclude(viewerId);
+    const product = (await this.prisma.product.findFirst({
       where: this.withActiveStatus(this.idOrSlugWhere(idOrSlug)),
-      include: productInclude,
+      include,
+    })) as ProductWithReactions | null;
+    if (!product) throw new NotFoundException('Product not found');
+    const withReactions = product as unknown as ProductWithReactions;
+    this.logger.debug({
+      context: 'ProductDetailFlags',
+      step: 'afterQuery',
+      viewerId,
+      productId: withReactions.id.toString(),
+      likesCount: withReactions.likes?.length ?? 0,
+      bookmarksCount: withReactions.bookmarks?.length ?? 0,
     });
-    if (!prod) throw new NotFoundException('Product not found');
-    return ProductMapper.toDetail(prod as ProductWithRelations);
+    return this.mapProductDetail(withReactions, viewerId);
+  }
+
+  async findByShortCode(
+    code: string,
+    viewerId?: string,
+  ): Promise<ProductDetailDto> {
+    const shortLink = this.normalizeShortCode(code);
+    const product = await this.prisma.product.findUnique({
+      where: { shortLink },
+      include: this.buildProductDetailInclude(viewerId),
+    });
+    if (!product || !this.isActiveStatus(product.status)) {
+      throw new NotFoundException('Product not found');
+    }
+    const withReactions = product as unknown as ProductWithReactions;
+    this.logger.debug({
+      context: 'ProductDetailFlags',
+      step: 'afterQuery',
+      viewerId,
+      productId: withReactions.id.toString(),
+      likesCount: withReactions.likes?.length ?? 0,
+      bookmarksCount: withReactions.bookmarks?.length ?? 0,
+    });
+    return this.mapProductDetail(withReactions, viewerId);
+  }
+
+  async findForRoute(
+    idOrSlug: string,
+    viewerId?: string,
+  ): Promise<{ product?: ProductDetailDto; redirectTo?: string }> {
+    this.logger.debug({
+      context: 'ProductDetailFlags',
+      step: 'findForRoute:start',
+      idOrSlug,
+      viewerId,
+      isNumeric: /^\d+$/u.test(idOrSlug),
+    });
+    if (/^\d+$/u.test(idOrSlug)) {
+      const product = await this.findByIdOrSlug(idOrSlug, viewerId);
+      return { product };
+    }
+    const normalizedSlug = normalizeFaText(safeDecodeSlug(idOrSlug));
+    return this.findBySlug(normalizedSlug, viewerId);
   }
 
   async findBySlug(
@@ -465,11 +655,20 @@ export class ProductService {
   ): Promise<{ product?: ProductDetailDto; redirectTo?: string }> {
     const product = await this.prisma.product.findUnique({
       where: { slug },
-      include: productInclude,
+      include: this.buildProductDetailInclude(viewerId),
     });
     if (product && this.isActiveStatus(product.status)) {
+      const withReactions = product as unknown as ProductWithReactions;
+      this.logger.debug({
+        context: 'ProductDetailFlags',
+        step: 'afterQuery',
+        viewerId,
+        productId: withReactions.id.toString(),
+        likesCount: withReactions.likes?.length ?? 0,
+        bookmarksCount: withReactions.bookmarks?.length ?? 0,
+      });
       return {
-        product: ProductMapper.toDetail(product as ProductWithRelations),
+        product: this.mapProductDetail(withReactions, viewerId),
       };
     }
     const redirect = await this.prisma.slugRedirect.findUnique({
@@ -482,9 +681,20 @@ export class ProductService {
     throw new NotFoundException('Product not found');
   }
 
-  async findAll(query: ProductFindQueryDto): Promise<ProductListResultDto> {
+  async findAll(
+    query: ProductFindQueryDto,
+    viewerId?: string,
+  ): Promise<ProductListResultDto> {
     const limit = Math.min(Math.max(query.limit ?? 24, 1), 60);
     const sort: ProductSort = (query.sort ?? 'latest') as ProductSort;
+    const topicFilter = await this.resolveTopicFilter(query);
+    if (topicFilter.slugNotFound) {
+      return { items: [], nextCursor: undefined };
+    }
+    const tagFilter = await this.resolveTagFilter(query);
+    if (tagFilter.slugNotFound) {
+      return { items: [], nextCursor: undefined };
+    }
 
     const ands: Prisma.ProductWhereInput[] = [];
     const text = makeTextWhere(query.q);
@@ -521,15 +731,12 @@ export class ProductService {
         });
       }
     }
-    if (query.tagId) {
-      const tids = toBigIntList(query.tagId);
-      if (tids.length) {
-        ands.push({
-          tagLinks: {
-            some: { tagId: { in: tids } },
-          },
-        });
-      }
+    if (tagFilter.tagIds.length) {
+      ands.push({
+        tagLinks: {
+          some: { tagId: { in: tagFilter.tagIds } },
+        },
+      });
     }
     if (query.tagName) {
       const tagName = normalizeTagLabel(query.tagName);
@@ -548,15 +755,12 @@ export class ProductService {
         }
       }
     }
-    if (query.topicId) {
-      const topicIds = toBigIntList(query.topicId);
-      if (topicIds.length) {
-        ands.push({
-          topics: {
-            some: { topicId: { in: topicIds } },
-          },
-        });
-      }
+    if (topicFilter.topicIds.length) {
+      ands.push({
+        topics: {
+          some: { topicId: { in: topicFilter.topicIds } },
+        },
+      });
     }
     if (query.authorId) {
       ands.push({ supplierLinks: { some: { userId: query.authorId } } });
@@ -655,8 +859,20 @@ export class ProductService {
       include: productInclude,
     });
 
+    const reactions = await this.resolveUserReactions(
+      rows.map((r) => r.id),
+      viewerId,
+    );
+
     const items: ProductBriefDto[] = (rows as ProductWithRelations[]).map(
-      ProductMapper.toBrief,
+      (p) => {
+        const brief = ProductMapper.toBrief(p);
+        brief.isLikedByCurrentUser = reactions.liked.has(p.id.toString());
+        brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
+          p.id.toString(),
+        );
+        return brief;
+      },
     );
 
     let nextCursor: string | undefined;
@@ -688,6 +904,447 @@ export class ProductService {
     return { items, nextCursor };
   }
 
+  async findRelated(
+    idOrSlug: string,
+    limit?: number,
+    viewerId?: string,
+  ): Promise<ProductBriefDto[]> {
+    const safeLimit = Math.min(Math.max(limit ?? 12, 1), 24);
+    const product = await this.getByIdOrSlugStrict(idOrSlug);
+    const tagIds = uniq(
+      (product.tagLinks ?? []).map((link) => link.tagId as bigint),
+    );
+    if (!tagIds.length) return [];
+
+    const statusList = Prisma.join(
+      ACTIVE_PRODUCT_STATUSES.map((status) => Prisma.sql`${status}`),
+    );
+    const tagList = Prisma.join(tagIds.map((tagId) => Prisma.sql`${tagId}`));
+
+    const relatedRows = await this.prisma.$queryRaw<
+      Array<{ id: bigint; match_count: bigint }>
+    >(Prisma.sql`
+      SELECT p.id, COUNT(pt."tag_id") AS match_count
+      FROM "catalog"."products" p
+      JOIN "catalog"."product_tags" pt ON pt."product_id" = p.id
+      WHERE p."status"::text IN (${statusList})
+        AND p.id <> ${product.id}
+        AND pt."tag_id" IN (${tagList})
+      GROUP BY p.id
+      ORDER BY match_count DESC, p."createdAt" DESC, p.id DESC
+      LIMIT ${safeLimit}
+    `);
+
+    const ids = relatedRows.map((row) => row.id);
+    if (!ids.length) return [];
+
+    const rows = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: productInclude,
+    });
+    const order = new Map(ids.map((id, index) => [id.toString(), index]));
+    rows.sort(
+      (a, b) =>
+        (order.get(a.id.toString()) ?? 0) -
+        (order.get(b.id.toString()) ?? 0),
+    );
+
+    const reactions = await this.resolveUserReactions(ids, viewerId);
+
+    return (rows as ProductWithRelations[]).map((p) => {
+      const brief = ProductMapper.toBrief(p);
+      brief.isLikedByCurrentUser = reactions.liked.has(p.id.toString());
+      brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
+        p.id.toString(),
+      );
+      return brief;
+    });
+  }
+
+  async search(
+    query: ProductSearchQueryDto,
+    viewerId?: string,
+  ): Promise<ProductSearchResultDto> {
+    const term = normalizeFaText(query.q);
+    if (!term || term.length < 2) {
+      throw new BadRequestException('Search text must be at least 2 characters long.');
+    }
+
+    const sort: ProductSort = (query.sort ?? 'latest') as ProductSort;
+    const { page, limit, skip } = clampPagination(
+      query.page,
+      query.limit ?? 20,
+      50,
+    );
+    const topicFilter = await this.resolveTopicFilter(query);
+    if (topicFilter.slugNotFound) {
+      const empty = toPaginationResult<ProductBriefDto>([], 0, page, limit);
+      return {
+        items: empty.data,
+        total: empty.total,
+        page: empty.page,
+        limit: empty.limit,
+        hasNext: empty.hasNext,
+      };
+    }
+    const tagFilter = await this.resolveTagFilter(query);
+    if (tagFilter.slugNotFound) {
+      const empty = toPaginationResult<ProductBriefDto>([], 0, page, limit);
+      return {
+        items: empty.data,
+        total: empty.total,
+        page: empty.page,
+        limit: empty.limit,
+        hasNext: empty.hasNext,
+      };
+    }
+    const likeTerm = `%${term}%`;
+    const startsWithTerm = `${term}%`;
+
+    const statuses = query.status
+      ? [query.status as ProductStatus]
+      : ACTIVE_PRODUCT_STATUSES;
+    const statusList = Prisma.join(
+      statuses.map((status) => Prisma.sql`${status}`),
+    );
+
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`p."status"::text IN (${statusList})`,
+    ];
+
+    if (query.pricingType) {
+      conditions.push(
+        Prisma.sql`p."pricingType"::text = ${query.pricingType as PricingType}`,
+      );
+    }
+
+    const graphicFormats = parseGraphicFormatList(query.graphicFormat);
+    if (graphicFormats.length) {
+      conditions.push(
+        Prisma.sql`p."graphicFormats" && ARRAY[${Prisma.join(
+          graphicFormats.map((format) => Prisma.sql`${format}`),
+        )}]::"catalog"."enum_content_products_graphicFormat"[]`,
+      );
+    }
+
+    const colorFilter = normalizeColorFilter(query.color);
+    if (colorFilter) {
+      conditions.push(
+        Prisma.sql`p."colors" @> ARRAY[${colorFilter}]::text[]`,
+      );
+    }
+
+    const categoryIds = toBigIntList(query.categoryId);
+    if (categoryIds.length) {
+      conditions.push(
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM "catalog"."product_categories" pc
+          WHERE pc."product_id" = p.id
+            AND pc."category_id" IN (${Prisma.join(
+              categoryIds.map((categoryId) => Prisma.sql`${categoryId}`),
+            )})
+        )`,
+      );
+    }
+
+    const tagIds = tagFilter.tagIds;
+    if (tagIds.length) {
+      conditions.push(
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM "catalog"."product_tags" pt
+          WHERE pt."product_id" = p.id
+            AND pt."tag_id" IN (${Prisma.join(
+              tagIds.map((tagId) => Prisma.sql`${tagId}`),
+            )})
+        )`,
+      );
+    }
+
+    if (query.tagName) {
+      const normalizedTag = normalizeTagLabel(query.tagName);
+      if (normalizedTag) {
+        const tagTerm = normalizeFaText(normalizedTag);
+        if (tagTerm) {
+          const explicitTagLike = `%${tagTerm}%`;
+          conditions.push(
+            Prisma.sql`EXISTS (
+              SELECT 1 FROM "catalog"."product_tags" pt
+              JOIN "catalog"."tags" t ON t.id = pt."tag_id"
+              WHERE pt."product_id" = p.id
+                AND t.name ILIKE ${explicitTagLike}
+            )`,
+          );
+        }
+      }
+    }
+
+    if (topicFilter.topicIds.length) {
+      conditions.push(
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM "catalog"."product_topics" ptop
+          WHERE ptop."product_id" = p.id
+            AND ptop."topic_id" IN (${Prisma.join(
+              topicFilter.topicIds.map((topicId) => Prisma.sql`${topicId}`),
+            )})
+        )`,
+      );
+    }
+
+    if (query.authorId) {
+      conditions.push(
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM "catalog"."product_suppliers" ps
+          WHERE ps."product_id" = p.id AND ps."user_id" = ${query.authorId}
+        )`,
+      );
+    }
+
+    const hasFile = parseBooleanFlag(query.hasFile);
+    if (hasFile !== undefined) {
+      conditions.push(
+        hasFile
+          ? Prisma.sql`EXISTS (
+              SELECT 1 FROM "catalog"."product_files" pf WHERE pf."product_id" = p.id
+            )`
+          : Prisma.sql`NOT EXISTS (
+              SELECT 1 FROM "catalog"."product_files" pf WHERE pf."product_id" = p.id
+            )`,
+      );
+    }
+
+    const hasAssets = parseBooleanFlag(query.hasAssets);
+    if (hasAssets !== undefined) {
+      conditions.push(
+        hasAssets
+          ? Prisma.sql`EXISTS (
+              SELECT 1 FROM "catalog"."product_assets" pa WHERE pa."product_id" = p.id
+            )`
+          : Prisma.sql`NOT EXISTS (
+              SELECT 1 FROM "catalog"."product_assets" pa WHERE pa."product_id" = p.id
+            )`,
+      );
+    }
+
+    const tagMatchClause = Prisma.sql`
+      EXISTS (
+        SELECT 1
+        FROM "catalog"."product_tags" spt
+        JOIN "catalog"."tags" st ON st.id = spt."tag_id"
+        WHERE spt."product_id" = p.id
+          AND (
+            st.name ILIKE ${likeTerm}
+            OR st.slug ILIKE ${likeTerm}
+          )
+      )
+    `;
+
+    conditions.push(
+      Prisma.sql`(
+        p.title ILIKE ${likeTerm}
+        OR p."description" ILIKE ${likeTerm}
+        OR ${tagMatchClause}
+      )`,
+    );
+
+    const whereClause =
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(
+            conditions,
+            ' AND ',
+          )}`
+        : Prisma.sql``;
+
+    const scoreExpression = Prisma.sql`
+      (CASE WHEN p.title ILIKE ${startsWithTerm} THEN 4 ELSE 0 END)
+      + (CASE WHEN p.title ILIKE ${likeTerm} THEN 2 ELSE 0 END)
+      + (CASE WHEN p."description" ILIKE ${likeTerm} THEN 1 ELSE 0 END)
+      + (CASE WHEN ${tagMatchClause} THEN 3 ELSE 0 END)
+    `;
+
+    const secondaryOrder = (() => {
+      if (sort === 'popular') {
+        return Prisma.sql`p."downloadsCount" DESC, p."likesCount" DESC, p."createdAt" DESC, p.id DESC`;
+      }
+      if (sort === 'viewed') {
+        return Prisma.sql`p."viewsCount" DESC, p."createdAt" DESC, p.id DESC`;
+      }
+      if (sort === 'liked') {
+        return Prisma.sql`p."likesCount" DESC, p."createdAt" DESC, p.id DESC`;
+      }
+      return Prisma.sql`p."createdAt" DESC, p.id DESC`;
+    })();
+
+    const orderByClause = Prisma.sql`ORDER BY score DESC, ${secondaryOrder}`;
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ id: bigint; score: number }>
+    >(Prisma.sql`
+      SELECT p.id, ${scoreExpression} AS score
+      FROM "catalog"."products" p
+      ${whereClause}
+      ${orderByClause}
+      LIMIT ${limit} OFFSET ${skip}
+    `);
+
+    const ids = rows.map((row) => row.id);
+
+    const countResult = await this.prisma.$queryRaw<
+      Array<{ count: bigint }>
+    >(Prisma.sql`
+      SELECT COUNT(*)::bigint AS count
+      FROM "catalog"."products" p
+      ${whereClause}
+    `);
+
+    const total = Number(countResult?.[0]?.count ?? 0);
+    if (!ids.length) {
+      const emptyPagination = toPaginationResult<ProductBriefDto>(
+        [],
+        total,
+        page,
+        limit,
+      );
+      return {
+        items: emptyPagination.data,
+        total: emptyPagination.total,
+        page: emptyPagination.page,
+        limit: emptyPagination.limit,
+        hasNext: emptyPagination.hasNext,
+      };
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: productInclude,
+    });
+    const order = new Map(ids.map((id, index) => [id.toString(), index]));
+    products.sort(
+      (a, b) =>
+        (order.get(a.id.toString()) ?? 0) -
+        (order.get(b.id.toString()) ?? 0),
+    );
+    const reactions = await this.resolveUserReactions(ids, viewerId);
+    const items = (products as ProductWithRelations[]).map((p) => {
+      const brief = ProductMapper.toBrief(p);
+      brief.isLikedByCurrentUser = reactions.liked.has(p.id.toString());
+      brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
+        p.id.toString(),
+      );
+      return brief;
+    });
+
+    const pagination = toPaginationResult(items, total, page, limit);
+    return {
+      items: pagination.data,
+      total: pagination.total,
+      page: pagination.page,
+      limit: pagination.limit,
+      hasNext: pagination.hasNext,
+    };
+  }
+
+  async listLikedByUser(
+    userId: string,
+    query: UserProductListQueryDto,
+  ): Promise<ProductPaginatedResultDto> {
+    const { page, limit, skip } = clampPagination(
+      query.page,
+      query.limit ?? 20,
+      50,
+    );
+
+    type LikeWithProduct = Prisma.LikeGetPayload<{
+      include: { product: { include: typeof productInclude } };
+    }>;
+
+    const [likes, total] = await this.prisma.$transaction([
+      this.prisma.like.findMany({
+        where: { userId },
+        orderBy: [{ createdAt: 'desc' }, { productId: 'desc' }],
+        skip,
+        take: limit,
+        include: { product: { include: productInclude } },
+      }),
+      this.prisma.like.count({ where: { userId } }),
+    ]);
+
+    const productIds = likes.map((l) => l.productId);
+    const reactions = await this.resolveUserReactions(productIds, userId, {
+      skipLiked: true,
+    });
+
+    const items = (likes as LikeWithProduct[]).map((like) => {
+      const brief = ProductMapper.toBrief(
+        like.product as unknown as ProductWithRelations,
+      );
+      brief.isLikedByCurrentUser = true;
+      brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
+        like.productId.toString(),
+      );
+      return brief;
+    });
+
+    const pagination = toPaginationResult(items, total, page, limit);
+    return {
+      items: pagination.data,
+      total: pagination.total,
+      page: pagination.page,
+      limit: pagination.limit,
+      hasNext: pagination.hasNext,
+    };
+  }
+
+  async listBookmarkedByUser(
+    userId: string,
+    query: UserProductListQueryDto,
+  ): Promise<ProductPaginatedResultDto> {
+    const { page, limit, skip } = clampPagination(
+      query.page,
+      query.limit ?? 20,
+      50,
+    );
+
+    type BookmarkWithProduct = Prisma.BookmarkGetPayload<{
+      include: { product: { include: typeof productInclude } };
+    }>;
+
+    const [bookmarks, total] = await this.prisma.$transaction([
+      this.prisma.bookmark.findMany({
+        where: { userId },
+        orderBy: [{ createdAt: 'desc' }, { productId: 'desc' }],
+        skip,
+        take: limit,
+        include: { product: { include: productInclude } },
+      }),
+      this.prisma.bookmark.count({ where: { userId } }),
+    ]);
+
+    const productIds = bookmarks.map((b) => b.productId);
+    const reactions = await this.resolveUserReactions(productIds, userId, {
+      skipBookmarked: true,
+    });
+
+    const items = (bookmarks as BookmarkWithProduct[]).map((bookmark) => {
+      const brief = ProductMapper.toBrief(
+        bookmark.product as unknown as ProductWithRelations,
+      );
+      brief.isBookmarkedByCurrentUser = true;
+      brief.isLikedByCurrentUser = reactions.liked.has(
+        bookmark.productId.toString(),
+      );
+      return brief;
+    });
+
+    const pagination = toPaginationResult(items, total, page, limit);
+    return {
+      items: pagination.data,
+      total: pagination.total,
+      page: pagination.page,
+      limit: pagination.limit,
+      hasNext: pagination.hasNext,
+    };
+  }
+
   async remove(idOrSlug: string, actor: Actor): Promise<ProductDetailDto> {
     const product = await this.getByIdOrSlugStrict(idOrSlug);
     if (!(await this.canEdit(product.id, actor))) {
@@ -706,7 +1363,7 @@ export class ProductService {
   async toggleLike(
     productIdStr: string,
     userId: string,
-  ): Promise<{ liked: boolean }> {
+  ): Promise<{ productId: string; liked: boolean; likesCount: number }> {
     const productId = toBigIntNullable(productIdStr);
     if (productId === null) throw new BadRequestException('Invalid product id');
 
@@ -724,23 +1381,32 @@ export class ProductService {
           data: { likesCount: { decrement: 1 } },
         }),
       ]);
-      return { liked: false };
+    } else {
+      await this.prisma.$transaction([
+        this.prisma.like.create({ data: { userId, productId } }),
+        this.prisma.product.update({
+          where: { id: productId },
+          data: { likesCount: { increment: 1 } },
+        }),
+      ]);
     }
 
-    await this.prisma.$transaction([
-      this.prisma.like.create({ data: { userId, productId } }),
-      this.prisma.product.update({
-        where: { id: productId },
-        data: { likesCount: { increment: 1 } },
-      }),
-    ]);
-    return { liked: true };
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { likesCount: true },
+    });
+
+    return {
+      productId: productId.toString(),
+      liked: !existed,
+      likesCount: product?.likesCount ?? 0,
+    };
   }
 
   async toggleBookmark(
     productIdStr: string,
     userId: string,
-  ): Promise<{ bookmarked: boolean }> {
+  ): Promise<{ productId: string; bookmarked: boolean }> {
     const productId = toBigIntNullable(productIdStr);
     if (productId === null) throw new BadRequestException('Invalid product id');
 
@@ -752,11 +1418,11 @@ export class ProductService {
       await this.prisma.bookmark.delete({
         where: { userId_productId: { userId, productId } },
       });
-      return { bookmarked: false };
+    } else {
+      await this.prisma.bookmark.create({ data: { userId, productId } });
     }
 
-    await this.prisma.bookmark.create({ data: { userId, productId } });
-    return { bookmarked: true };
+    return { productId: productId.toString(), bookmarked: !existed };
   }
 
   async incrementView(
@@ -831,7 +1497,7 @@ export class ProductService {
     if (/^\d+$/u.test(idOrSlug)) {
       return { id: BigInt(idOrSlug) };
     }
-    return { slug: normalizeFaText(idOrSlug) };
+    return { slug: normalizeFaText(safeDecodeSlug(idOrSlug)) };
   }
 
   private withActiveStatus(
@@ -1039,6 +1705,78 @@ export class ProductService {
       sortOrder:
         asset.order !== undefined && asset.order !== null ? asset.order : index,
     }));
+  }
+
+  private async resolveTopicFilter(
+    query: TopicFilterInput,
+  ): Promise<{ topicIds: bigint[]; slugNotFound: boolean }> {
+    const topicIds = toBigIntList(query.topicId);
+    if (topicIds.length) {
+      return { topicIds, slugNotFound: false };
+    }
+    if (!query.topicSlug) {
+      return { topicIds: [], slugNotFound: false };
+    }
+    const normalizedSlug = this.normalizeFilterSlug(query.topicSlug);
+    if (!normalizedSlug) {
+      return { topicIds: [], slugNotFound: true };
+    }
+    const topic = await this.prisma.topic.findUnique({
+      where: { slug: normalizedSlug },
+      select: { id: true },
+    });
+    if (!topic) {
+      return { topicIds: [], slugNotFound: true };
+    }
+    return { topicIds: [topic.id], slugNotFound: false };
+  }
+
+  private async resolveTagFilter(
+    query: TagFilterInput,
+  ): Promise<{ tagIds: bigint[]; slugNotFound: boolean }> {
+    const tagIds = toBigIntList(query.tagId);
+    if (tagIds.length) {
+      return { tagIds, slugNotFound: false };
+    }
+    if (!query.tagSlug) {
+      return { tagIds: [], slugNotFound: false };
+    }
+    const normalizedSlug = this.normalizeFilterSlug(query.tagSlug);
+    if (!normalizedSlug) {
+      return { tagIds: [], slugNotFound: true };
+    }
+    const tag = await this.prisma.tag.findUnique({
+      where: { slug: normalizedSlug },
+      select: { id: true },
+    });
+    if (!tag) {
+      return { tagIds: [], slugNotFound: true };
+    }
+    return { tagIds: [tag.id], slugNotFound: false };
+  }
+
+  private normalizeFilterSlug(raw?: string): string | undefined {
+    if (raw === undefined || raw === null) {
+      return undefined;
+    }
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    const decoded = safeDecodeSlug(trimmed);
+    const normalized = normalizeFaText(decoded);
+    return normalized.length ? normalized : undefined;
+  }
+
+  private normalizeShortCode(raw: string): string {
+    const trimmed = raw?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Short code is required');
+    }
+    if (trimmed.startsWith(SHORT_LINK_PREFIX)) {
+      return trimmed;
+    }
+    return `${SHORT_LINK_PREFIX}${trimmed}`;
   }
 
   private buildTopicLinks(

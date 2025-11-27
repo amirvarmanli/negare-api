@@ -50,7 +50,6 @@ export class LikesService {
     });
 
     if (existing) {
-      // آن‌لایک: حذف رکورد + کاهش شمارنده‌ی محصول
       await this.prisma.$transaction([
         this.prisma.like.delete({
           where: { userId_productId: { userId, productId } },
@@ -60,23 +59,31 @@ export class LikesService {
           data: { likesCount: { decrement: 1 } },
         }),
       ]);
-      return { liked: false };
+    } else {
+      await this.prisma.$transaction([
+        this.prisma.like.create({
+          data: {
+            product: { connect: { id: productId } },
+            user: { connect: { id: userId } },
+          },
+        }),
+        this.prisma.product.update({
+          where: { id: productId },
+          data: { likesCount: { increment: 1 } },
+        }),
+      ]);
     }
 
-    // لایک: ساخت رکورد + افزایش شمارنده‌ی محصول
-    await this.prisma.$transaction([
-      this.prisma.like.create({
-        data: {
-          product: { connect: { id: productId } },
-          user: { connect: { id: userId } },
-        },
-      }),
-      this.prisma.product.update({
-        where: { id: productId },
-        data: { likesCount: { increment: 1 } },
-      }),
-    ]);
-    return { liked: true };
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { likesCount: true },
+    });
+
+    return {
+      productId: productId.toString(),
+      liked: !existing,
+      likesCount: product?.likesCount ?? 0,
+    };
   }
 
   /** لیست محصولات لایک‌شده‌ی کاربر (Load more با cursor: createdAt, productId) */
@@ -115,10 +122,27 @@ export class LikesService {
 
     const typed = rows as LikeWithProduct[];
 
-    const items: UserLikeItemDto[] = typed.map((l) => ({
-      product: ProductMapper.toBrief(l.product as ProductWithRelations),
-      likedAt: l.createdAt.toISOString(),
-    }));
+    const productIds = typed.map((like) => like.productId);
+    const bookmarkedSet = new Set<string>();
+    if (productIds.length > 0) {
+      const bookmarked = await this.prisma.bookmark.findMany({
+        where: { userId, productId: { in: productIds } },
+        select: { productId: true },
+      });
+      bookmarked.forEach((row) => bookmarkedSet.add(row.productId.toString()));
+    }
+
+    const items: UserLikeItemDto[] = typed.map((l) => {
+      const product = ProductMapper.toBrief(l.product as ProductWithRelations);
+      product.isLikedByCurrentUser = true;
+      product.isBookmarkedByCurrentUser = bookmarkedSet.has(
+        l.productId.toString(),
+      );
+      return {
+        product,
+        likedAt: l.createdAt.toISOString(),
+      };
+    });
 
     let nextCursor: string | undefined;
     if (typed.length === take) {

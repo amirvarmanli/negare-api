@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateTagDto {
   @ApiProperty({
@@ -9,6 +15,9 @@ export class CreateTagDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
+  @Matches(/^[\p{L}\p{N}\s_-]+$/u, {
+    message: 'Tag name can only contain letters, numbers, spaces, _ or -',
+  })
   name!: string;
 
   @ApiProperty({

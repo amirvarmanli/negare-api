@@ -20,6 +20,10 @@ import {
 } from '@app/catalog/product/product.mapper';
 import { StorageService } from '@app/catalog/storage/storage.service';
 
+type DownloadWithProduct = Prisma.ProductDownloadGetPayload<{
+  include: { product: { include: typeof productInclude } };
+}>;
+
 function encodeCursor(obj: Record<string, string | number>) {
   return Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');
 }
@@ -112,14 +116,15 @@ export class DownloadsService {
       ? { AND: [{ userId }, cursorWhere] }
       : { userId };
 
-    const rows = await this.prisma.productDownload.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take,
-      include: { product: { include: productInclude } },
-    });
+    const rows: DownloadWithProduct[] =
+      await this.prisma.productDownload.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+        include: { product: { include: productInclude } },
+      });
 
-    const items: UserDownloadItemDto[] = rows.map((d) => ({
+    const items: UserDownloadItemDto[] = rows.map((d: DownloadWithProduct) => ({
       product: ProductMapper.toBrief(d.product as ProductWithRelations),
       downloadedAt: d.createdAt.toISOString(),
       bytes:

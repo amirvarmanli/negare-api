@@ -13,7 +13,6 @@ import {
   Req,
   Res,
   UnauthorizedException,
-  InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
 import {
@@ -38,7 +37,6 @@ import type { AuthConfig } from '@app/config/auth.config';
 import { parseDurationToSeconds } from '@app/shared/utils/parse-duration.util';
 
 import type Redis from 'ioredis';
-import { refreshAllowKey } from '@app/core/auth/auth.constants';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -103,10 +101,14 @@ export class AuthController {
     req: Request,
     fallback?: string | null,
   ): string | null {
-    const cookieToken = (
-      req.cookies?.[AuthController.REFRESH_COOKIE_NAME] ?? ''
-    ).trim();
-    if (cookieToken) return cookieToken;
+    const cookies = req.cookies ?? {};
+    const cookieToken =
+      (cookies?.refreshToken ??
+        cookies?.[AuthController.REFRESH_COOKIE_NAME] ??
+        '') as string;
+    const trimmedCookie =
+      typeof cookieToken === 'string' ? cookieToken.trim() : '';
+    if (trimmedCookie) return trimmedCookie;
     const fb = (fallback ?? '').trim();
     return fb || null;
   }
@@ -187,18 +189,18 @@ export class AuthController {
   @ApiResponse({ status: 200, schema: { example: { accessToken: '...' } } })
   async refresh(
     @Req() req: Request,
-    @Body() dto: RefreshTokenDto,
+    @Body() _dto: RefreshTokenDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     this.setNoStore(res);
 
-    const refreshToken =
-      (dto?.refreshToken ?? '').trim() || this.getRefreshToken(req, null);
+    const refreshToken = this.getRefreshToken(req, null);
 
     if (!refreshToken) {
-      throw new BadRequestException({
+      this.clearRefreshCookie(res);
+      throw new UnauthorizedException({
         code: 'MissingRefresh',
-        message: 'Refresh token not provided.',
+        message: 'Missing refresh token.',
       });
     }
 
@@ -206,7 +208,12 @@ export class AuthController {
       const pair = await this.refreshService.refresh(refreshToken);
       this.setRefreshCookie(res, pair.refreshToken);
       return { accessToken: pair.accessToken };
-    } catch {
+    } catch (err) {
+      this.clearRefreshCookie(res);
+      // Hide internal errors but avoid unhandled crashes
+      this.logger.warn(
+        `Failed to refresh token: ${err instanceof Error ? err.message : String(err)}`,
+      );
       throw new UnauthorizedException({
         code: 'InvalidRefresh',
         message: 'Invalid or expired refresh token.',
@@ -234,8 +241,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     this.setNoStore(res);
-    const refreshToken =
-      (dto?.refreshToken ?? '').trim() || this.getRefreshToken(req, null);
+    const refreshToken = this.getRefreshToken(req, dto?.refreshToken ?? null);
 
     // همیشه کوکی رو پاک کن
     this.clearRefreshCookie(res);

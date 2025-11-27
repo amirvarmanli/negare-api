@@ -7,11 +7,13 @@ import {
   HttpCode,
   HttpStatus,
   Ip,
+  Logger,
   Param,
   Patch,
   Post,
   Query,
   ForbiddenException,
+  Req,
   Res,
 } from '@nestjs/common';
 import {
@@ -23,8 +25,9 @@ import {
   ApiTags,
   ApiParam,
   ApiResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { RoleName } from '@prisma/client';
 import {
   CurrentUser,
@@ -35,17 +38,23 @@ import { Public } from '@app/common/decorators/public.decorator';
 import { ProductService, Actor } from '@app/catalog/product/product.service';
 import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
 import { UpdateProductDto } from '@app/catalog/product/dtos/product-update.dto';
-import { ProductFindQueryDto } from '@app/catalog/product/dtos/product-query.dto';
+import {
+  ProductFindQueryDto,
+  ProductRelatedQueryDto,
+  ProductSearchQueryDto,
+} from '@app/catalog/product/dtos/product-query.dto';
 import {
   ProductBriefDto,
   ProductDetailDto,
   ProductListResultDto,
+  ProductPaginatedResultDto,
+  ProductSearchResultDto,
 } from '@app/catalog/product/dtos/product-response.dto';
 import { ProductIdParamDto } from '@app/catalog/product/dtos/product-id.dto';
-import {
-  normalizeFaText,
-  safeDecodeSlug,
-} from '@shared-slug/slug/fa-slug.util';
+import { UserProductListQueryDto } from '@app/catalog/product/dtos/product-user-list-query.dto';
+import { LikeToggleResponseDto } from '@app/catalog/likes/dtos/like-toggle.dto';
+import { BookmarkToggleResponseDto } from '@app/catalog/bookmarks/dtos/bookmark-toggle.dto';
+import { requireUserId } from '@app/catalog/utils/current-user.util';
 
 function requireActor(user: CurrentUserPayload | undefined): Actor {
   if (!user) {
@@ -61,6 +70,8 @@ function requireActor(user: CurrentUserPayload | undefined): Actor {
 @Controller('catalog/products')
 export class ProductController {
   constructor(private readonly service: ProductService) {}
+
+  private readonly logger = new Logger(ProductController.name);
 
   @Post()
   @ApiBearerAuth()
@@ -108,12 +119,88 @@ export class ProductController {
     return this.service.findByIdOrSlug(id, viewerId);
   }
 
-  @Get(':slug')
+  @Get('search')
+  @Public()
+  @ApiOperation({ summary: 'Search products by title and tags' })
+  @ApiOkResponse({ type: ProductSearchResultDto })
+  async search(
+    @Query() q: ProductSearchQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<ProductSearchResultDto> {
+    return this.service.search(q, user?.id);
+  }
+
+  @Get('short/:code')
+  @Public()
+  @ApiOperation({ summary: 'Resolve a product by short link code' })
+  @ApiOkResponse({ type: ProductDetailDto })
+  @ApiParam({
+    name: 'code',
+    example: '571950',
+    description: 'Short product code (with or without "p/" prefix)',
+  })
+  async findByShortCode(
+    @Param('code') code: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<ProductDetailDto> {
+    return this.service.findByShortCode(code, user?.id);
+  }
+
+  @Get('liked')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List liked products of current user' })
+  @ApiOkResponse({ type: ProductPaginatedResultDto })
+  async listLiked(
+    @Query() q: UserProductListQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<ProductPaginatedResultDto> {
+    const userId = requireUserId(user);
+    return this.service.listLikedByUser(userId, q);
+  }
+
+  @Get('bookmarked')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List bookmarked products of current user' })
+  @ApiOkResponse({ type: ProductPaginatedResultDto })
+  async listBookmarked(
+    @Query() q: UserProductListQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<ProductPaginatedResultDto> {
+    const userId = requireUserId(user);
+    return this.service.listBookmarkedByUser(userId, q);
+  }
+
+  @Get(':idOrSlug/related')
+  @Public()
+  @ApiOperation({
+    summary: 'Get related products for a given product based on shared tags',
+  })
+  @ApiOkResponse({ type: ProductBriefDto, isArray: true })
+  @ApiParam({
+    name: 'idOrSlug',
+    example: 'modern-logo-pack',
+    description: 'Product slug or numeric id',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    example: 12,
+    description: 'Max items to return (default 12, max 24)',
+  })
+  async findRelated(
+    @Param() params: ProductIdParamDto,
+    @Query() q: ProductRelatedQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<ProductBriefDto[]> {
+    return this.service.findRelated(params.idOrSlug, q.limit, user?.id);
+  }
+
+  @Get(':idOrSlug')
   @Public()
   @ApiOperation({
     summary: 'Get a product by slug (Persian-safe)',
     description:
-      'Decodes and normalizes the slug, returning a 301 redirect when the slug changed.',
+      'Accepts a product slug (Persian-safe) or numeric id, normalizes slugs, and redirects (301) when an old slug is used.',
   })
   @ApiOkResponse({ type: ProductDetailDto })
   @ApiResponse({
@@ -121,17 +208,23 @@ export class ProductController {
     description: 'Redirect to the canonical slug when an old slug is used',
   })
   @ApiParam({
-    name: 'slug',
-    example: 'نقاشی-و-تصویرسازی',
-    description: 'Product slug',
+    name: 'idOrSlug',
+    example: 'modern-logo-pack',
+    description: 'Product slug (Persian-safe) or numeric id',
   })
-  async findBySlug(
-    @Param('slug') slugParam: string,
+  async findByIdOrSlug(
+    @Param() params: ProductIdParamDto,
     @Res({ passthrough: true }) res: Response,
-    @CurrentUser() user: CurrentUserPayload | undefined,
+    @Req() req: Request & { user?: { id: string } },
   ): Promise<ProductDetailDto | undefined> {
-    const normalized = normalizeFaText(safeDecodeSlug(slugParam));
-    const result = await this.service.findBySlug(normalized, user?.id);
+    const viewerId = req.user?.id ?? undefined;
+    this.logger.debug({
+      context: 'ProductDetailFlags',
+      step: 'controller',
+      idOrSlug: params.idOrSlug,
+      viewerId,
+    });
+    const result = await this.service.findForRoute(params.idOrSlug, viewerId);
     if (result.redirectTo) {
       res.redirect(
         HttpStatus.MOVED_PERMANENTLY,
@@ -147,13 +240,14 @@ export class ProductController {
   @ApiOperation({
     summary: 'List products (cursor-based "Load more")',
     description:
-      'Supports filters (q, categoryId, tagId, topicId, authorId, pricingType, graphicFormat, status, color, hasFile, hasAssets) and sort (latest|popular|viewed|liked).',
+      'Supports filters (q, categoryId, tagId, tagSlug, topicId, topicSlug, authorId, pricingType, graphicFormat, status, color, hasFile, hasAssets) and sort (latest|popular|viewed|liked).',
   })
   @ApiOkResponse({ type: ProductListResultDto })
   async findAll(
     @Query() q: ProductFindQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<ProductListResultDto> {
-    return this.service.findAll(q);
+    return this.service.findAll(q, user?.id);
   }
 
   @Delete(':idOrSlug')
@@ -170,26 +264,34 @@ export class ProductController {
 
   @Post(':id/like')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Toggle like for current user' })
-  @ApiOkResponse({ schema: { properties: { liked: { type: 'boolean' } } } })
+  @ApiOperation({ summary: 'Toggle product like' })
+  @ApiOkResponse({ type: LikeToggleResponseDto })
+  @ApiParam({
+    name: 'id',
+    description: 'Product id (numeric string)',
+    example: '1001',
+  })
   async toggleLike(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload | undefined,
-  ) {
+  ): Promise<LikeToggleResponseDto> {
     const actor = requireActor(user);
     return this.service.toggleLike(id, actor.id);
   }
 
   @Post(':id/bookmark')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Toggle bookmark for current user' })
-  @ApiOkResponse({
-    schema: { properties: { bookmarked: { type: 'boolean' } } },
+  @ApiOperation({ summary: 'Toggle product bookmark' })
+  @ApiOkResponse({ type: BookmarkToggleResponseDto })
+  @ApiParam({
+    name: 'id',
+    description: 'Product id (numeric string)',
+    example: '1001',
   })
   async toggleBookmark(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload | undefined,
-  ) {
+  ): Promise<BookmarkToggleResponseDto> {
     const actor = requireActor(user);
     return this.service.toggleBookmark(id, actor.id);
   }

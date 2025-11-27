@@ -3,6 +3,7 @@ import { CoreModule } from '@app/core/core.module';
 import { HealthModule } from '@app/health/health.module';
 import { NotificationsModule } from '@app/notifications/notifications.module';
 import { CatalogModule } from '@app/catalog/catalog.module';
+import { ArtistModule } from '@app/catalog/artist/artist.module';
 import { AppConfigModule } from '@app/config/config.module';
 import { PrismaModule } from '@app/prisma/prisma.module';
 
@@ -14,6 +15,7 @@ import { PrismaModule } from '@app/prisma/prisma.module';
     HealthModule,
     CoreModule,
     CatalogModule,
+    ArtistModule,
   ],
 })
 export class AppModule {}

@@ -1,12 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export class LikeToggleResponseDto {
+export class BookmarkToggleResponseDto {
   @ApiProperty({ example: '123' })
   productId!: string;
 
   @ApiProperty({ example: true })
-  liked!: boolean;
-
-  @ApiProperty({ example: 42 })
-  likesCount!: number;
+  bookmarked!: boolean;
 }

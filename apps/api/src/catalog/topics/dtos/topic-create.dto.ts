@@ -48,6 +48,6 @@ export class CreateTopicDto {
   })
   @IsOptional()
   @IsString()
-  @Length(0, 240)
+  @Length(0, 550)
   seoDescription?: string;
 }

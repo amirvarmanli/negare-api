@@ -1,4 +1,5 @@
 export const REFRESH_ALLOW_PREFIX = 'auth:refresh:allow:';
+export const REFRESH_TOKEN_COOKIE_NAME = 'refresh_token';
 
 export interface RefreshAllowRecord {
   userId: string;

@@ -15,14 +15,35 @@ export const productInclude = {
   assets: { orderBy: { sortOrder: 'asc' } },
   categoryLinks: { include: { category: true } },
   tagLinks: { include: { tag: true } },
-  supplierLinks: true,
+  supplierLinks: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          avatarUrl: true,
+          _count: {
+            select: {
+              productSuppliers: true,
+            },
+          },
+        },
+      },
+    },
+  },
   topics: { include: { topic: true }, orderBy: { order: 'asc' } },
   file: true,
-} as const;
+} as const satisfies Prisma.ProductInclude;
 
 export type ProductWithRelations = Prisma.ProductGetPayload<{
   include: typeof productInclude;
 }>;
+
+type ProductAssetEntity = ProductWithRelations['assets'][number];
+type ProductCategoryLinkEntity = ProductWithRelations['categoryLinks'][number];
+type ProductTagLinkEntity = ProductWithRelations['tagLinks'][number];
+type ProductSupplierLinkEntity = ProductWithRelations['supplierLinks'][number];
+type ProductTopicLinkEntity = ProductWithRelations['topics'][number];
 
 /* ============================================================
  * Helpers (type-safe, بدون any)
@@ -49,6 +70,12 @@ function toStringOrUndefined(v: unknown): string | undefined {
 export class ProductMapper {
   /** تبدیل مدل کامل به خروجی خلاصه برای لیست‌ها */
   static toBrief(p: ProductWithRelations): ProductBriefDto {
+    const primarySupplier = p.supplierLinks?.[0]?.user;
+
+    const creatorId = primarySupplier?.id ?? null;
+    const creatorName = primarySupplier?.name ?? 'بدون نام';
+    const creatorAvatarUrl = primarySupplier?.avatarUrl ?? null;
+
     return {
       id: String(p.id),
       slug: p.slug,
@@ -63,11 +90,18 @@ export class ProductMapper {
       price:
         p.price !== null && p.price !== undefined ? Number(p.price) : undefined,
 
+      creatorId,
+      creatorName,
+      creatorAvatarUrl,
+
       status: p.status as ProductStatus,
 
       viewsCount: p.viewsCount,
       downloadsCount: p.downloadsCount,
       likesCount: p.likesCount,
+
+      isLikedByCurrentUser: false,
+      isBookmarkedByCurrentUser: false,
 
       shortLink: p.shortLink ?? undefined,
 
@@ -87,7 +121,7 @@ export class ProductMapper {
   static toDetail(p: ProductWithRelations): ProductDetailDto {
     const brief = this.toBrief(p);
 
-    const assets: ProductAssetDto[] = (p.assets ?? []).map((a) => ({
+    const assets: ProductAssetDto[] = (p.assets ?? []).map((a: ProductAssetEntity) => ({
       id: String(a.id),
       url: a.url,
       alt: a.alt ?? undefined,
@@ -95,7 +129,7 @@ export class ProductMapper {
     }));
 
     const categories: ProductCategoryDto[] = (p.categoryLinks ?? []).map(
-      (pc) => ({
+      (pc: ProductCategoryLinkEntity) => ({
         id: String(pc.category.id),
         name: pc.category.name,
         slug: pc.category.slug,
@@ -106,18 +140,32 @@ export class ProductMapper {
       }),
     );
 
-    const tags: ProductTagDto[] = (p.tagLinks ?? []).map((pt) => ({
+    const tags: ProductTagDto[] = (p.tagLinks ?? []).map((pt: ProductTagLinkEntity) => ({
       id: String(pt.tag.id),
       name: pt.tag.name,
       slug: pt.tag.slug,
     }));
 
-    const authors: ProductAuthorDto[] = (p.supplierLinks ?? []).map((ps) => ({
-      userId: ps.userId,
-      role: null as string | null,
-    }));
+    const authors: ProductAuthorDto[] = (p.supplierLinks ?? []).map(
+      (ps: ProductSupplierLinkEntity) => ({
+        userId: ps.userId,
+        role: null as string | null,
+      }),
+    );
 
-    const topics: ProductTopicDto[] = (p.topics ?? []).map((link) => {
+    const primarySupplierUser = p.supplierLinks?.[0]?.user;
+    const author =
+      primarySupplierUser !== undefined
+        ? {
+            id: primarySupplierUser.id,
+            name: primarySupplierUser.name ?? 'بدون نام',
+            avatarUrl: primarySupplierUser.avatarUrl ?? null,
+            productsCount:
+              primarySupplierUser._count?.productSuppliers ?? 0,
+          }
+        : undefined;
+
+    const topics: ProductTopicDto[] = (p.topics ?? []).map((link: ProductTopicLinkEntity) => {
       const topicId = String(link.topicId);
       return {
         topicId,
@@ -154,6 +202,7 @@ export class ProductMapper {
       categories,
       tags,
       authors,
+      author,
       topics,
       file,
     };

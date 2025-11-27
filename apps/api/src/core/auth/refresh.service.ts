@@ -93,7 +93,13 @@ export class RefreshService {
       throw new UnauthorizedException('Refresh token session mismatch.');
     }
 
-    await this.redis.del(key);
+    await this.redis
+      .del(key)
+      .catch((err) =>
+        this.logger.warn(
+          `Failed to delete refresh allow-list key ${key}: ${err?.message ?? err}`,
+        ),
+      );
 
     await this.tokens
       .blacklistRefreshJti(payload.jti, this.refreshTtlSeconds)
@@ -117,7 +123,13 @@ export class RefreshService {
     const payload = await this.verifyRefreshToken(refreshToken, true, true);
     if (!payload.sub || !payload.jti) return;
 
-    await this.redis.del(this.refreshKey(payload.jti));
+    await this.redis
+      .del(this.refreshKey(payload.jti))
+      .catch((err) =>
+        this.logger.warn(
+          `Failed to delete refresh allow-list key during revoke: ${err?.message ?? err}`,
+        ),
+      );
 
     await this.tokens
       .blacklistRefreshJti(payload.jti, this.refreshTtlSeconds)
@@ -153,8 +165,13 @@ export class RefreshService {
   ): Promise<TokenPair> {
     const jti = randomUUID();
     const rawRoles = (user.userRoles ?? [])
-      .map((relation) => relation.role?.name)
-      .filter((name): name is RoleName => Boolean(name));
+      .map(
+        (relation: UserWithRelations['userRoles'][number]) =>
+          relation.role?.name,
+      )
+      .filter(
+        (name: RoleName | null | undefined): name is RoleName => Boolean(name),
+      );
     const roleNames = Array.from(new Set(rawRoles)).map((role) =>
       role.toString(),
     );

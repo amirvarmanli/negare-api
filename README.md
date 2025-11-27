@@ -1,5 +1,11 @@
 ﻿# Negare API
 
+## Artist profiles & follows
+
+- Artist profiles expose bio/avatar, product & follower counts, and top products.
+- Follow/unfollow endpoints live under `/catalog/artists/:id/follow` and enforce supplier eligibility + self-follow guards.
+- See `docs/artists.md` for Prisma notes, endpoints, and Postman samples.
+
 ## Persian Slug Support
 
 ## Catalog Product Short Links, Files & Topics
@@ -14,6 +20,18 @@
   npx prisma migrate resolve --rolled-back 20251201000000_product_file_links --schema prisma/schema.prisma
   npx prisma migrate deploy --schema prisma/schema.prisma
   ```
+
+## Product Related & Search
+
+- `GET /api/catalog/products/:id/related` returns products sharing at least one tag with the source product, ordered by overlap count and `createdAt` (default 12 items, max 24).
+- `GET /api/catalog/products/search?q=...` searches titles, descriptions, and tag names with pagination (`page`, `limit≤50`) while keeping the existing catalog filters for category, tag, topic, pricingType, etc.; relevance favours title prefix matches, then titles, tag names, descriptions, and recency.
+- Both endpoints observe the same published visibility rules as product detail/listing, are exposed in Swagger, and ship with ready-made Postman requests in `postman/catalog.postman_collection.json`.
+
+## Product Likes & Bookmarks
+
+- Product DTOs now surface `isLikedByCurrentUser` and `isBookmarkedByCurrentUser` (set when the requester is authenticated) across detail, list, search, and related endpoints.
+- Toggle endpoints return useful payloads: `POST /catalog/products/:id/like` ⇒ `{ productId, liked, likesCount }`, `POST /catalog/products/:id/bookmark` ⇒ `{ productId, bookmarked }`.
+- New paginated endpoints for the current user: `GET /catalog/products/liked` and `GET /catalog/products/bookmarked` with `page`/`limit` (max 50), returning the standard product card DTO plus user reaction flags.
 
 
 
@@ -197,8 +215,5 @@ curl -s -X POST "${BASE_URL}/upload/abort?uploadId=${UPLOAD_ID}"
   - `auth:rbl:<jti>` – refresh blacklist managed by `TokenService`.
 
 Together these changes bring the NestJS API in line with Next.js 15 SSR + CSR expectations while maintaining secure, single-use refresh tokens.
-
-
-
 
 

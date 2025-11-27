@@ -120,7 +120,7 @@ export class UpdateProductDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(0, 240)
+  @Length(0, 550)
   seoDescription?: string;
 
   @ApiPropertyOptional({ type: [String] })

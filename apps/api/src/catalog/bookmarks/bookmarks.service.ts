@@ -13,6 +13,10 @@ import {
   type ProductWithRelations,
 } from '@app/catalog/product/product.mapper';
 
+type BookmarkWithProduct = Prisma.BookmarkGetPayload<{
+  include: { product: { include: typeof productInclude } };
+}>;
+
 function toBigIntNullable(id?: string): bigint | null {
   if (!id || !/^\d+$/.test(id)) return null;
   return BigInt(id);
@@ -41,7 +45,7 @@ export class BookmarksService {
   async toggle(
     userId: string,
     productIdStr: string,
-  ): Promise<{ bookmarked: boolean }> {
+  ): Promise<{ productId: string; bookmarked: boolean }> {
     const productId = toBigIntNullable(productIdStr);
     if (productId === null) throw new BadRequestException('Invalid product id');
 
@@ -53,10 +57,10 @@ export class BookmarksService {
       await this.prisma.bookmark.delete({
         where: { userId_productId: { userId, productId } },
       });
-      return { bookmarked: false };
+      return { productId: productId.toString(), bookmarked: false };
     }
     await this.prisma.bookmark.create({ data: { userId, productId } });
-    return { bookmarked: true };
+    return { productId: productId.toString(), bookmarked: true };
   }
 
   /* -------------------------------------------
@@ -113,17 +117,36 @@ export class BookmarksService {
       ? { AND: [{ userId }, cursorWhere] }
       : { userId };
 
-    const rows = await this.prisma.bookmark.findMany({
+    const rows: BookmarkWithProduct[] = await this.prisma.bookmark.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { productId: 'desc' }],
       take: limit,
       include: { product: { include: productInclude } },
     });
 
-    const items: UserBookmarkItemDto[] = rows.map((b) => ({
-      product: ProductMapper.toBrief(b.product as ProductWithRelations),
-      bookmarkedAt: b.createdAt.toISOString(),
-    }));
+    const productIds = rows.map((row) => row.productId);
+    const likedSet = new Set<string>();
+    if (productIds.length > 0) {
+      const likedRows = await this.prisma.like.findMany({
+        where: { userId, productId: { in: productIds } },
+        select: { productId: true },
+      });
+      likedRows.forEach((row) => likedSet.add(row.productId.toString()));
+    }
+
+    const items: UserBookmarkItemDto[] = rows.map(
+      (b: BookmarkWithProduct) => {
+        const product = ProductMapper.toBrief(
+          b.product as ProductWithRelations,
+        );
+        product.isBookmarkedByCurrentUser = true;
+        product.isLikedByCurrentUser = likedSet.has(b.productId.toString());
+        return {
+          product,
+          bookmarkedAt: b.createdAt.toISOString(),
+        };
+      },
+    );
 
     let nextCursor: string | undefined;
     if (rows.length === limit) {
