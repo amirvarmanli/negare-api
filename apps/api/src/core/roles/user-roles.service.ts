@@ -3,13 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma as PrismaNamespace } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { AssignRoleDto } from '@app/core/roles/dto/assign-role.dto';
 import { FindUserRolesQueryDto } from '@app/core/roles/dto/find-user-roles-query.dto';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
-type UserRoleWithRelations = PrismaNamespace.UserRoleGetPayload<{
+type UserRoleWithRelations = Prisma.UserRoleGetPayload<{
   include: {
     user: true;
     role: true;
@@ -27,7 +26,7 @@ export class UserRolesService {
   async findAll(
     query: FindUserRolesQueryDto,
   ): Promise<UserRoleWithRelations[]> {
-    const where: PrismaNamespace.UserRoleWhereInput = {};
+    const where: Prisma.UserRoleWhereInput = {};
 
     if (query.userId) {
       where.userId = query.userId;
@@ -96,12 +95,12 @@ export class UserRolesService {
         },
         include: { user: true, role: true },
       });
-    } catch (err) {
+    } catch (err: unknown) {
       // Defensive catch; upsert normally shouldn't throw P2002.
-      if (
-        err instanceof PrismaClientKnownRequestError &&
-        err.code === 'P2002'
-      ) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw err;
+      }
+      if (err.code === 'P2002') {
         throw new ConflictException('Role already assigned to this user.');
       }
       throw err;
@@ -116,11 +115,11 @@ export class UserRolesService {
     try {
       await this.prisma.userRole.delete({ where: { id } });
       return { success: true };
-    } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
         throw new NotFoundException(
           `User role assignment with id ${id} not found.`,
         );

@@ -1,8 +1,20 @@
-import { INestApplication, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  INestApplication,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
+/**
+ * PrismaService (Prisma 6.x compatible)
+ * Standard NestJS wrapper around PrismaClient
+ */
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   async onModuleInit(): Promise<void> {
     await this.$connect();
   }
@@ -17,3 +29,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 }
+
+/**
+ * Proper transaction client type for Prisma 6.x
+ *
+ * Prisma’s $transaction callback receives an instance of PrismaClient
+ * with the ITXClientDenyList removed.
+ */
+export type PrismaTxClient = Parameters<
+  Parameters<PrismaService['$transaction']>[0]
+>[0];

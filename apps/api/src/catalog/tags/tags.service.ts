@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '@app/prisma/prisma.service';
+import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import { CreateTagDto } from '@app/catalog/tags/dtos/tag-create.dto';
 import { UpdateTagDto } from '@app/catalog/tags/dtos/tag-update.dto';
 import { TagFindQueryDto } from '@app/catalog/tags/dtos/tag-query.dto';
@@ -45,6 +45,13 @@ function isBigIntStr(v?: string): v is string {
   return !!v && /^\d+$/.test(v);
 }
 
+function normalizeTagLabel(raw?: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/\s+/g, ' ');
+}
+
 /* ============================================================
  * Service
  * ========================================================== */
@@ -55,7 +62,7 @@ export class TagsService {
 
   /* -------- Create (idempotent روی slug) -------- */
   async create(dto: CreateTagDto): Promise<TagDto> {
-    const name = dto.name?.trim();
+    const name = normalizeTagLabel(dto.name);
     if (!name) {
       throw new BadRequestException('Tag name is required');
     }
@@ -90,10 +97,10 @@ export class TagsService {
       return TagMapper.toDto(created as TagWithCount);
     } catch (err: unknown) {
       // ۳) هندل کردن race condition: اگر دو درخواست همزمان همین slug را ساختند
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002'
-      ) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw err;
+      }
+      if (err.code === 'P2002') {
         const row = await this.prisma.tag.findUnique({
           where: { slug },
           include: { _count: { select: { productLinks: true } } },
@@ -115,7 +122,7 @@ export class TagsService {
     }
 
     const data: Prisma.TagUpdateInput = {
-      name: dto.name?.trim() ?? undefined,
+      name: dto.name ? normalizeTagLabel(dto.name) : undefined,
       slug: dto.slug?.trim() ?? undefined,
     };
 
@@ -153,13 +160,15 @@ export class TagsService {
     const ands: Prisma.TagWhereInput[] = [];
 
     if (q.q?.trim()) {
-      const term = q.q.trim();
+      const term = normalizeTagLabel(q.q);
+      if (term) {
       ands.push({
         OR: [
           { name: { contains: term, mode: 'insensitive' } },
           { slug: { contains: term, mode: 'insensitive' } },
         ],
       });
+      }
     }
 
     if (q.usedOnly === 'true') {
@@ -175,7 +184,9 @@ export class TagsService {
       include: { _count: { select: { productLinks: true } } },
     });
 
-    return { items: rows.map((r) => TagMapper.toDto(r as TagWithCount)) };
+    return {
+      items: rows.map((r: TagWithCount) => TagMapper.toDto(r as TagWithCount)),
+    };
   }
 
   /* -------- Popular (by usage count) -------- */
@@ -191,7 +202,9 @@ export class TagsService {
       include: { _count: { select: { productLinks: true } } },
     });
 
-    return { items: rows.map((r) => TagMapper.toDto(r as TagWithCount)) };
+    return {
+      items: rows.map((r: TagWithCount) => TagMapper.toDto(r as TagWithCount)),
+    };
   }
 
   /* -------- Remove -------- */
@@ -200,7 +213,7 @@ export class TagsService {
       throw new BadRequestException('Invalid tag id');
     }
 
-    await this.prisma.$transaction(async (trx) => {
+    await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       await trx.productTag.deleteMany({ where: { tagId: BigInt(idStr) } });
       await trx.tag.delete({ where: { id: BigInt(idStr) } });
     });

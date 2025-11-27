@@ -3,9 +3,8 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '@app/prisma/prisma.service';
+import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import {
   clampFaSlug,
   makeFaSlug,
@@ -61,7 +60,7 @@ export class TopicsService {
       ? await this.ensureUniqueSlug(slugSource, id)
       : undefined;
 
-    const updated = await this.prisma.$transaction(async (trx) => {
+    const updated = await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       const result = await trx.topic.update({
         where: { id },
         data: {
@@ -134,7 +133,9 @@ export class TopicsService {
     });
 
     return {
-      items: rows.map((topic) => TopicMapper.toDto(topic as TopicWithCount)),
+      items: rows.map((topic: TopicWithCount) =>
+        TopicMapper.toDto(topic as TopicWithCount),
+      ),
     };
   }
 
@@ -144,7 +145,7 @@ export class TopicsService {
     if (!existing) {
       throw new NotFoundException('Topic not found');
     }
-    await this.prisma.$transaction(async (trx) => {
+    await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       await trx.productTopic.deleteMany({ where: { topicId: id } });
       await trx.slugRedirect.deleteMany({
         where: {
@@ -186,7 +187,7 @@ export class TopicsService {
   }
 
   private async createSlugRedirect(
-    trx: Prisma.TransactionClient,
+    trx: PrismaTxClient,
     entityId: bigint,
     fromSlug: string,
     toSlug: string,
@@ -203,11 +204,11 @@ export class TopicsService {
           toSlug,
         },
       });
-    } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw error;
+      }
+      if (error.code === 'P2002') {
         throw new BadRequestException(
           `A redirect already exists for slug "${fromSlug}"`,
         );

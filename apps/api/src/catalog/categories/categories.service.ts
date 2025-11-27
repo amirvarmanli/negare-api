@@ -4,8 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
-import { PrismaService } from '@app/prisma/prisma.service';
+import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import {
   clampFaSlug,
   makeFaSlug,
@@ -20,7 +19,10 @@ import {
   CategoryListResultDto,
   CategoryTreeNodeDto,
 } from '@app/catalog/categories/dtos/category-response.dto';
-import { CategoryEntity, CategoryMapper } from '@app/catalog/categories/category.mapper';
+import {
+  CategoryEntity,
+  CategoryMapper,
+} from '@app/catalog/categories/category.mapper';
 
 function toBigIntNullable(id?: string): bigint | null {
   if (!id || !/^\d+$/.test(id)) return null;
@@ -83,16 +85,18 @@ export class CategoriesService {
           : { parent: { disconnect: true } }),
     };
 
-    const updated = await this.prisma.$transaction(async (trx) => {
-      const result = await trx.category.update({
-        where: { id },
-        data,
-      });
-      if (nextSlug && nextSlug !== existing.slug) {
-        await this.createSlugRedirect(trx, id, existing.slug, nextSlug);
-      }
-      return result;
-    });
+    const updated = await this.prisma.$transaction(
+      async (trx: PrismaTxClient) => {
+        const result = await trx.category.update({
+          where: { id },
+          data,
+        });
+        if (nextSlug && nextSlug !== existing.slug) {
+          await this.createSlugRedirect(trx, id, existing.slug, nextSlug);
+        }
+        return result;
+      },
+    );
     return CategoryMapper.toDto(updated);
   }
 
@@ -161,14 +165,18 @@ export class CategoriesService {
     const rows = await this.prisma.category.findMany({
       orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
     });
-    const nodes = rows.map((r) => CategoryMapper.toTreeNode(r, []));
+    const nodes: CategoryTreeNodeDto[] = rows.map((r: CategoryEntity) =>
+      CategoryMapper.toTreeNode(r, []),
+    );
     const byId = new Map<string, CategoryTreeNodeDto>();
-    nodes.forEach((n) => byId.set(n.id, n));
+    nodes.forEach((n: CategoryTreeNodeDto) => byId.set(n.id, n));
 
     // ساخت درخت
     const roots: CategoryTreeNodeDto[] = [];
-    nodes.forEach((n) => {
-      const parentId = rows.find((r) => String(r.id) === n.id)?.parentId;
+    nodes.forEach((n: CategoryTreeNodeDto) => {
+      const parentId = rows.find(
+        (r: CategoryEntity) => String(r.id) === n.id,
+      )?.parentId;
       const pkey = parentId ? String(parentId) : null;
       if (!pkey) {
         roots.push(n);
@@ -214,7 +222,7 @@ export class CategoriesService {
     const node = await this.prisma.category.findUnique({ where: { id } });
     if (!node) throw new NotFoundException('Category not found');
 
-    await this.prisma.$transaction(async (trx) => {
+    await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       // فرزندان را به والد این گره منتقل کن (یا root کن)
       await trx.category.updateMany({
         where: { parentId: id },
@@ -257,7 +265,7 @@ export class CategoriesService {
   }
 
   private async createSlugRedirect(
-    trx: Prisma.TransactionClient,
+    trx: PrismaTxClient,
     entityId: bigint,
     fromSlug: string,
     toSlug: string,
@@ -274,11 +282,11 @@ export class CategoriesService {
           toSlug,
         },
       });
-    } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw error;
+      }
+      if (error.code === 'P2002') {
         throw new BadRequestException(
           `A redirect already exists for slug "${fromSlug}"`,
         );

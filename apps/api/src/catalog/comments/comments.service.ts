@@ -3,7 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '@app/prisma/prisma.service';
+import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import { Prisma, CommentTarget } from '@prisma/client';
 import { Buffer } from 'buffer';
 import { clampPagination, toPaginationResult } from '@app/catalog/utils/pagination.util';
@@ -76,7 +76,9 @@ export class CommentsService {
       this.prisma.comment.count({ where }),
     ]);
 
-    const pageData = rows.map((row) => this.toDto(row as CommentEntity));
+    const pageData: CommentDto[] = rows.map((row: CommentEntity) =>
+      this.toDto(row as CommentEntity),
+    );
     const pagination = toPaginationResult(pageData, total, page, limit);
 
     return {
@@ -111,7 +113,7 @@ export class CommentsService {
       };
     }
 
-    const rows = await this.prisma.comment.findMany({
+    const rows: CommentEntity[] = await this.prisma.comment.findMany({
       where: {
         AND: [
           { productId, isApproved: true },
@@ -132,7 +134,7 @@ export class CommentsService {
     }
 
     return {
-      items: rows.map((row) => this.toDto(row as CommentEntity)),
+      items: rows.map((row: CommentEntity) => this.toDto(row as CommentEntity)),
       nextCursor,
     };
   }
@@ -155,7 +157,7 @@ export class CommentsService {
     if (!existing) {
       throw new NotFoundException('Comment not found');
     }
-    await this.prisma.$transaction(async (trx) => {
+    await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       await trx.comment.deleteMany({ where: { parentId: id } });
       await trx.comment.delete({ where: { id } });
     });

@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaNS } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { UpdateProfileDto } from '@app/core/users/profile/dto/update-profile.dto';
@@ -16,7 +17,6 @@ import {
   USERNAME_REGEX,
   RESERVED_USERNAMES,
 } from '@app/core/users/profile/username.rules';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 type RoleSlim = { id: string; name: string };
 
@@ -98,11 +98,11 @@ export class ProfileService {
         select: ProfileService.profileSelect,
       });
       return this.serialize(updated);
-    } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
         throw new NotFoundException('پروفایل کاربر یافت نشد');
       }
       throw error;
@@ -120,11 +120,11 @@ export class ProfileService {
         data,
         select: { id: true },
       });
-    } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
         throw new NotFoundException('پروفایل کاربر یافت نشد');
       }
       throw error;
@@ -230,7 +230,12 @@ export class ProfileService {
 
   private serialize(user: ProfileRecord) {
     const roles: RoleSlim[] =
-      user.userRoles?.map((ur) => ur.role).filter(Boolean) ?? [];
+      user.userRoles
+        ?.map((ur: ProfileRecord['userRoles'][number]) => ur.role)
+        .filter(
+          (role: RoleSlim | null | undefined): role is RoleSlim =>
+            Boolean(role),
+        ) ?? [];
 
     return {
       id: user.id,

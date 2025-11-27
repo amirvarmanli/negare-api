@@ -6,14 +6,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma as PrismaNamespace, RoleName } from '@prisma/client';
+import type { RoleName } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { FindRolesQueryDto } from '@app/core/roles/dto/find-roles-query.dto';
 import { CreateRoleDto } from '@app/core/roles/dto/create-role.dto';
 import { UpdateRoleDto } from '@app/core/roles/dto/update-role.dto';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
-type RoleRecord = PrismaNamespace.RoleGetPayload<{}>;
+type RoleRecord = Prisma.RoleGetPayload<{}>;
 
 @Injectable()
 /**
@@ -27,7 +27,7 @@ export class RolesService {
    * Aligns with FindRolesQueryDto (name?, limit?).
    */
   async findAll(query: FindRolesQueryDto): Promise<RoleRecord[]> {
-    const where: PrismaNamespace.RoleWhereInput = {};
+    const where: Prisma.RoleWhereInput = {};
     if (query.name) where.name = query.name;
 
     return this.prisma.role.findMany({
@@ -53,11 +53,11 @@ export class RolesService {
       return await this.prisma.role.create({
         data: { name: dto.name },
       });
-    } catch (err) {
-      if (
-        err instanceof PrismaClientKnownRequestError &&
-        err.code === 'P2002'
-      ) {
+    } catch (err: unknown) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw err;
+      }
+      if (err.code === 'P2002') {
         // unique constraint on name
         throw new ConflictException('Role with this name already exists.');
       }
@@ -86,11 +86,11 @@ export class RolesService {
         where: { name },
         data: { name: dto.name },
       });
-    } catch (err) {
-      if (
-        err instanceof PrismaClientKnownRequestError &&
-        err.code === 'P2002'
-      ) {
+    } catch (err: unknown) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw err;
+      }
+      if (err.code === 'P2002') {
         // unique constraint on name
         throw new ConflictException(
           'Another role with the requested name already exists.',

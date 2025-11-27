@@ -11,8 +11,8 @@ import {
   ProductStatus,
   GraphicFormat,
 } from '@prisma/client';
-import { PrismaClientKnownRequestError, Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '@app/prisma/prisma.service';
+import type { PrismaTxClient } from '@app/prisma/prisma.service';
 import { Buffer } from 'buffer';
 
 import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
@@ -97,6 +97,20 @@ function toBigIntNullable(id?: string): bigint | null {
   if (!/^\d+$/u.test(id)) return null;
   return BigInt(id);
 }
+export function toBigIntList(value?: string): bigint[] {
+  if (!value) return [];
+  const parts = value
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+
+  const ids: bigint[] = [];
+  for (const part of parts) {
+    const parsed = toBigIntNullable(part);
+    if (parsed !== null) ids.push(parsed);
+  }
+  return uniq(ids);
+}
 function parseBooleanFlag(value?: string): boolean | undefined {
   if (value === undefined) return undefined;
   return value === 'true';
@@ -108,6 +122,31 @@ function normalizeColorFilter(value?: string): string | undefined {
     return undefined;
   }
   return trimmed;
+}
+
+function normalizeTagLabel(raw?: string): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  return trimmed.replace(/\s+/g, ' ');
+}
+
+export function parseGraphicFormatList(raw?: string): GraphicFormat[] {
+  if (!raw) return [];
+  const parts = raw
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+
+  const formats = new Set<GraphicFormat>();
+  const enumMap = GraphicFormat as unknown as Record<string, string>;
+  for (const part of parts) {
+    const upper = part.toUpperCase();
+    if (enumMap[upper]) {
+      formats.add(upper as GraphicFormat);
+    }
+  }
+  return Array.from(formats);
 }
 
 function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
@@ -144,7 +183,7 @@ export class ProductService {
       false,
     );
 
-    const createdId = await this.prisma.$transaction(async (trx) => {
+    const createdId = await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       const shortLink = await this.resolveShortLink(trx, dto.shortLink);
       const product = await trx.product.create({
         data: {
@@ -253,7 +292,7 @@ export class ProductService {
       true,
     );
 
-    await this.prisma.$transaction(async (trx) => {
+    await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       const resolvedShortLink =
         dto.shortLink !== undefined
           ? await this.resolveShortLink(trx, dto.shortLink, product.id)
@@ -324,7 +363,9 @@ export class ProductService {
           where: { productId: product.id },
           select: { categoryId: true },
         });
-        const existingIds = new Set(existing.map((x) => x.categoryId));
+        const existingIds = new Set(
+          existing.map((x: { categoryId: bigint }) => x.categoryId),
+        );
         const toCreate = categoryIds.filter((id) => !existingIds.has(id));
         if (toCreate.length > 0) {
           await trx.productCategory.createMany({
@@ -346,7 +387,9 @@ export class ProductService {
           where: { productId: product.id },
           select: { tagId: true },
         });
-        const existingIds = new Set(existing.map((x) => x.tagId));
+        const existingIds = new Set(
+          existing.map((x: { tagId: bigint }) => x.tagId),
+        );
         const toCreate = tagIds.filter((id) => !existingIds.has(id));
         if (toCreate.length > 0) {
           await trx.productTag.createMany({
@@ -449,10 +492,11 @@ export class ProductService {
 
     if (query.pricingType)
       ands.push({ pricingType: query.pricingType as PricingType });
-    if (query.graphicFormat) {
+    const graphicFormats = parseGraphicFormatList(query.graphicFormat);
+    if (graphicFormats.length) {
       ands.push({
         graphicFormats: {
-          has: query.graphicFormat as GraphicFormat,
+          hasSome: graphicFormats,
         },
       });
     }
@@ -468,16 +512,51 @@ export class ProductService {
     }
 
     if (query.categoryId) {
-      const cid = toBigIntNullable(query.categoryId);
-      if (cid) ands.push({ categoryLinks: { some: { categoryId: cid } } });
+      const cids = toBigIntList(query.categoryId);
+      if (cids.length) {
+        ands.push({
+          categoryLinks: {
+            some: { categoryId: { in: cids } },
+          },
+        });
+      }
     }
     if (query.tagId) {
-      const tid = toBigIntNullable(query.tagId);
-      if (tid) ands.push({ tagLinks: { some: { tagId: tid } } });
+      const tids = toBigIntList(query.tagId);
+      if (tids.length) {
+        ands.push({
+          tagLinks: {
+            some: { tagId: { in: tids } },
+          },
+        });
+      }
+    }
+    if (query.tagName) {
+      const tagName = normalizeTagLabel(query.tagName);
+      if (tagName) {
+        const normalized = normalizeFaText(tagName);
+        if (normalized) {
+          ands.push({
+            tagLinks: {
+              some: {
+                tag: {
+                  name: { contains: normalized, mode: 'insensitive' },
+                },
+              },
+            },
+          });
+        }
+      }
     }
     if (query.topicId) {
-      const topicId = toBigIntNullable(query.topicId);
-      if (topicId) ands.push({ topics: { some: { topicId } } });
+      const topicIds = toBigIntList(query.topicId);
+      if (topicIds.length) {
+        ands.push({
+          topics: {
+            some: { topicId: { in: topicIds } },
+          },
+        });
+      }
     }
     if (query.authorId) {
       ands.push({ supplierLinks: { some: { userId: query.authorId } } });
@@ -808,7 +887,7 @@ export class ProductService {
   }
 
   private async applyFileInstruction(
-    trx: Prisma.TransactionClient,
+    trx: PrismaTxClient,
     productId: bigint,
     instruction: FileInstruction,
   ): Promise<void> {
@@ -818,11 +897,11 @@ export class ProductService {
       case 'disconnect':
         try {
           await trx.productFile.delete({ where: { productId } });
-        } catch (error) {
-          if (
-            error instanceof PrismaClientKnownRequestError &&
-            error.code === 'P2025'
-          ) {
+        } catch (error: unknown) {
+          if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+            throw error;
+          }
+          if (error.code === 'P2025') {
             return;
           }
           throw error;
@@ -880,7 +959,7 @@ export class ProductService {
   }
 
   private async resolveShortLink(
-    trx: Prisma.TransactionClient,
+    trx: PrismaTxClient,
     requested?: string | null,
     ignoreId?: bigint,
   ): Promise<string> {
@@ -913,7 +992,7 @@ export class ProductService {
   }
 
   private async assertShortLinkUnique(
-    trx: Prisma.TransactionClient,
+    trx: PrismaTxClient,
     shortLink: string,
     ignoreId?: bigint,
   ): Promise<void> {
@@ -1006,7 +1085,7 @@ export class ProductService {
   }
 
   private async createSlugRedirect(
-    trx: Prisma.TransactionClient,
+    trx: PrismaTxClient,
     entityId: bigint,
     fromSlug: string,
     toSlug: string,
@@ -1023,11 +1102,11 @@ export class ProductService {
           toSlug,
         },
       });
-    } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+        throw error;
+      }
+      if (error.code === 'P2002') {
         throw new BadRequestException(
           `A redirect already exists for slug "${fromSlug}"`,
         );
@@ -1036,8 +1115,8 @@ export class ProductService {
     }
   }
 
-  private toDecimal(value?: number | null): Decimal | null {
+  private toDecimal(value?: number | null): Prisma.Decimal | null {
     if (value === undefined || value === null) return null;
-    return new Decimal(value);
+    return new Prisma.Decimal(value);
   }
 }
