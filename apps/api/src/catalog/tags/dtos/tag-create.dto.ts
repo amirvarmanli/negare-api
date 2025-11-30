@@ -15,8 +15,8 @@ export class CreateTagDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  @Matches(/^[\p{L}\p{N}\s_-]+$/u, {
-    message: 'Tag name can only contain letters, numbers, spaces, _ or -',
+  @Matches(/^[^#,،\n]+$/u, {
+    message: 'تگ نباید شامل # یا ویرگول باشد.',
   })
   name!: string;
 
@@ -30,4 +30,3 @@ export class CreateTagDto {
   @MaxLength(50)
   slug?: string;
 }
-

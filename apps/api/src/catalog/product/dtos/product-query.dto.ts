@@ -17,7 +17,7 @@ import { PricingType, ProductStatus, GraphicFormat } from '@prisma/client';
 import { toTrimmedString } from '@app/catalog/product/dtos/transformers';
 import { FA_SLUG_REGEX } from '@shared-slug/slug/fa-slug.util';
 
-const TAG_NAME_REGEX = /^[\p{L}\p{N}\s_-]+$/u;
+export const TAG_NAME_REGEX = /^[^#,،\n]+$/u;
 
 export type ProductSort = 'latest' | 'popular' | 'viewed' | 'liked';
 
@@ -57,8 +57,7 @@ export class ProductFindQueryDto {
   tagName?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Tag slug (Persian-safe). Ignored when tagId is provided.',
+    description: 'Tag slug (Persian-safe). Ignored when tagId is provided.',
     example: 'illustration',
   })
   @IsOptional()

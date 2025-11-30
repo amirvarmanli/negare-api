@@ -1,11 +1,17 @@
+// apps/api/src/catalog/artist/artist.controller.ts
+
 import { Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
+  ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
+
 import {
   CurrentUser,
   CurrentUserPayload,
@@ -18,12 +24,75 @@ import { ArtistProfileDto } from '@app/catalog/artist/dtos/artist-profile.dto';
 import { ArtistProductsQueryDto } from '@app/catalog/artist/dtos/artist-products-query.dto';
 import { ProductListResultDto } from '@app/catalog/product/dtos/product-response.dto';
 import { ArtistFollowResponseDto } from '@app/catalog/artist/dtos/artist-follow.dto';
+import { FollowedArtistsListDto } from '@app/catalog/artist/dtos/artist-following.dto';
+import {
+  ArtistListQueryDto,
+  ArtistListResultDto,
+} from '@app/catalog/artist/dtos/artist-list.dto';
+
+// ───────────────────────────────────────────────────────────────
+// DTO برای pagination لیست هنرمندانی که فالو شده‌اند
+// ───────────────────────────────────────────────────────────────
+export class FollowingsQueryDto {
+  @ApiPropertyOptional({ minimum: 1, example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 60, example: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  limit?: number;
+}
 
 @ApiTags('Catalog / Artists')
+@ApiBearerAuth()
 @Controller('catalog/artists')
 export class ArtistController {
   constructor(private readonly service: ArtistService) {}
 
+  // ───────────────────────────────────────────────────────────────
+  // آرشیو هنرمندان (لیست عمومی)
+  // ───────────────────────────────────────────────────────────────
+  @Get()
+  @Public()
+  @ApiOperation({
+    summary: 'List artists (archive)',
+    description:
+      'آرشیو هنرمندان با امکان جستجو، فیلتر بر اساس مهارت و مرتب‌سازی.',
+  })
+  @ApiOkResponse({ type: ArtistListResultDto })
+  async listArtists(
+    @Query() query: ArtistListQueryDto,
+  ): Promise<ArtistListResultDto> {
+    return this.service.listArtists(query);
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // لیست هنرمندانی که کاربر فعلی فالو کرده است
+  // ───────────────────────────────────────────────────────────────
+  @Get('following/me')
+  @ApiOperation({ summary: 'List artists followed by current user' })
+  @ApiOkResponse({ type: FollowedArtistsListDto })
+  async listMyFollowedArtists(
+    @CurrentUser() user: CurrentUserPayload | undefined,
+    @Query() query: FollowingsQueryDto,
+  ): Promise<FollowedArtistsListDto> {
+    const userId = requireUserId(user);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    return this.service.listMyFollowedArtists(userId, page, limit);
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // پروفایل هنرمند
+  // ───────────────────────────────────────────────────────────────
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get artist profile with stats and top products' })
@@ -35,6 +104,9 @@ export class ArtistController {
     return this.service.getProfile(params.id, user?.id);
   }
 
+  // ───────────────────────────────────────────────────────────────
+  // محصولات هنرمند
+  // ───────────────────────────────────────────────────────────────
   @Get(':id/products')
   @Public()
   @ApiOperation({ summary: 'List products created by the artist' })
@@ -46,8 +118,10 @@ export class ArtistController {
     return this.service.listProducts(params.id, query);
   }
 
+  // ───────────────────────────────────────────────────────────────
+  // Follow / Unfollow
+  // ───────────────────────────────────────────────────────────────
   @Post(':id/follow')
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Follow an artist' })
   @ApiOkResponse({ type: ArtistFollowResponseDto })
   @ApiBadRequestResponse({ description: 'Cannot follow yourself' })
@@ -60,9 +134,9 @@ export class ArtistController {
   }
 
   @Delete(':id/follow')
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Unfollow an artist' })
   @ApiOkResponse({ type: ArtistFollowResponseDto })
+  @ApiBadRequestResponse({ description: 'Cannot follow yourself' })
   async unfollow(
     @Param() params: ArtistIdParamDto,
     @CurrentUser() user: CurrentUserPayload | undefined,

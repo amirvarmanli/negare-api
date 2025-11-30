@@ -124,7 +124,7 @@ export class CreateProductDto {
   })
   @IsOptional()
   @IsString()
-  @Length(0, 550)
+  @Length(0, 1400)
   seoDescription?: string;
 
   @ApiPropertyOptional({

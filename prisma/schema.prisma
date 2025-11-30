@@ -42,6 +42,7 @@ model User {
   createdTransactions WalletTransaction[]  @relation("WalletTransactionsCreatedBy")
   walletTransactions  WalletTransaction[]  @relation("WalletTransactionsUser")
   wallet              Wallet?
+  skills              UserSkill[]
 
   @@index([status])
   @@index([createdAt], map: "users_created_at_idx")
@@ -192,6 +193,36 @@ model WalletAuditLog {
   @@schema("core")
 }
 
+model Skill {
+  id          String      @id @default(uuid()) @db.Uuid
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(6)
+  key         String      @unique @db.VarChar(64)
+  nameFa      String      @db.VarChar(255)
+  nameEn      String?     @db.VarChar(255)
+  description String?     @db.VarChar(1000)
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  userLinks   UserSkill[]
+
+  @@map("skills")
+  @@schema("core")
+}
+
+model UserSkill {
+  userId    String   @map("user_id") @db.Uuid
+  skillId   String   @map("skill_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@id([userId, skillId])
+  @@index([skillId], map: "user_skills_skill_idx")
+  @@map("user_skills")
+  @@schema("core")
+}
+
 model File {
   id           String        @id @default(uuid())
   userId       String
@@ -213,13 +244,13 @@ model Product {
   id             BigInt            @id @default(autoincrement())
   slug           String            @unique @db.VarChar(200)
   title          String            @db.VarChar(255)
-  description    String?
+  description    String?           @db.VarChar(1400)
   coverUrl       String?           @db.VarChar(255)
   graphicFormats GraphicFormat[]   @default([])
   colors         String[]          @default([])
   shortLink      String?           @unique @db.VarChar(80)
-  seoTitle       String?           @db.VarChar(160)
-  seoDescription String?           @db.VarChar(550)
+  seoTitle       String?           @db.VarChar(250)
+  seoDescription String?           @db.VarChar(1400)
   seoKeywords    String[]          @default([])
   pricingType    PricingType
   price          Decimal?          @db.Decimal(12, 2)

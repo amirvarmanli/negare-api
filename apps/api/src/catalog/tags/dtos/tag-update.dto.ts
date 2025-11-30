@@ -6,8 +6,8 @@ export class UpdateTagDto {
   @IsOptional()
   @IsString()
   @Length(2, 255)
-  @Matches(/^[\p{L}\p{N}\s_-]+$/u, {
-    message: 'Tag name can only contain letters, numbers, spaces, _ or -',
+  @Matches(/^[^#,،\n]+$/u, {
+    message: 'تگ نباید شامل # یا ویرگول باشد.',
   })
   name?: string;
 

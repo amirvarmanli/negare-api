@@ -1,8 +1,8 @@
--- CreateSchema
--- Enable required extensions (also for Shadow DB)
+-- ─────────────────────────────────────────────
+-- Global extensions
+-- ─────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA public;
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
-
+-- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "analytics";
 
 -- CreateSchema
@@ -51,7 +51,7 @@ CREATE TYPE "catalog"."enum_content_products_pricingType" AS ENUM ('FREE', 'SUBS
 CREATE TYPE "catalog"."enum_content_products_status" AS ENUM ('DRAFT', 'PUBLISHED', 'ARCHIVED');
 
 -- CreateEnum
-CREATE TYPE "catalog"."enum_content_products_graphicFormat" AS ENUM ('SVG', 'EPS', 'AI', 'PSD', 'PNG', 'JPG', 'WEBP');
+CREATE TYPE "catalog"."enum_content_products_graphicFormat" AS ENUM ('PSD', 'EPS', 'JPG', 'PNG', 'PDF', 'MP4', 'AI', 'CDR', 'TTF', 'TIF', 'SVG', 'OBJ', 'WEBP');
 
 -- CreateEnum
 CREATE TYPE "catalog"."enum_content_comment_target" AS ENUM ('PRODUCT', 'POST', 'NEWSLETTER');
@@ -196,6 +196,30 @@ CREATE TABLE "core"."wallet_audit_logs" (
 );
 
 -- CreateTable
+CREATE TABLE "core"."skills" (
+    "id" UUID NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+    "key" VARCHAR(64) NOT NULL,
+    "nameFa" VARCHAR(255) NOT NULL,
+    "nameEn" VARCHAR(255),
+    "description" VARCHAR(1000),
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "skills_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "core"."user_skills" (
+    "user_id" UUID NOT NULL,
+    "skill_id" UUID NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "user_skills_pkey" PRIMARY KEY ("user_id","skill_id")
+);
+
+-- CreateTable
 CREATE TABLE "core"."File" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -214,16 +238,15 @@ CREATE TABLE "core"."File" (
 -- CreateTable
 CREATE TABLE "catalog"."products" (
     "id" BIGSERIAL NOT NULL,
-    "slug" VARCHAR(255) NOT NULL,
+    "slug" VARCHAR(200) NOT NULL,
     "title" VARCHAR(255) NOT NULL,
     "description" TEXT,
     "coverUrl" VARCHAR(255),
-    "file_id" BIGINT,
     "graphicFormats" "catalog"."enum_content_products_graphicFormat"[] DEFAULT ARRAY[]::"catalog"."enum_content_products_graphicFormat"[],
     "colors" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "shortLink" VARCHAR(80),
     "seoTitle" VARCHAR(160),
-    "seoDescription" VARCHAR(240),
+    "seoDescription" VARCHAR(550),
     "seoKeywords" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "pricingType" "catalog"."enum_content_products_pricingType" NOT NULL,
     "price" DECIMAL(12,2),
@@ -255,6 +278,8 @@ CREATE TABLE "catalog"."product_assets" (
 -- CreateTable
 CREATE TABLE "catalog"."product_files" (
     "id" BIGSERIAL NOT NULL,
+    "product_id" BIGINT NOT NULL,
+    "file_id" TEXT,
     "storageKey" VARCHAR(255) NOT NULL,
     "originalName" VARCHAR(255),
     "size" BIGINT,
@@ -269,7 +294,7 @@ CREATE TABLE "catalog"."product_files" (
 CREATE TABLE "catalog"."categories" (
     "id" BIGSERIAL NOT NULL,
     "name" VARCHAR(255) NOT NULL,
-    "slug" VARCHAR(255) NOT NULL,
+    "slug" VARCHAR(200) NOT NULL,
     "parent_id" BIGINT,
     "coverUrl" VARCHAR(255),
 
@@ -313,10 +338,10 @@ CREATE TABLE "catalog"."product_suppliers" (
 CREATE TABLE "catalog"."topics" (
     "id" BIGSERIAL NOT NULL,
     "name" VARCHAR(120) NOT NULL,
-    "slug" VARCHAR(160) NOT NULL,
+    "slug" VARCHAR(200) NOT NULL,
     "coverUrl" VARCHAR(255),
     "seoTitle" VARCHAR(160),
-    "seoDescription" VARCHAR(240),
+    "seoDescription" VARCHAR(550),
 
     CONSTRAINT "topics_pkey" PRIMARY KEY ("id")
 );
@@ -328,6 +353,18 @@ CREATE TABLE "catalog"."product_topics" (
     "order" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "product_topics_pkey" PRIMARY KEY ("product_id","topic_id")
+);
+
+-- CreateTable
+CREATE TABLE "catalog"."slug_redirects" (
+    "id" TEXT NOT NULL,
+    "entityType" VARCHAR(32) NOT NULL,
+    "entityId" VARCHAR(64) NOT NULL,
+    "fromSlug" VARCHAR(200) NOT NULL,
+    "toSlug" VARCHAR(200) NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "slug_redirects_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -346,6 +383,15 @@ CREATE TABLE "catalog"."likes" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "likes_pkey" PRIMARY KEY ("user_id","product_id")
+);
+
+-- CreateTable
+CREATE TABLE "catalog"."artist_follows" (
+    "follower_id" UUID NOT NULL,
+    "artist_id" UUID NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "artist_follows_pkey" PRIMARY KEY ("follower_id","artist_id")
 );
 
 -- CreateTable
@@ -456,13 +502,16 @@ CREATE INDEX "IDX_wallet_audit_user_created" ON "core"."wallet_audit_logs"("user
 CREATE INDEX "IDX_wallet_audit_wallet_created" ON "core"."wallet_audit_logs"("wallet_id", "created_at");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "skills_key_key" ON "core"."skills"("key");
+
+-- CreateIndex
+CREATE INDEX "user_skills_skill_idx" ON "core"."user_skills"("skill_id");
+
+-- CreateIndex
 CREATE INDEX "File_userId_createdAt_idx" ON "core"."File"("userId", "createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "products_slug_key" ON "catalog"."products"("slug");
-
--- CreateIndex
-CREATE UNIQUE INDEX "products_file_id_key" ON "catalog"."products"("file_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "products_shortLink_key" ON "catalog"."products"("shortLink");
@@ -474,7 +523,13 @@ CREATE INDEX "products_status_pricing_idx" ON "catalog"."products"("status", "pr
 CREATE INDEX "products_created_at_idx" ON "catalog"."products"("createdAt");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "product_files_product_id_key" ON "catalog"."product_files"("product_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "categories_slug_key" ON "catalog"."categories"("slug");
+
+-- CreateIndex
+CREATE INDEX "categories_parent_idx" ON "catalog"."categories"("parent_id");
 
 -- CreateIndex
 CREATE INDEX "product_categories_category_idx" ON "catalog"."product_categories"("category_id");
@@ -498,6 +553,12 @@ CREATE UNIQUE INDEX "topics_slug_key" ON "catalog"."topics"("slug");
 CREATE INDEX "product_topics_topic_idx" ON "catalog"."product_topics"("topic_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "slug_redirects_fromSlug_key" ON "catalog"."slug_redirects"("fromSlug");
+
+-- CreateIndex
+CREATE INDEX "slug_redirect_entity_idx" ON "catalog"."slug_redirects"("entityType", "entityId");
+
+-- CreateIndex
 CREATE INDEX "bookmarks_user_time_idx" ON "catalog"."bookmarks"("user_id", "created_at");
 
 -- CreateIndex
@@ -505,6 +566,12 @@ CREATE INDEX "likes_product_idx" ON "catalog"."likes"("product_id");
 
 -- CreateIndex
 CREATE INDEX "likes_user_time_idx" ON "catalog"."likes"("user_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "artist_follows_artist_time_idx" ON "catalog"."artist_follows"("artist_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "artist_follows_follower_time_idx" ON "catalog"."artist_follows"("follower_id", "created_at");
 
 -- CreateIndex
 CREATE INDEX "comments_target_time_idx" ON "catalog"."comments"("targetType", "targetId", "created_at");
@@ -528,22 +595,22 @@ ALTER TABLE "core"."password_reset_tokens" ADD CONSTRAINT "password_reset_tokens
 ALTER TABLE "core"."audit_logs" ADD CONSTRAINT "audit_logs_userId_fkey" FOREIGN KEY ("userId") REFERENCES "core"."users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "core"."user_roles" ADD CONSTRAINT "user_roles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "core"."user_roles" ADD CONSTRAINT "user_roles_role_id_fkey" FOREIGN KEY ("role_id") REFERENCES "core"."roles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "core"."user_roles" ADD CONSTRAINT "user_roles_role_id_fkey" FOREIGN KEY ("role_id") REFERENCES "core"."roles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "core"."user_roles" ADD CONSTRAINT "user_roles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "core"."wallets" ADD CONSTRAINT "wallets_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "core"."wallet_transactions" ADD CONSTRAINT "wallet_transactions_wallet_id_fkey" FOREIGN KEY ("wallet_id") REFERENCES "core"."wallets"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "core"."wallet_transactions" ADD CONSTRAINT "wallet_transactions_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "core"."users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "core"."wallet_transactions" ADD CONSTRAINT "wallet_transactions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "core"."wallet_transactions" ADD CONSTRAINT "wallet_transactions_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "core"."users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "core"."wallet_transactions" ADD CONSTRAINT "wallet_transactions_wallet_id_fkey" FOREIGN KEY ("wallet_id") REFERENCES "core"."wallets"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "core"."wallet_audit_logs" ADD CONSTRAINT "wallet_audit_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -552,19 +619,28 @@ ALTER TABLE "core"."wallet_audit_logs" ADD CONSTRAINT "wallet_audit_logs_user_id
 ALTER TABLE "core"."wallet_audit_logs" ADD CONSTRAINT "wallet_audit_logs_wallet_id_fkey" FOREIGN KEY ("wallet_id") REFERENCES "core"."wallets"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."products" ADD CONSTRAINT "products_file_id_fkey" FOREIGN KEY ("file_id") REFERENCES "catalog"."product_files"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "core"."user_skills" ADD CONSTRAINT "user_skills_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "core"."user_skills" ADD CONSTRAINT "user_skills_skill_id_fkey" FOREIGN KEY ("skill_id") REFERENCES "core"."skills"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."product_assets" ADD CONSTRAINT "product_assets_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "catalog"."product_files" ADD CONSTRAINT "product_files_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."product_files" ADD CONSTRAINT "product_files_file_id_fkey" FOREIGN KEY ("file_id") REFERENCES "core"."File"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "catalog"."categories" ADD CONSTRAINT "categories_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "catalog"."categories"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."product_categories" ADD CONSTRAINT "product_categories_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "catalog"."product_categories" ADD CONSTRAINT "product_categories_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "catalog"."categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."product_categories" ADD CONSTRAINT "product_categories_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "catalog"."categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "catalog"."product_categories" ADD CONSTRAINT "product_categories_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."product_tags" ADD CONSTRAINT "product_tags_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -585,25 +661,31 @@ ALTER TABLE "catalog"."product_topics" ADD CONSTRAINT "product_topics_product_id
 ALTER TABLE "catalog"."product_topics" ADD CONSTRAINT "product_topics_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES "catalog"."topics"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."bookmarks" ADD CONSTRAINT "bookmarks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "catalog"."bookmarks" ADD CONSTRAINT "bookmarks_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."likes" ADD CONSTRAINT "likes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "catalog"."bookmarks" ADD CONSTRAINT "bookmarks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."likes" ADD CONSTRAINT "likes_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."comments" ADD CONSTRAINT "comments_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "catalog"."likes" ADD CONSTRAINT "likes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."artist_follows" ADD CONSTRAINT "artist_follows_follower_id_fkey" FOREIGN KEY ("follower_id") REFERENCES "core"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."artist_follows" ADD CONSTRAINT "artist_follows_artist_id_fkey" FOREIGN KEY ("artist_id") REFERENCES "core"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."comments" ADD CONSTRAINT "comments_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "catalog"."comments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."comments" ADD CONSTRAINT "comments_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."comments" ADD CONSTRAINT "comments_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "catalog"."comments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "catalog"."comments" ADD CONSTRAINT "comments_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "core"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "analytics"."product_views" ADD CONSTRAINT "product_views_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "catalog"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -28,8 +28,6 @@ import { UpdateUsernameDto } from '@app/core/users/profile/dto/update-username.d
 import { NoCacheInterceptor } from '@app/common/interceptors/no-cache.interceptor';
 
 @ApiTags('User Profile')
-@ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard)
 @UseInterceptors(NoCacheInterceptor)
 @Controller('core/profile')
 export class ProfileController {
@@ -39,10 +37,43 @@ export class ProfileController {
   // GET /core/profile
   // ───────────────────────────────
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Get current user profile',
     description:
       'Returns the latest profile information for the authenticated user.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          id: 'c1d5f0bc-6f46-4ae4-9b28-2d7574156d1b',
+          username: 'amir_varmanli',
+          name: 'Amir Hossein',
+          email: 'user@example.com',
+          phone: '09121234567',
+          bio: 'Capital markets enthusiast',
+          city: 'Shiraz',
+          avatarUrl: 'https://cdn.negare.com/avatar.png',
+          roles: [{ id: '...', name: 'supplier' }],
+          skills: [
+            {
+              id: 'skill-1',
+              key: 'illustrator',
+              nameFa: 'ایلاستریتور',
+              nameEn: 'Illustrator',
+              isActive: true,
+              sortOrder: 1,
+            },
+          ],
+          createdAt: '2024-01-01T10:00:00.000Z',
+          updatedAt: '2024-02-01T10:00:00.000Z',
+        },
+      },
+    },
   })
   async getProfile(@CurrentUser() currentUser: CurrentUserPayload | undefined) {
     const userId = this.ensureUser(currentUser);
@@ -54,10 +85,16 @@ export class ProfileController {
   // PATCH /core/profile
   // ───────────────────────────────
   @Patch()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Update current user profile',
     description:
-      'Updates name, bio, city, and avatarUrl. Email/phone must use OTP flow.',
+      'Updates name, bio, city, avatarUrl and (for suppliers) skills. Email/phone must use OTP flow.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile updated successfully.',
   })
   async updateProfile(
     @CurrentUser() currentUser: CurrentUserPayload | undefined,
@@ -70,6 +107,7 @@ export class ProfileController {
 
   // ───────────────────────────────
   // GET /core/profile/username/check?username=x
+  // (عمداً بدون گارد → public)
   // ───────────────────────────────
   @Get('username/check')
   @HttpCode(HttpStatus.OK)
@@ -99,6 +137,8 @@ export class ProfileController {
   // PATCH /core/profile/username
   // ───────────────────────────────
   @Patch('username')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Change username',

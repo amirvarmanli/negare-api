@@ -52,7 +52,7 @@ export class UpdateProductDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(0, 20000)
+  @Length(0, 1400)
   @Transform(toTrimmedString)
   description?: string;
 
@@ -114,13 +114,13 @@ export class UpdateProductDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(0, 160)
+  @Length(0, 250)
   seoTitle?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(0, 550)
+  @Length(0, 1400)
   seoDescription?: string;
 
   @ApiPropertyOptional({ type: [String] })

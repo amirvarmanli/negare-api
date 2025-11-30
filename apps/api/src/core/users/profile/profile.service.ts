@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaNS } from '@prisma/client';
-import { PrismaService } from '@app/prisma/prisma.service';
+import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import { UpdateProfileDto } from '@app/core/users/profile/dto/update-profile.dto';
 
 // قوانین نام‌کاربری (قبلاً ساختیم)
@@ -19,6 +19,15 @@ import {
 } from '@app/core/users/profile/username.rules';
 
 type RoleSlim = { id: string; name: string };
+
+type SkillSlim = {
+  id: string;
+  key: string;
+  nameFa: string;
+  nameEn: string | null;
+  isActive: boolean;
+  sortOrder: number;
+};
 
 type ProfileRecord = PrismaNS.UserGetPayload<{
   select: {
@@ -33,6 +42,20 @@ type ProfileRecord = PrismaNS.UserGetPayload<{
     createdAt: true;
     updatedAt: true;
     userRoles: { select: { role: { select: { id: true; name: true } } } };
+    skills: {
+      select: {
+        skill: {
+          select: {
+            id: true;
+            key: true;
+            nameFa: true;
+            nameEn: true;
+            isActive: true;
+            sortOrder: true;
+          };
+        };
+      };
+    };
   };
 }>;
 
@@ -55,10 +78,27 @@ export class ProfileService {
     createdAt: true,
     updatedAt: true,
     userRoles: { select: { role: { select: { id: true, name: true } } } },
+    skills: {
+      select: {
+        skill: {
+          select: {
+            id: true,
+            key: true,
+            nameFa: true,
+            nameEn: true,
+            isActive: true,
+            sortOrder: true,
+          },
+        },
+      },
+    },
   } as const;
 
   private static readonly contactChangeError =
     'برای تغییر ایمیل یا موبایل لطفاً از مسیر تایید OTP استفاده کنید.';
+
+  // فقط تامین‌کننده‌ها اجازه‌ی داشتن/ویرایش مهارت دارند
+  private static readonly SUPPLIER_ROLE_NAME = 'supplier';
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -92,11 +132,50 @@ export class ProfileService {
     };
 
     try {
-      const updated = await this.prisma.user.update({
-        where: { id: userId },
-        data,
-        select: ProfileService.profileSelect,
+      const updated = await this.prisma.$transaction(async (trx) => {
+        // اول پروفایل را آپدیت می‌کنیم
+        const user = await trx.user.update({
+          where: { id: userId },
+          data,
+          select: ProfileService.profileSelect,
+        });
+
+        const roles: RoleSlim[] =
+          user.userRoles
+            ?.map((ur: ProfileRecord['userRoles'][number]) => ur.role)
+            .filter(
+              (role: RoleSlim | null | undefined): role is RoleSlim =>
+                Boolean(role),
+            ) ?? [];
+
+        const isSupplier = roles.some(
+          (role) => role.name === ProfileService.SUPPLIER_ROLE_NAME,
+        );
+
+        // فقط اگر skillIds واقعاً به‌صورت آرایه فرستاده شده باشد، و کاربر تامین‌کننده باشد
+        if (Array.isArray(dto.skillIds)) {
+          if (!isSupplier) {
+            throw new BadRequestException(
+              'فقط تامین‌کنندگان می‌توانند مهارت‌های خود را ویرایش کنند.',
+            );
+          }
+
+          await this.syncUserSkills(trx, userId, dto.skillIds);
+        }
+
+        // چون مهارت‌ها را در جدول pivot آپدیت کردیم، برای بازگشت پاسخ دقیق، پروفایل را دوباره می‌خوانیم
+        const reloaded = await trx.user.findUnique({
+          where: { id: userId },
+          select: ProfileService.profileSelect,
+        });
+
+        if (!reloaded) {
+          throw new NotFoundException('پروفایل کاربر یافت نشد');
+        }
+
+        return reloaded;
       });
+
       return this.serialize(updated);
     } catch (error: unknown) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
@@ -232,10 +311,23 @@ export class ProfileService {
     const roles: RoleSlim[] =
       user.userRoles
         ?.map((ur: ProfileRecord['userRoles'][number]) => ur.role)
-        .filter(
-          (role: RoleSlim | null | undefined): role is RoleSlim =>
-            Boolean(role),
+        .filter((role: RoleSlim | null | undefined): role is RoleSlim =>
+          Boolean(role),
         ) ?? [];
+
+    const isSupplier = roles.some(
+      (role) => role.name === ProfileService.SUPPLIER_ROLE_NAME,
+    );
+
+    const skills: SkillSlim[] =
+      isSupplier && user.skills
+        ? user.skills
+            .map((us) => us.skill)
+            .filter(
+              (skill: SkillSlim | null | undefined): skill is SkillSlim =>
+                Boolean(skill),
+            )
+        : [];
 
     return {
       id: user.id,
@@ -247,6 +339,7 @@ export class ProfileService {
       city: user.city,
       avatarUrl: user.avatarUrl,
       roles,
+      skills,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -262,5 +355,53 @@ export class ProfileService {
   private normalizeUsername(raw: string | null | undefined): string {
     if (!raw) return '';
     return raw.trim().toLowerCase();
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Skills sync (UserSkill pivot)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  private async syncUserSkills(
+    trx: PrismaTxClient,
+    userId: string,
+    skillIds: string[],
+  ): Promise<void> {
+    // اگر آرایه خالی بود → همه مهارت‌ها پاک می‌شوند
+    if (skillIds.length === 0) {
+      await trx.userSkill.deleteMany({
+        where: { userId },
+      });
+      return;
+    }
+
+    // چک کنیم همه‌ی skillها معتبر و active باشند
+    const skills = await trx.skill.findMany({
+      where: {
+        id: { in: skillIds },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    const validIds = new Set(skills.map((s) => s.id));
+    const missing = skillIds.filter((id) => !validIds.has(id));
+
+    if (missing.length > 0) {
+      throw new BadRequestException('برخی مهارت‌ها نامعتبر یا غیرفعال هستند.');
+    }
+
+    // پاک کردن روابط قبلی
+    await trx.userSkill.deleteMany({
+      where: { userId },
+    });
+
+    // ساختن روابط جدید
+    await trx.userSkill.createMany({
+      data: skillIds.map((skillId) => ({
+        userId,
+        skillId,
+      })),
+      skipDuplicates: true,
+    });
   }
 }
