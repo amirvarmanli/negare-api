@@ -4,13 +4,22 @@ import { Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProperty,
   ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 import {
   CurrentUser,
@@ -20,7 +29,11 @@ import { Public } from '@app/common/decorators/public.decorator';
 import { requireUserId } from '@app/catalog/utils/current-user.util';
 import { ArtistService } from '@app/catalog/artist/artist.service';
 import { ArtistIdParamDto } from '@app/catalog/artist/dtos/artist-id.dto';
-import { ArtistProfileDto } from '@app/catalog/artist/dtos/artist-profile.dto';
+import { ArtistHandleParamDto } from '@app/catalog/artist/dtos/artist-handle-param.dto';
+import {
+  ArtistProfileDto,
+  ArtistPublicProfileDto,
+} from '@app/catalog/artist/dtos/artist-profile.dto';
 import { ArtistProductsQueryDto } from '@app/catalog/artist/dtos/artist-products-query.dto';
 import { ProductListResultDto } from '@app/catalog/product/dtos/product-response.dto';
 import { ArtistFollowResponseDto } from '@app/catalog/artist/dtos/artist-follow.dto';
@@ -50,7 +63,14 @@ export class FollowingsQueryDto {
   limit?: number;
 }
 
-@ApiTags('Catalog / Artists')
+export class ArtistSlugParamDto {
+  @ApiProperty({ example: 'some-artist-slug' })
+  @IsString()
+  @IsNotEmpty()
+  slug!: string;
+}
+
+@ApiTags('Catalog/Artists')
 @ApiBearerAuth()
 @Controller('catalog/artists')
 export class ArtistController {
@@ -71,6 +91,30 @@ export class ArtistController {
     @Query() query: ArtistListQueryDto,
   ): Promise<ArtistListResultDto> {
     return this.service.listArtists(query);
+  }
+
+  @Get('public/by-handle/:handle')
+  @Public()
+  @ApiOperation({
+    summary: 'Get public artist profile by slug or username handle',
+  })
+  @ApiOkResponse({ type: ArtistPublicProfileDto })
+  @ApiNotFoundResponse({ description: 'Artist not found' })
+  async getPublicProfileByHandle(
+    @Param() params: ArtistHandleParamDto,
+  ): Promise<ArtistPublicProfileDto> {
+    return this.service.findPublicProfileByHandle(params.handle);
+  }
+
+  @Get('public/by-slug/:slug')
+  @Public()
+  @ApiOperation({ summary: 'Get public artist profile by slug' })
+  @ApiOkResponse({ type: ArtistPublicProfileDto })
+  @ApiNotFoundResponse({ description: 'Artist not found' })
+  async getPublicProfileBySlug(
+    @Param() params: ArtistSlugParamDto,
+  ): Promise<ArtistPublicProfileDto> {
+    return this.service.findPublicProfileBySlug(params.slug);
   }
 
   // ───────────────────────────────────────────────────────────────

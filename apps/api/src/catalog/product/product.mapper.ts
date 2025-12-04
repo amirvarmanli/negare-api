@@ -21,6 +21,7 @@ export const productInclude = {
         select: {
           id: true,
           name: true,
+          username: true,
           avatarUrl: true,
           _count: {
             select: {
@@ -74,6 +75,7 @@ export class ProductMapper {
 
     const creatorId = primarySupplier?.id ?? null;
     const creatorName = primarySupplier?.name ?? 'بدون نام';
+    const creatorUsername = primarySupplier?.username ?? null;
     const creatorAvatarUrl = primarySupplier?.avatarUrl ?? null;
 
     return {
@@ -92,6 +94,7 @@ export class ProductMapper {
 
       creatorId,
       creatorName,
+      creatorUsername,
       creatorAvatarUrl,
 
       status: p.status as ProductStatus,

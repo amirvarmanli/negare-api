@@ -1,0 +1,121 @@
+{
+  "info": {
+    "name": "Negare - Catalog - Artists",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "Get Artist Profile by Slug",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{API_BASE_URL}}/api/catalog/artists/public/by-slug/:slug",
+          "host": [
+            "{{API_BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "catalog",
+            "artists",
+            "public",
+            "by-slug",
+            ":slug"
+          ],
+          "variable": [
+            {
+              "key": "slug",
+              "value": "some-artist-slug",
+              "description": "Canonical artist slug"
+            }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "originalRequest": {
+            "method": "GET",
+            "url": "{{API_BASE_URL}}/api/catalog/artists/public/by-slug/some-artist-slug"
+          },
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"id\": \"artist-user-id\",\n  \"slug\": \"some-artist-slug\",\n  \"displayName\": \"Negare Artist\",\n  \"username\": \"artist.sample\",\n  \"avatarUrl\": \"https://cdn.negare.test/avatar.png\",\n  \"bio\": \"Motion designer and illustrator\",\n  \"skills\": [\n    {\n      \"id\": \"skill-1\",\n      \"key\": \"vector-illustration\",\n      \"nameFa\": \"تراش\",\n      \"nameEn\": \"Vector Illustration\",\n      \"isActive\": true,\n      \"sortOrder\": 1\n    }\n  ],\n  \"productsCount\": 12,\n  \"followersCount\": 4\n}",
+          "_postman_previewlanguage": "json",
+          "header": []
+        },
+        {
+          "name": "404 - Not Found",
+          "originalRequest": {
+            "method": "GET",
+            "url": "{{API_BASE_URL}}/api/catalog/artists/public/by-slug/unknown"
+          },
+          "status": "Not Found",
+          "code": 404,
+          "body": "{\n  \"statusCode\": 404,\n  \"message\": \"Artist not found\"\n}",
+          "_postman_previewlanguage": "json",
+          "header": []
+        }
+      ]
+    },
+    {
+      "name": "Get Artist Profile by Handle",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{API_BASE_URL}}/api/catalog/artists/public/by-handle/:handle",
+          "host": [
+            "{{API_BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "catalog",
+            "artists",
+            "public",
+            "by-handle",
+            ":handle"
+          ],
+          "variable": [
+            {
+              "key": "handle",
+              "value": "some-artist-slug",
+              "description": "Slug (e.g. some-artist-slug) or username (e.g. negare_artist)"
+            }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 - Success",
+          "originalRequest": {
+            "method": "GET",
+            "url": "{{API_BASE_URL}}/api/catalog/artists/public/by-handle/some-artist-slug"
+          },
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"id\": \"artist-user-id\",\n  \"slug\": \"some-artist-slug\",\n  \"displayName\": \"Negare Artist\",\n  \"username\": \"artist.sample\",\n  \"avatarUrl\": \"https://cdn.negare.test/avatar.png\",\n  \"bio\": \"Motion designer and illustrator\",\n  \"skills\": [\n    {\n      \"id\": \"skill-1\",\n      \"key\": \"vector-illustration\",\n      \"nameFa\": \"تراش\",\n      \"nameEn\": \"Vector Illustration\",\n      \"isActive\": true,\n      \"sortOrder\": 1\n    }\n  ],\n  \"productsCount\": 12,\n  \"followersCount\": 4\n}",
+          "_postman_previewlanguage": "json",
+          "header": []
+        },
+        {
+          "name": "404 - Not Found",
+          "originalRequest": {
+            "method": "GET",
+            "url": "{{API_BASE_URL}}/api/catalog/artists/public/by-handle/unknown"
+          },
+          "status": "Not Found",
+          "code": 404,
+          "body": "{\n  \"statusCode\": 404,\n  \"message\": \"Artist not found\"\n}",
+          "_postman_previewlanguage": "json",
+          "header": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "API_BASE_URL",
+      "value": "http://localhost:4000"
+    }
+  ]
+}

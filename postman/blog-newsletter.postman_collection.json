@@ -1,0 +1,437 @@
+{
+  "info": {
+    "_postman_id": "b7d1be6e-df9a-4d8a-9f7a-123456789abc",
+    "name": "Negare Blog + Newsletter",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "blogPostId", "value": "" },
+    { "key": "blogPostSlug", "value": "" },
+    { "key": "blogCommentId", "value": "" },
+    { "key": "blogCategoryId", "value": "" },
+    { "key": "newsletterIssueId", "value": "" },
+    { "key": "newsletterIssueSlug", "value": "" },
+    { "key": "newsletterCommentId", "value": "" },
+    { "key": "newsletterCategoryId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Blog",
+      "item": [
+        {
+          "name": "List Posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blog/posts?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blog", "posts"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Page number" },
+                { "key": "limit", "value": "10", "description": "Page size" },
+                { "key": "categorySlug", "value": "design", "disabled": true },
+                { "key": "q", "value": "typography", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Post by Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blog/posts/{{blogPostSlug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blog", "posts", "{{blogPostSlug}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Blog Post (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Designing with Negare\",\n  \"slug\": \"designing-with-negare\",\n  \"content\": \"<p>Full HTML content</p>\",\n  \"excerpt\": \"Teaser text\",\n  \"coverImageUrl\": \"https://cdn.example.com/covers/blog.png\",\n  \"categoryId\": \"{{blogCategoryId}}\",\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2025-01-12T10:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/posts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "posts"]
+            }
+          }
+        },
+        {
+          "name": "Update Blog Post (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Blog Post Title\",\n  \"status\": \"PUBLISHED\",\n  \"categoryId\": \"{{blogCategoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/posts/{{blogPostId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "posts", "{{blogPostId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Blog Post (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/posts/{{blogPostId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "posts", "{{blogPostId}}"]
+            }
+          }
+        },
+        {
+          "name": "Pin Blog Post (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPinned\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/posts/{{blogPostId}}/pin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "posts", "{{blogPostId}}", "pin"]
+            }
+          }
+        },
+        {
+          "name": "Create Blog Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Loved this article!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/blog/posts/{{blogPostId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blog", "posts", "{{blogPostId}}", "comments"]
+            }
+          }
+        },
+        {
+          "name": "Update Blog Comment Status (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/comments/{{blogCommentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "comments", "{{blogCommentId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Blog Category (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Inspiration\",\n  \"slug\": \"inspiration\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Update Blog Category (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Featured inspiration stories\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/categories/{{blogCategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "categories", "{{blogCategoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Blog Category (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/categories/{{blogCategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "categories", "{{blogCategoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "List All Blog Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blog/categories/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blog", "categories", "all"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Newsletter",
+      "item": [
+        {
+          "name": "List Issues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/newsletter/issues?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "newsletter", "issues"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "categorySlug", "value": "updates", "disabled": true },
+                { "key": "q", "value": "release", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Issue by Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/newsletter/issues/{{newsletterIssueSlug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "newsletter", "issues", "{{newsletterIssueSlug}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Newsletter Issue (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"January Updates\",\n  \"slug\": \"january-updates\",\n  \"content\": \"<p>All the news</p>\",\n  \"categoryId\": \"{{newsletterCategoryId}}\",\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2025-01-05T08:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/issues",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "issues"]
+            }
+          }
+        },
+        {
+          "name": "Update Newsletter Issue (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"excerpt\": \"Fresh news\",\n  \"isFeatured\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Newsletter Issue (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}"]
+            }
+          }
+        },
+        {
+          "name": "Pin Newsletter Issue (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPinned\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}/pin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}", "pin"]
+            }
+          }
+        },
+        {
+          "name": "Create Newsletter Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Exciting read!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/newsletter/issues/{{newsletterIssueId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "newsletter", "issues", "{{newsletterIssueId}}", "comments"]
+            }
+          }
+        },
+        {
+          "name": "Update Newsletter Comment Status (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/comments/{{newsletterCommentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "comments", "{{newsletterCommentId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Newsletter Category (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Product Updates\",\n  \"slug\": \"product-updates\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Update Newsletter Category (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Monthly recap category\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/categories/{{newsletterCategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "categories", "{{newsletterCategoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Newsletter Category (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/categories/{{newsletterCategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "categories", "{{newsletterCategoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "List All Newsletter Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/newsletter/categories/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "newsletter", "categories", "all"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

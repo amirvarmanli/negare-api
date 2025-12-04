@@ -1,10 +1,42 @@
 ﻿# Negare API
 
+## Blog & Newsletter Platform
+
+- **Modules**: `BlogModule` and `NewsletterModule` expose fully documented REST endpoints under `/api/blog/...` and `/api/newsletter/...` plus admin routes under `/api/admin/...`. Both modules rely on the shared `PrismaService`, DTO validation (`class-validator`), Swagger docs, and the existing auth guard (decorate GET routes with `@Public()` and require `Authorization: Bearer` for admin/comment mutations).
+- **Prisma models**:  
+  - `BlogCategory`, `BlogPost`, `BlogComment`  
+  - `NewsletterCategory`, `NewsletterIssue`, `NewsletterComment`  
+  All IDs are UUIDs, slugs are unique `citext`, categories support optional parents, publication status comes from the shared `PublicationStatus` enum, and comment moderation uses `CommentStatus`. Blog posts and newsletter issues expose both `isFeatured` and `isPinned` flags (only one item per module can be pinned at a time). Newsletter issues also support an optional `fileUrl` for downloadable attachments.
+- **Migrations**: after pulling the schema changes run  
+  ```bash
+  npx prisma migrate dev --name blog_newsletter_pins --schema prisma/schema.prisma
+  ```  
+  or `npx prisma migrate deploy` in CI/CD. Regenerate the Prisma client (`npm run prisma:gen`) before compiling NestJS.
+- **Running locally**: ensure `DATABASE_URL` is set, then `npm run start:dev` (or `npm run start` after building). Swagger auto-docs show everything at `http://localhost:4000/api/docs`.
+- **Key endpoints**:
+  - Blog public: `GET /api/blog/posts`, `GET /api/blog/posts/:slug`, `GET /api/blog/posts/:slug/comments`, `GET /api/blog/categories`, `GET /api/blog/categories/all`
+  - Blog admin: `POST|PATCH|DELETE /api/admin/blog/posts`, `POST /api/blog/posts/:id/comments`, `PATCH /api/admin/blog/comments/:id`, category CRUD under `/api/admin/blog/categories`, and pin management via `POST /api/admin/blog/posts/:id/pin`
+  - Newsletter public: `GET /api/newsletter/issues`, `GET /api/newsletter/issues/:slug`, `GET /api/newsletter/issues/:slug/comments`, `GET /api/newsletter/categories`, `GET /api/newsletter/categories/all`
+  - Newsletter admin: mirror the blog admin routes under `/api/admin/newsletter/...` with pinning exposed through `POST /api/admin/newsletter/issues/:id/pin`
+- **Postman collection**: `postman/blog-newsletter.postman_collection.json` contains ready-made requests (uses `{{baseUrl}}` + `{{accessToken}}` variables). Import it to exercise both public & admin APIs quickly.
+- **Environment**: reuse the existing `.env` knobs (`DATABASE_URL`, `GLOBAL_PREFIX`, JWT secrets, etc.). Admin endpoints expect an authenticated JWT user so provide a valid `Authorization: Bearer <token>` header when testing.
+
 ## Artist profiles & follows
 
 - Artist profiles expose bio/avatar, product & follower counts, and top products.
 - Follow/unfollow endpoints live under `/catalog/artists/:id/follow` and enforce supplier eligibility + self-follow guards.
 - See `docs/artists.md` for Prisma notes, endpoints, and Postman samples.
+
+### Public slug/handle-based artist profile
+
+- `GET /api/catalog/artists/public/by-slug/:slug` returns `ArtistPublicProfileDto` (id, slug, displayName, username/avatar/bio, skills list, productsCount, followersCount). It lets the frontend hydrate `/artists/[slug]` without requiring the viewer to be authenticated or aware of the artist ID.
+- `GET /api/catalog/artists/public/by-handle/:handle` also returns `ArtistPublicProfileDto`. `handle` can be either the artist slug or their username (case-insensitive), so older records without slugs continue to resolve via `/artists/:username`.
+- Example:
+  ```bash
+  curl -s -H 'Accept: application/json' \\
+    http://localhost:4000/api/catalog/artists/public/by-handle/negare_artist
+  ```
+- Postman helpers live in `postman/negare-catalog-artists.postman_collection.json` (includes both the success and 404 examples for slug + handle paths).
 
 ## Persian Slug Support
 
@@ -20,6 +52,10 @@
   npx prisma migrate resolve --rolled-back 20251201000000_product_file_links --schema prisma/schema.prisma
   npx prisma migrate deploy --schema prisma/schema.prisma
   ```
+
+## Home products / product cards
+
+- The home-feed listings and catalog product cards now return `creatorUsername` (`string | null`) in addition to the existing `creatorName`, so clients can surface both the display name and the username without extra lookups.
 
 ## Product Related & Search
 
@@ -215,5 +251,3 @@ curl -s -X POST "${BASE_URL}/upload/abort?uploadId=${UPLOAD_ID}"
   - `auth:rbl:<jti>` – refresh blacklist managed by `TokenService`.
 
 Together these changes bring the NestJS API in line with Next.js 15 SSR + CSR expectations while maintaining secure, single-use refresh tokens.
-
-

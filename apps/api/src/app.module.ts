@@ -6,6 +6,8 @@ import { CatalogModule } from '@app/catalog/catalog.module';
 import { ArtistModule } from '@app/catalog/artist/artist.module';
 import { AppConfigModule } from '@app/config/config.module';
 import { PrismaModule } from '@app/prisma/prisma.module';
+import { BlogModule } from '@app/blog/blog.module';
+import { NewsletterModule } from '@app/newsletter/newsletter.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { PrismaModule } from '@app/prisma/prisma.module';
     CoreModule,
     CatalogModule,
     ArtistModule,
+    BlogModule,
+    NewsletterModule,
   ],
 })
 export class AppModule {}

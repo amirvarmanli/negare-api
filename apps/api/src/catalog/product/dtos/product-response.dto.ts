@@ -86,6 +86,11 @@ export class ProductBriefDto {
 
   @ApiProperty({ nullable: true }) creatorId!: string | null;
   @ApiProperty() creatorName!: string;
+  @ApiProperty({
+    description: 'Creator username (nullable when not available)',
+    nullable: true,
+  })
+  creatorUsername!: string | null;
   @ApiProperty({ nullable: true }) creatorAvatarUrl!: string | null;
 
   @ApiProperty({ enum: ProductStatus }) status!: ProductStatus;

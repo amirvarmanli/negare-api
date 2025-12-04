@@ -43,6 +43,10 @@ model User {
   walletTransactions  WalletTransaction[]  @relation("WalletTransactionsUser")
   wallet              Wallet?
   skills              UserSkill[]
+  BlogPost            BlogPost[]
+  BlogComment         BlogComment[]
+  NewsletterIssue     NewsletterIssue[]
+  NewsletterComment   NewsletterComment[]
 
   @@index([status])
   @@index([createdAt], map: "users_created_at_idx")
@@ -473,6 +477,179 @@ model Comment {
   @@schema("catalog")
 }
 
+model BlogCategory {
+  id          String         @id @default(uuid()) @db.Uuid
+  name        String         @db.VarChar(255)
+  slug        String         @unique @db.Citext
+  description String?        @db.VarChar(1000)
+  isActive    Boolean        @default(true) @map("is_active")
+  parentId    String?        @map("parent_id") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent      BlogCategory?  @relation("BlogCategoryHierarchy", fields: [parentId], references: [id])
+  children    BlogCategory[] @relation("BlogCategoryHierarchy")
+  posts       BlogPost[]
+
+  @@index([isActive], map: "blog_categories_active_idx")
+  @@map("blog_categories")
+  @@schema("catalog")
+}
+
+model BlogPost {
+  id              String            @id @default(uuid()) @db.Uuid
+  title           String            @db.VarChar(255)
+  slug            String            @unique @db.Citext
+  browserTitle    String?           @map("browser_title") @db.VarChar(70)
+  excerpt         String?           @db.VarChar(600)
+  content         String
+  coverImageUrl   String?           @map("cover_image_url") @db.VarChar(1024)
+  previewCoverUrl String?           @map("preview_cover_url") @db.VarChar(1024)
+  isFeatured      Boolean           @default(false) @map("is_featured")
+  isPinned        Boolean           @default(false) @map("is_pinned")
+  viewCount       Int               @default(0) @map("view_count")
+  status          PublicationStatus @default(DRAFT)
+  publishedAt     DateTime?         @map("published_at") @db.Timestamptz(6)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
+  categoryId      String            @map("category_id") @db.Uuid
+  authorId        String            @map("author_id") @db.Uuid
+  category        BlogCategory      @relation(fields: [categoryId], references: [id])
+  author          User              @relation(fields: [authorId], references: [id])
+  comments        BlogComment[]
+  sections        BlogPostSection[]
+
+  @@index([status, publishedAt], map: "blog_posts_status_pub_idx")
+  @@index([categoryId], map: "blog_posts_category_idx")
+  @@map("blog_posts")
+  @@schema("catalog")
+}
+
+model BlogComment {
+  id        String        @id @default(uuid()) @db.Uuid
+  postId    String        @map("post_id") @db.Uuid
+  authorId  String        @map("author_id") @db.Uuid
+  parentId  String?       @map("parent_id") @db.Uuid
+  content   String        @db.VarChar(2000)
+  status    CommentStatus @default(PENDING)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  author    User          @relation(fields: [authorId], references: [id])
+  post      BlogPost      @relation(fields: [postId], references: [id])
+  parent    BlogComment?  @relation("BlogCommentThread", fields: [parentId], references: [id])
+  replies   BlogComment[] @relation("BlogCommentThread")
+
+  @@index([postId, status, createdAt], map: "blog_comments_post_status_idx")
+  @@map("blog_comments")
+  @@schema("catalog")
+}
+
+model BlogPostSection {
+  id         String                @id @default(uuid()) @db.Uuid
+  blogPostId String                @map("blog_post_id") @db.Uuid
+  order      Int
+  title      String                @db.VarChar(255)
+  body       String
+  mediaUrl   String?               @map("media_url") @db.VarChar(1024)
+  mediaType  BlogSectionMediaType? @map("media_type")
+  createdAt  DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  blogPost   BlogPost              @relation(fields: [blogPostId], references: [id], onDelete: Cascade)
+
+  @@index([blogPostId, order], map: "blog_post_sections_post_order_idx")
+  @@map("blog_post_sections")
+  @@schema("catalog")
+}
+
+enum BlogSectionMediaType {
+  image
+  video
+
+  @@schema("catalog")
+}
+
+model NewsletterCategory {
+  id          String               @id @default(uuid()) @db.Uuid
+  name        String               @db.VarChar(255)
+  slug        String               @unique @db.Citext
+  description String?              @db.VarChar(1000)
+  isActive    Boolean              @default(true) @map("is_active")
+  parentId    String?              @map("parent_id") @db.Uuid
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent      NewsletterCategory?  @relation("NewsletterCategoryHierarchy", fields: [parentId], references: [id])
+  children    NewsletterCategory[] @relation("NewsletterCategoryHierarchy")
+  issues      NewsletterIssue[]
+
+  @@index([isActive], map: "newsletter_categories_active_idx")
+  @@map("newsletter_categories")
+  @@schema("catalog")
+}
+
+model NewsletterIssue {
+  id            String              @id @default(uuid()) @db.Uuid
+  title         String              @db.VarChar(255)
+  slug          String              @unique @db.Citext
+  browserTitle  String?             @map("browser_title") @db.VarChar(70)
+  excerpt       String?             @db.VarChar(600)
+  content       String
+  coverImageUrl String?             @map("cover_image_url") @db.VarChar(1024)
+  fileUrl       String?             @map("file_url") @db.VarChar(1024)
+  isFeatured    Boolean             @default(false) @map("is_featured")
+  isPinned      Boolean             @default(false) @map("is_pinned")
+  viewCount     Int                 @default(0) @map("view_count")
+  status        PublicationStatus   @default(DRAFT)
+  publishedAt   DateTime?           @map("published_at") @db.Timestamptz(6)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  categoryId    String              @map("category_id") @db.Uuid
+  authorId      String              @map("author_id") @db.Uuid
+  category      NewsletterCategory  @relation(fields: [categoryId], references: [id])
+  author        User                @relation(fields: [authorId], references: [id])
+  comments      NewsletterComment[]
+  sections      NewsletterSection[]
+
+  @@index([status, publishedAt], map: "newsletter_issue_status_pub_idx")
+  @@index([categoryId], map: "newsletter_issue_category_idx")
+  @@map("newsletter_issues")
+  @@schema("catalog")
+}
+
+model NewsletterComment {
+  id        String              @id @default(uuid()) @db.Uuid
+  issueId   String              @map("issue_id") @db.Uuid
+  authorId  String              @map("author_id") @db.Uuid
+  parentId  String?             @map("parent_id") @db.Uuid
+  content   String              @db.VarChar(2000)
+  status    CommentStatus       @default(PENDING)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  author    User                @relation(fields: [authorId], references: [id])
+  issue     NewsletterIssue     @relation(fields: [issueId], references: [id])
+  parent    NewsletterComment?  @relation("NewsletterCommentThread", fields: [parentId], references: [id])
+  replies   NewsletterComment[] @relation("NewsletterCommentThread")
+
+  @@index([issueId, status, createdAt], map: "newsletter_comments_issue_status_idx")
+  @@map("newsletter_comments")
+  @@schema("catalog")
+}
+
+model NewsletterSection {
+  id        String          @id @default(uuid()) @db.Uuid
+  issueId   String          @map("issue_id") @db.Uuid
+  order     Int
+  title     String          @db.VarChar(255)
+  body      String
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  issue     NewsletterIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId, order], map: "newsletter_sections_issue_order_idx")
+  @@map("newsletter_sections")
+  @@schema("catalog")
+}
+
 model ProductView {
   id        BigInt   @id @default(autoincrement())
   productId BigInt   @map("product_id")
@@ -624,6 +801,24 @@ enum ProductStatus {
   ARCHIVED
 
   @@map("enum_content_products_status")
+  @@schema("catalog")
+}
+
+enum PublicationStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("enum_content_publication_status")
+  @@schema("catalog")
+}
+
+enum CommentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("enum_content_comment_status")
   @@schema("catalog")
 }
 

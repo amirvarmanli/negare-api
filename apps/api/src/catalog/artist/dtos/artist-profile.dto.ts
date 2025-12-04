@@ -81,3 +81,50 @@ export class ArtistProfileDto {
   })
   topProducts?: ProductBriefDto[];
 }
+
+export class ArtistPublicProfileDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  slug!: string;
+
+  @ApiProperty({
+    description: 'نام نمایشی (اولویت: name → username)',
+  })
+  displayName!: string;
+
+  @ApiPropertyOptional({
+    description: 'نام کاربری هنرمند (ممکن است null باشد)',
+    nullable: true,
+  })
+  username!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'تصویر پروفایل هنرمند',
+    nullable: true,
+  })
+  avatarUrl!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'بیوگرافی هنرمند',
+    nullable: true,
+  })
+  bio!: string | null;
+
+  @ApiProperty({
+    type: [ArtistSkillDto],
+    description: 'مهارت‌های هنرمند',
+  })
+  skills!: ArtistSkillDto[];
+
+  @ApiProperty({
+    description: 'تعداد محصولاتی که این هنرمند تأمین‌کننده آن‌هاست',
+  })
+  productsCount!: number;
+
+  @ApiProperty({
+    description: 'تعداد دنبال‌کننده‌های هنرمند',
+  })
+  followersCount!: number;
+}

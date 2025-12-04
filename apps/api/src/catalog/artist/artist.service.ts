@@ -16,7 +16,10 @@ import {
   type ArtistListEntity,
 } from '@app/catalog/artist/artist.mapper';
 import { ArtistProductsQueryDto } from '@app/catalog/artist/dtos/artist-products-query.dto';
-import { ArtistProfileDto } from '@app/catalog/artist/dtos/artist-profile.dto';
+import {
+  ArtistProfileDto,
+  ArtistPublicProfileDto,
+} from '@app/catalog/artist/dtos/artist-profile.dto';
 import { ArtistFollowResponseDto } from '@app/catalog/artist/dtos/artist-follow.dto';
 import {
   ProductFindQueryDto,
@@ -35,13 +38,9 @@ import {
   ArtistListResultDto,
 } from '@app/catalog/artist/dtos/artist-list.dto';
 
-// فقط محصولات منتشرشده در public دیده می‌شن
 const PUBLIC_PRODUCT_STATUSES: ProductStatus[] = [ProductStatus.PUBLISHED];
-
-// حداکثر محصولات برتر در پروفایل
 const TOP_PRODUCTS_LIMIT = 8;
 
-// پیام‌های خطا (در صورت نیاز بعداً می‌تونی لوکالایز کنی)
 const ERR_ARTIST_NOT_FOUND = 'Artist not found';
 const ERR_SELF_FOLLOW = 'You cannot follow yourself.';
 
@@ -97,7 +96,7 @@ export class ArtistService {
     // فقط کاربران active
     whereAnd.push({ status: UserStatus.active });
 
-    // فقط کسانی که نقش supplier دارند (تعریف "هنرمند")
+    // فقط کسانی که نقش supplier دارند
     whereAnd.push({
       userRoles: {
         some: {
@@ -133,13 +132,11 @@ export class ArtistService {
     const where: Prisma.UserWhereInput =
       whereAnd.length > 0 ? { AND: whereAnd } : {};
 
-    // سورت پایه روی یوزر (سورت دقیق‌تر براساس فالوئر/محصول رو پایین بعد از map انجام می‌دیم)
     let orderBy: Prisma.UserOrderByWithRelationInput;
 
     switch (sort) {
       case 'popular':
       case 'mostProducts':
-        // فعلاً بر اساس name؛ بعداً می‌تونیم کامل منتقلش کنیم روی followersCount / productsCount
         orderBy = { name: 'asc' };
         break;
       case 'latest':
@@ -156,6 +153,7 @@ export class ArtistService {
         take: limit,
         select: {
           id: true,
+          // اینجا لازم نیست slug بگیریم؛ برای لیست استفاده نمی‌شه
           username: true,
           name: true,
           avatarUrl: true,
@@ -187,7 +185,6 @@ export class ArtistService {
       return ArtistMapper.toArtistListResult([], 0, page, limit);
     }
 
-    // گروه‌بندی برای شمارش فالوئرها و محصولات
     const [followersGroups, productsGroups] = await Promise.all([
       this.prisma.artistFollow.groupBy({
         by: ['artistId'],
@@ -232,7 +229,6 @@ export class ArtistService {
       };
     });
 
-    // سورت نهایی در حافظه بر اساس متریک‌ها
     let sortedEntities = entities;
 
     if (sort === 'popular') {
@@ -244,7 +240,6 @@ export class ArtistService {
         (a, b) => b.productsCount - a.productsCount,
       );
     }
-    // برای latest همان orderBy دیتابیس کافی است
 
     return ArtistMapper.toArtistListResult(sortedEntities, total, page, limit);
   }
@@ -260,20 +255,15 @@ export class ArtistService {
 
     const [productsCount, followersCount, followRow, topProducts] =
       await Promise.all([
-        // تعداد محصولاتی که این کاربر supplier آن است
         this.prisma.productSupplier.count({
           where: {
             userId: artist.id,
             product: { status: { in: PUBLIC_PRODUCT_STATUSES } },
           },
         }),
-
-        // تعداد دنبال‌کننده‌ها
         this.prisma.artistFollow.count({
           where: { artistId: artist.id },
         }),
-
-        // آیا بیننده فعلی این هنرمند را فالو کرده؟
         viewerId
           ? this.prisma.artistFollow.findUnique({
               where: {
@@ -285,8 +275,6 @@ export class ArtistService {
               select: { followerId: true },
             })
           : null,
-
-        // محصولات برتر (بر اساس دانلود، لایک، تاریخ)
         this.prisma.product.findMany({
           where: {
             status: { in: PUBLIC_PRODUCT_STATUSES },
@@ -318,7 +306,40 @@ export class ArtistService {
   }
 
   // ───────────────────────────────────────────────────────────────
-  // لیست محصولات یک هنرمند (با reuse سرویس Product)
+  // پروفایل عمومی بر اساس handle (الان فقط username)
+  // ───────────────────────────────────────────────────────────────
+  async findPublicProfileByHandle(
+    handle: string,
+  ): Promise<ArtistPublicProfileDto> {
+    const artist = await this.ensureArtistUserByHandle(handle);
+
+    const [productsCount, followersCount] = await Promise.all([
+      this.prisma.productSupplier.count({
+        where: {
+          userId: artist.id,
+          product: { status: { in: PUBLIC_PRODUCT_STATUSES } },
+        },
+      }),
+      this.countFollowers(artist.id),
+    ]);
+
+    const stats = {
+      productsCount,
+      followersCount,
+    };
+
+    const profileEntity = this.toProfileEntity(artist);
+
+    return ArtistMapper.toPublicProfile(profileEntity, stats);
+  }
+
+  // پابلیک API قدیمی /by-slug هم عملاً از همین handle استفاده می‌کند
+  async findPublicProfileBySlug(slug: string): Promise<ArtistPublicProfileDto> {
+    return this.findPublicProfileByHandle(slug);
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // لیست محصولات یک هنرمند
   // ───────────────────────────────────────────────────────────────
   async listProducts(
     artistId: string,
@@ -430,18 +451,41 @@ export class ArtistService {
   // Helpers
   // ───────────────────────────────────────────────────────────────
 
-  /**
-   * اطمینان از این‌که کاربر:
-   *  - وجود دارد
-   *  - active است
-   *  - role supplier دارد
-   *  - یا حداقل یک محصول به نام او ثبت شده
-   */
   private async ensureArtistUser(
     artistId: string,
   ): Promise<ArtistWithRolesAndSkills> {
-    const artist = await this.prisma.user.findUnique({
-      where: { id: artistId },
+    const artist = await this.fetchArtistRecord({ id: artistId });
+    return this.validateArtistUser(artist);
+  }
+
+  /**
+   * اینجا فقط با username کار می‌کنیم (handle)
+   */
+  private async ensureArtistUserByHandle(
+    handle: string,
+  ): Promise<ArtistWithRolesAndSkills> {
+    const cleanedHandle = handle.trim();
+
+    if (cleanedHandle.length === 0) {
+      throw new NotFoundException(ERR_ARTIST_NOT_FOUND);
+    }
+
+    const byUsername = await this.fetchArtistRecord({
+      username: { equals: cleanedHandle, mode: 'insensitive' },
+    });
+
+    if (byUsername) {
+      return this.validateArtistUser(byUsername);
+    }
+
+    throw new NotFoundException(ERR_ARTIST_NOT_FOUND);
+  }
+
+  private async fetchArtistRecord(
+    where: Prisma.UserWhereInput,
+  ): Promise<ArtistWithRolesAndSkills | null> {
+    return this.prisma.user.findFirst({
+      where,
       select: {
         id: true,
         username: true,
@@ -467,7 +511,11 @@ export class ArtistService {
         },
       },
     });
+  }
 
+  private async validateArtistUser(
+    artist: ArtistWithRolesAndSkills | null,
+  ): Promise<ArtistWithRolesAndSkills> {
     if (!artist || artist.status !== UserStatus.active) {
       throw new NotFoundException(ERR_ARTIST_NOT_FOUND);
     }
@@ -492,10 +540,6 @@ export class ArtistService {
     return artist;
   }
 
-  /**
-   * نرمال‌سازی دیتای هنرمند برای mapper
-   * (همراه با skills برای استفاده در پروفایل / UI)
-   */
   private toProfileEntity(
     artist: ArtistWithRolesAndSkills,
   ): ArtistProfileEntity {
@@ -506,6 +550,7 @@ export class ArtistService {
 
     return {
       id: artist.id,
+      slug: this.buildArtistSlug(artist),
       username: artist.username,
       name: artist.name,
       avatarUrl: artist.avatarUrl,
@@ -514,18 +559,16 @@ export class ArtistService {
     };
   }
 
-  /**
-   * جلوگیری از فالو کردن خود
-   */
+  private buildArtistSlug(artist: ArtistWithRolesAndSkills): string {
+    return artist.username ?? artist.id;
+  }
+
   private ensureNotSelfFollow(artistId: string, followerId: string): void {
     if (artistId === followerId) {
       throw new BadRequestException(ERR_SELF_FOLLOW);
     }
   }
 
-  /**
-   * شمارش تعداد دنبال‌کننده‌های هنرمند
-   */
   private async countFollowers(artistId: string): Promise<number> {
     return this.prisma.artistFollow.count({
       where: { artistId },

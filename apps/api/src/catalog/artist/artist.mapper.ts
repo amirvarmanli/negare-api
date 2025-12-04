@@ -1,4 +1,7 @@
-import { ArtistProfileDto } from '@app/catalog/artist/dtos/artist-profile.dto';
+import {
+  ArtistProfileDto,
+  ArtistPublicProfileDto,
+} from '@app/catalog/artist/dtos/artist-profile.dto';
 import {
   ProductMapper,
   type ProductWithRelations,
@@ -30,6 +33,7 @@ export type ArtistSkillEntity = {
  */
 export type ArtistProfileEntity = {
   id: string;
+  slug: string;
   username: string | null;
   name: string | null;
   avatarUrl: string | null;
@@ -41,6 +45,11 @@ export type ArtistProfileStats = {
   productsCount: number;
   followersCount: number;
   isFollowedByCurrentUser: boolean;
+};
+
+export type ArtistPublicProfileStats = {
+  productsCount: number;
+  followersCount: number;
 };
 
 /**
@@ -71,6 +80,16 @@ export type ArtistListEntity = {
 };
 
 export class ArtistMapper {
+  private static resolveDisplayName(
+    name: string | null | undefined,
+    username: string | null | undefined,
+  ): string {
+    const rawName = name?.trim();
+    return rawName && rawName.length > 0
+      ? rawName
+      : username ?? 'هنرمند ناشناس';
+  }
+
   // ───────────────────────────────────────────────────────────────
   // پروفایل هنرمند
   // ───────────────────────────────────────────────────────────────
@@ -79,11 +98,7 @@ export class ArtistMapper {
     stats: ArtistProfileStats,
     topProducts?: ProductWithRelations[],
   ): ArtistProfileDto {
-    const rawName = artist.name?.trim();
-    const displayName =
-      rawName && rawName.length > 0
-        ? rawName
-        : (artist.username ?? 'هنرمند ناشناس');
+    const displayName = this.resolveDisplayName(artist.name, artist.username);
 
     return {
       id: artist.id,
@@ -106,6 +121,32 @@ export class ArtistMapper {
     };
   }
 
+  static toPublicProfile(
+    artist: ArtistProfileEntity,
+    stats: ArtistPublicProfileStats,
+  ): ArtistPublicProfileDto {
+    const displayName = this.resolveDisplayName(artist.name, artist.username);
+
+    return {
+      id: artist.id,
+      slug: artist.slug,
+      displayName,
+      username: artist.username,
+      avatarUrl: artist.avatarUrl,
+      bio: artist.bio,
+      skills: (artist.skills ?? []).map((skill) => ({
+        id: skill.id,
+        key: skill.key,
+        nameFa: skill.nameFa,
+        nameEn: skill.nameEn,
+        isActive: skill.isActive,
+        sortOrder: skill.sortOrder,
+      })),
+      productsCount: stats.productsCount,
+      followersCount: stats.followersCount,
+    };
+  }
+
   // ───────────────────────────────────────────────────────────────
   // لیست هنرمندانی که کاربر فالو کرده است
   // ───────────────────────────────────────────────────────────────
@@ -116,11 +157,10 @@ export class ArtistMapper {
   static toFollowedArtistItem(
     entity: FollowedArtistEntity,
   ): FollowedArtistItemDto {
-    const rawName = entity.name?.trim();
-    const displayName =
-      rawName && rawName.length > 0
-        ? rawName
-        : (entity.username ?? 'هنرمند ناشناس');
+    const displayName = this.resolveDisplayName(
+      entity.name,
+      entity.username,
+    );
 
     return {
       id: entity.id,
@@ -156,11 +196,7 @@ export class ArtistMapper {
    * مپ یک هنرمند به آیتم لیست آرشیو
    */
   static toArtistListItem(entity: ArtistListEntity): ArtistListItemDto {
-    const rawName = entity.name?.trim();
-    const displayName =
-      rawName && rawName.length > 0
-        ? rawName
-        : (entity.username ?? 'هنرمند ناشناس');
+    const displayName = this.resolveDisplayName(entity.name, entity.username);
 
     return {
       id: entity.id,
