@@ -14,7 +14,8 @@
     { "key": "newsletterIssueId", "value": "" },
     { "key": "newsletterIssueSlug", "value": "" },
     { "key": "newsletterCommentId", "value": "" },
-    { "key": "newsletterCategoryId", "value": "" }
+    { "key": "newsletterCategoryId", "value": "" },
+    { "key": "supplierId", "value": "" }
   ],
   "item": [
     {
@@ -47,6 +48,34 @@
               "raw": "{{baseUrl}}/api/blog/posts/{{blogPostSlug}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "blog", "posts", "{{blogPostSlug}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Blog Post (Admin by ID)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/posts/{{blogPostId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "posts", "{{blogPostId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Blog Post (Admin by Slug)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blog/posts/slug/{{blogPostSlug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blog", "posts", "slug", "{{blogPostSlug}}"]
             }
           }
         },
@@ -255,6 +284,34 @@
               "raw": "{{baseUrl}}/api/newsletter/issues/{{newsletterIssueSlug}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "newsletter", "issues", "{{newsletterIssueSlug}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Newsletter Issue (Admin by ID)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Newsletter Issue (Admin by Slug)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletter/issues/slug/{{newsletterIssueSlug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletter", "issues", "slug", "{{newsletterIssueSlug}}"]
             }
           }
         },

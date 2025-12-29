@@ -105,6 +105,7 @@ export class ProductMapper {
 
       isLikedByCurrentUser: false,
       isBookmarkedByCurrentUser: false,
+      hasPurchased: false,
 
       shortLink: p.shortLink ?? undefined,
 

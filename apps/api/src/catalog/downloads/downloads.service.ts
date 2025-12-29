@@ -3,7 +3,8 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { FinanceEntitlementSource, Prisma } from '@prisma/client';
+import { EntitlementSource } from '@app/finance/common/finance.enums';
 import { Buffer } from 'buffer';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { CountersService } from '@app/catalog/counters/counters.service';
@@ -124,13 +125,37 @@ export class DownloadsService {
         include: { product: { include: productInclude } },
       });
 
-    const items: UserDownloadItemDto[] = rows.map((d: DownloadWithProduct) => ({
-      product: ProductMapper.toBrief(d.product as ProductWithRelations),
-      downloadedAt: d.createdAt.toISOString(),
-      bytes:
-        d.bytes !== null && d.bytes !== undefined ? Number(d.bytes) : undefined,
-      pricePaid: d.pricePaid ?? undefined,
-    }));
+    const productIds = rows.map((row) => row.productId);
+    const purchasedSet = new Set<string>();
+    if (productIds.length > 0) {
+      const entitlements = await this.prisma.financeEntitlement.findMany({
+        where: {
+          userId,
+          productId: { in: productIds },
+          source: EntitlementSource.PURCHASED as FinanceEntitlementSource,
+        },
+        select: { productId: true },
+      });
+      entitlements.forEach((row) =>
+        purchasedSet.add(row.productId.toString()),
+      );
+    }
+
+    const items: UserDownloadItemDto[] = rows.map((d: DownloadWithProduct) => {
+      const product = ProductMapper.toBrief(
+        d.product as ProductWithRelations,
+      );
+      product.hasPurchased = purchasedSet.has(d.productId.toString());
+      return {
+        product,
+        downloadedAt: d.createdAt.toISOString(),
+        bytes:
+          d.bytes !== null && d.bytes !== undefined
+            ? Number(d.bytes)
+            : undefined,
+        pricePaid: d.pricePaid ?? undefined,
+      };
+    });
 
     let nextCursor: string | undefined;
     if (rows.length === take) {

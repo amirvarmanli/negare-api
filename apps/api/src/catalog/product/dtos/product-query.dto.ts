@@ -182,8 +182,9 @@ export class ProductSearchQueryDto extends PickType(
   PRODUCT_SEARCH_FILTER_FIELDS,
 ) {
   @ApiProperty({
-    description: 'متن جستجو (الزامی)',
-    example: 'طراحی لوگو',
+    description:
+      'متن جستجو (الزامی). چندکلمه‌ای (AND) و پشتیبانی از عبارت دقیق با کوتیشن.',
+    example: 'شهید بهشتی',
   })
   @Transform(toTrimmedString)
   @IsString()

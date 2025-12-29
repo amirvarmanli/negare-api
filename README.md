@@ -16,9 +16,20 @@
 - **Key endpoints**:
   - Blog public: `GET /api/blog/posts`, `GET /api/blog/posts/:slug`, `GET /api/blog/posts/:slug/comments`, `GET /api/blog/categories`, `GET /api/blog/categories/all`
   - Blog admin: `POST|PATCH|DELETE /api/admin/blog/posts`, `POST /api/blog/posts/:id/comments`, `PATCH /api/admin/blog/comments/:id`, category CRUD under `/api/admin/blog/categories`, and pin management via `POST /api/admin/blog/posts/:id/pin`
-  - Newsletter public: `GET /api/newsletter/issues`, `GET /api/newsletter/issues/:slug`, `GET /api/newsletter/issues/:slug/comments`, `GET /api/newsletter/categories`, `GET /api/newsletter/categories/all`
-  - Newsletter admin: mirror the blog admin routes under `/api/admin/newsletter/...` with pinning exposed through `POST /api/admin/newsletter/issues/:id/pin`
+- Newsletter public: `GET /api/newsletter/issues`, `GET /api/newsletter/issues/:slug`, `GET /api/newsletter/issues/:slug/comments`, `GET /api/newsletter/categories`, `GET /api/newsletter/categories/all`
+- Newsletter admin: mirror the blog admin routes under `/api/admin/newsletter/...` with pinning exposed through `POST /api/admin/newsletter/issues/:id/pin`
 - **Postman collection**: `postman/blog-newsletter.postman_collection.json` contains ready-made requests (uses `{{baseUrl}}` + `{{accessToken}}` variables). Import it to exercise both public & admin APIs quickly.
+### Blog & Newsletter Public Endpoints
+- **Endpoints**: use `/api/blog/posts` and `/api/newsletter/issues` (plus their slug/comment/category helpers under `/api/blog/...` and `/api/newsletter/...`) for public consumption; admin routes live under `/api/admin/blog/...` and `/api/admin/newsletter/...` for suppliers/admins.
+- **Public visibility rules**: only `PublicationStatus.PUBLISHED` items are returned, and when `publishedAt` is set it must be `<= now`; drafts, future-scheduled drafts, or soft-deleted rows never show up.
+- **Query filtering behavior**: pagination (`page`, `limit`), category slug, search (`q`), and the optional `supplierId` (UUID) query let the storefront narrow results to a specific supplier/author; omit `supplierId` to get every published item.
+- **Testing via Postman**: import `postman/blog-newsletter.postman_collection.json`, point `{{baseUrl}}` at your API, supply a valid `{{accessToken}}`, and optionally set `{{supplierId}}` to test owner-scoped listings.
+- **Common pitfalls**: remember to publish drafts (`status=PUBLISHED`) and set `publishedAt` to the past (or leave it `null`) before calling the public endpoint, otherwise the visibility filter drops the payload.
+### Routes & Testing
+- **Supplier/admin panel**: `/api/admin/blog/posts`, `GET /api/admin/blog/posts/{id}` (UUID) for the new supplier panel links, and `GET /api/admin/blog/posts/slug/{slug}` for legacy permalinks let suppliers list, fetch, create, edit, and soft-delete only their own content while admins can manage everything. Suppliers can only read posts where `authorId` matches their account (`CurrentUser.id`), admins bypass that guard, and forbidden lookups return `404` to keep ownership private.
+- Panel cards now link to `/panel/supplier/blogs/${post.id}` so the edit view resolves via ID-first navigation while the slug path remains a Persian-friendly fallback for older routes. Do not rely on a single `GET /api/admin/blog/posts/:token` handler for both IDs and slugs, because Persian or UUID-like slugs can collide; the explicit `/slug/{slug}` segment removes that ambiguity.
+- **Supplier/admin newsletter panel**: `/api/admin/newsletter/issues/{id}` is the ID-first endpoint used by `/panel/supplier/newsletter/${issue.id}` while `/api/admin/newsletter/issues/slug/{slug}` stays as a legacy fallback (Persian/Unicode values are supported). Admins can read every issue, but suppliers only succeed when `authorId === CurrentUser.id`, and denied lookups emit `404` so ownership remains private. Do not collapse both behaviors into a single `:token` handler—UUID-like slugs can collide, and the dedicated `/slug/{slug}` segment keeps the routes unambiguous.
+- **Testing**: import `postman/blog-newsletter.postman_collection.json`, point `{{baseUrl}}` at your running API, populate `{{accessToken}}` with an authenticated supplier/admin token, then run the public list/single, the admin list, the `Get ... (Admin)` slug fetches, and the create/update/delete requests to verify end-to-end behavior.
 - **Environment**: reuse the existing `.env` knobs (`DATABASE_URL`, `GLOBAL_PREFIX`, JWT secrets, etc.). Admin endpoints expect an authenticated JWT user so provide a valid `Authorization: Bearer <token>` header when testing.
 
 ## Artist profiles & follows
@@ -157,6 +168,33 @@ Core `.env` knobs (see `.env.example`):
 - `GLOBAL_PREFIX=api`, `FRONTEND_URL=http://localhost:3000` (used for both CORS + Origin enforcement), `CORS_ORIGIN` (legacy fallback), `REDIS_URL=redis://localhost:6379`.
 - Refresh throttling knobs: `REFRESH_RL_MAX` (default 5) and `REFRESH_RL_WINDOW` (default 10s).
 - Production: set `COOKIE_SECURE=true` and `COOKIE_SAMESITE=none` once the API is served over HTTPS.
+
+## Docker workflow
+
+### Starting and stopping
+
+- `docker compose up -d --build` compiles the Nest app, brings up Postgres, Redis, and the API, and runs `prisma generate` + `prisma migrate deploy` before the server listens.
+- The stack exposes `http://localhost:4000/${GLOBAL_PREFIX:-api}` (API) and `http://localhost:8080` (Adminer when you run `docker compose --profile tools up -d adminer`).
+- Use `docker compose down -v` to stop the stack and wipe the persisted Postgres data/temporary uploads.
+- The dev override (`docker-compose.override.yml`) mounts the repository, pins a dedicated `api-node-modules` volume for Windows hosts, and switches the command to `npm run start:dev`, so `docker compose up -d` already runs Nest in watch mode.
+
+### Prisma, pgcrypto, and schemas
+
+- The entrypoint automatically executes `npm run prisma:generate` followed by `npm run prisma:migrate:deploy`, so `docker compose up -d` keeps Prisma aligned with the migration history.
+- Run `docker compose exec api npm run prisma:migrate:deploy` if you need to reapply migrations after editing `.env` or the Prisma schema.
+- Postgres initialization scripts under `docker/db-init/init.sql` enable `pgcrypto` and create the `analytics`, `catalog`, `core`, `finance`, and `public` schemas that Prisma expects, so migrations never fail due to missing schemas.
+
+### Seeding subscription plans
+
+- The compiled seed script lives at `dist/scripts/seed-subscription-plans.js`, so run `docker compose exec api node dist/scripts/seed-subscription-plans.js` whenever you need to refresh the finance subscription plans.
+- Setting `RUN_SEED=true` in `.env` (or appending `RUN_SEED=true docker compose up -d`) makes the entrypoint run the script right after migrations finish, keeping the behaviour safe for repeated starts.
+
+### Troubleshooting
+
+- Ensure `DATABASE_URL` inside the container points at `postgresql://postgres:postgres@db:5432/negare_db`; the newly added `.env.example` documents both the local and Docker connection strings.
+- The entrypoint prints `Waiting for Postgres…` until `pg_isready` reports healthy; inspect `docker compose logs db` if that loop never completes.
+- Redis is required for auth/refresh throttling; check `docker compose logs redis` if the API cannot establish sessions.
+- The API exposes `/api/health` (global prefix respects `GLOBAL_PREFIX`) and the healthcheck returns success via `curl`. Use `docker compose ps` to confirm the service status once the endpoint responds.
 
 ## Running & Testing
 

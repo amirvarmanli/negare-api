@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,10 +9,14 @@ import {
   NewsletterCategory,
   Prisma,
   PublicationStatus,
+  RoleName,
 } from '@prisma/client';
 import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import { buildPaginationMeta } from '@app/common/dto/pagination.dto';
 import { createSlug } from '@app/shared/utils/slug.util';
+import {
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
 import { CreateNewsletterIssueDto } from '@app/newsletter/dto/create-newsletter-issue.dto';
 import { UpdateNewsletterIssueDto } from '@app/newsletter/dto/update-newsletter-issue.dto';
 import {
@@ -39,6 +44,7 @@ import {
 } from '@app/newsletter/dto/newsletter-comments-query.dto';
 import { UpdateNewsletterCommentStatusDto } from '@app/newsletter/dto/update-newsletter-comment-status.dto';
 import { UpdateNewsletterPinStatusDto } from '@app/newsletter/dto/update-newsletter-pin-status.dto';
+import { query } from 'express';
 
 const AUTHOR_SUMMARY_SELECT = {
   id: true,
@@ -104,23 +110,22 @@ export class NewsletterService {
       query.limit,
     );
 
+    const now = new Date();
     const where: Prisma.NewsletterIssueWhereInput = {
       deletedAt: null,
-      status: query.status ?? PublicationStatus.PUBLISHED,
+      status: PublicationStatus.PUBLISHED,
       category: query.categorySlug
         ? { is: { slug: query.categorySlug, isActive: true } }
         : undefined,
     };
 
-    if (query.q) {
-      const search = query.q.trim();
-      if (search.length > 0) {
-        where.OR = [
-          { title: { contains: search, mode: 'insensitive' } },
-          { content: { contains: search, mode: 'insensitive' } },
-        ];
-      }
+    if (query.supplierId) {
+      where.authorId = query.supplierId;
     }
+
+    this.ensurePublicPublicationClause(where, now);
+
+    this.applySearchFilters(where, query.q);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.newsletterIssue.findMany({
@@ -166,8 +171,17 @@ export class NewsletterService {
   }
 
   async getIssueBySlug(slug: string): Promise<NewsletterIssueDto> {
+    const now = new Date();
     const issue = await this.prisma.newsletterIssue.findFirst({
-      where: { slug, deletedAt: null },
+      where: {
+        slug,
+        deletedAt: null,
+        status: PublicationStatus.PUBLISHED,
+        OR: [
+          { publishedAt: { lte: now } },
+          { publishedAt: null },
+        ],
+      },
       include: {
         category: true,
         author: { select: AUTHOR_SUMMARY_SELECT },
@@ -193,6 +207,7 @@ export class NewsletterService {
     });
 
     if (!issue) {
+      console.log('fetchAdminIssue not found', { query });
       throw new NotFoundException('Newsletter issue not found');
     }
 
@@ -203,6 +218,22 @@ export class NewsletterService {
       }),
     );
     return dto;
+  }
+
+  async findAdminNewsletterIssueById(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterIssueDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
+    return this.fetchAdminIssue({ id }, authenticatedUser);
+  }
+
+  async findAdminNewsletterIssueBySlug(
+    slug: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterIssueDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
+    return this.fetchAdminIssue({ slug }, authenticatedUser);
   }
 
   async listIssueComments(
@@ -272,6 +303,8 @@ export class NewsletterService {
     const slug = await this.ensureUniqueIssueSlug(
       createSlug(dto.slug ?? dto.title),
     );
+    const status = dto.status ?? PublicationStatus.DRAFT;
+    const publishedAt = this.resolvePublishedAt(status, dto.publishedAt);
 
     const issue = await this.prisma.$transaction(async (tx) => {
       if (dto.isPinned) {
@@ -286,8 +319,8 @@ export class NewsletterService {
           excerpt: dto.excerpt,
           coverImageUrl: dto.coverImageUrl,
           fileUrl: dto.fileUrl,
-          status: dto.status ?? PublicationStatus.DRAFT,
-          publishedAt: dto.publishedAt,
+          status,
+          publishedAt,
           categoryId: dto.categoryId,
           authorId,
           isFeatured: dto.isFeatured ?? false,
@@ -307,14 +340,23 @@ export class NewsletterService {
   async updateIssue(
     id: string,
     dto: UpdateNewsletterIssueDto,
+    currentUser: CurrentUserPayload,
   ): Promise<NewsletterIssueDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
     const existing = await this.prisma.newsletterIssue.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        authorId: true,
+        status: true,
+        publishedAt: true,
+      },
     });
     if (!existing) {
       throw new NotFoundException('Newsletter issue not found');
     }
+
+    this.ensureOwnership(existing.authorId, authenticatedUser);
 
     const data: Prisma.NewsletterIssueUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title;
@@ -340,6 +382,17 @@ export class NewsletterService {
       data.slug = await this.ensureUniqueIssueSlug(createSlug(dto.slug), id);
     }
 
+    const newStatus = dto.status ?? existing.status;
+    if (dto.publishedAt !== undefined) {
+      data.publishedAt = dto.publishedAt;
+    } else if (
+      newStatus === PublicationStatus.PUBLISHED &&
+      existing.status !== PublicationStatus.PUBLISHED &&
+      !existing.publishedAt
+    ) {
+      data.publishedAt = new Date();
+    }
+
     const issue = await this.prisma.$transaction(async (tx) => {
       if (dto.isPinned === true) {
         await this.unpinOtherNewsletterIssues(tx, id);
@@ -359,14 +412,20 @@ export class NewsletterService {
     return this.toIssueDto(issue);
   }
 
-  async softDeleteIssue(id: string): Promise<void> {
+  async softDeleteIssue(
+    id: string,
+    currentUser: CurrentUserPayload,
+  ): Promise<void> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
     const existing = await this.prisma.newsletterIssue.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: { id: true, authorId: true },
     });
     if (!existing) {
       throw new NotFoundException('Newsletter issue not found');
     }
+
+    this.ensureOwnership(existing.authorId, authenticatedUser);
 
     await this.prisma.newsletterIssue.update({
       where: { id },
@@ -379,7 +438,10 @@ export class NewsletterService {
 
   async adminListIssues(
     query: NewsletterAdminIssuesQueryDto,
+    currentUser: CurrentUserPayload | undefined,
   ): Promise<NewsletterIssueListResponseDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
+    const isAdmin = this.isAdmin(authenticatedUser);
     const { page, limit, skip } = this.resolvePagination(
       query.page,
       query.limit,
@@ -389,21 +451,20 @@ export class NewsletterService {
       deletedAt: null,
       status: query.status,
       categoryId: query.categoryId,
-      authorId: query.authorId,
       category: query.categorySlug
         ? { is: { slug: query.categorySlug } }
         : undefined,
     };
 
-    if (query.q) {
-      const search = query.q.trim();
-      if (search) {
-        where.OR = [
-          { title: { contains: search, mode: 'insensitive' } },
-          { content: { contains: search, mode: 'insensitive' } },
-        ];
+    if (isAdmin) {
+      if (query.authorId) {
+        where.authorId = query.authorId;
       }
+    } else {
+      where.authorId = this.resolveOwnerId(authenticatedUser);
     }
+
+    this.applySearchFilters(where, query.q);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.newsletterIssue.findMany({
@@ -427,6 +488,35 @@ export class NewsletterService {
       items: items.map((issue) => this.toIssueDto(issue)),
       meta: buildPaginationMeta(page, limit, total),
     };
+  }
+
+  private async fetchAdminIssue(
+    where: Prisma.NewsletterIssueWhereInput,
+    currentUser: CurrentUserPayload,
+  ): Promise<NewsletterIssueDto> {
+    const isAdmin = this.isAdmin(currentUser);
+    const ownerId = this.resolveOwnerId(currentUser);
+    const query: Prisma.NewsletterIssueWhereInput = {
+      ...where,
+      deletedAt: null,
+      ...(isAdmin ? undefined : { authorId: ownerId }),
+    };
+    console.log('fetchAdminIssue', { isAdmin, ownerId, where: query });
+
+    const issue = await this.prisma.newsletterIssue.findFirst({
+      where: query,
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    if (!issue) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    return this.toIssueDto(issue as NewsletterIssueWithRelations);
   }
 
   async updateIssuePinStatus(
@@ -646,11 +736,102 @@ export class NewsletterService {
     return { page: safePage, limit: safeLimit, skip };
   }
 
+  private resolvePublishedAt(
+    status: PublicationStatus,
+    provided?: string | Date | null,
+  ): Date | string | null {
+    if (provided !== undefined) {
+      return provided;
+    }
+    if (status === PublicationStatus.PUBLISHED) {
+      return new Date();
+    }
+    return null;
+  }
+
+  private ensurePublicPublicationClause(
+    where: Prisma.NewsletterIssueWhereInput,
+    now: Date,
+  ): void {
+    this.addAndClause(where, {
+      OR: [
+        { publishedAt: { lte: now } },
+        { publishedAt: null },
+      ],
+    });
+  }
+
+  private addAndClause(
+    where: Prisma.NewsletterIssueWhereInput,
+    clause: Prisma.NewsletterIssueWhereInput,
+  ): void {
+    const existing = where.AND;
+    if (!existing) {
+      where.AND = [clause];
+      return;
+    }
+    where.AND = Array.isArray(existing)
+      ? [...existing, clause]
+      : [existing, clause];
+  }
+
+  private applySearchFilters(
+    where: Prisma.NewsletterIssueWhereInput,
+    query?: string,
+  ): void {
+    if (!query) {
+      return;
+    }
+    const search = query.trim();
+    if (!search) {
+      return;
+    }
+
+    const clause: Prisma.NewsletterIssueWhereInput = {
+      OR: [
+        { title: { contains: search, mode: 'insensitive' } },
+        { slug: { contains: search, mode: 'insensitive' } },
+        { excerpt: { contains: search, mode: 'insensitive' } },
+        { content: { contains: search, mode: 'insensitive' } },
+      ],
+    };
+
+    this.addAndClause(where, clause);
+  }
+
+  private assertAuthenticated(
+    user?: CurrentUserPayload | undefined,
+  ): CurrentUserPayload {
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
+    return user;
+  }
+
+  private isAdmin(user: CurrentUserPayload): boolean {
+    return Boolean(user.roles?.includes(RoleName.admin));
+  }
+
+  private ensureOwnership(
+    authorId: string,
+    user: CurrentUserPayload,
+  ): void {
+    const ownerId = this.resolveOwnerId(user);
+    if (!this.isAdmin(user) && authorId !== ownerId) {
+      throw new ForbiddenException('Not authorized to modify this issue');
+    }
+  }
+
+  private resolveOwnerId(user: CurrentUserPayload): string {
+    return user.id;
+  }
+
   private toIssueDto(issue: NewsletterIssueWithRelations): NewsletterIssueDto {
     return {
       id: issue.id,
       title: issue.title,
       slug: issue.slug,
+      summary: issue.excerpt,
       excerpt: issue.excerpt,
       content: issue.content,
       coverImageUrl: issue.coverImageUrl,
@@ -814,7 +995,7 @@ export class NewsletterService {
     ignoreId?: string,
   ): Promise<string> {
     let candidate = baseSlug;
-    let counter = 1;
+    let counter = 2;
 
     while (true) {
       const existing = await this.prisma.newsletterIssue.findFirst({

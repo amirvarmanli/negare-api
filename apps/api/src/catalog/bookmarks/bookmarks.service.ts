@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { FinanceEntitlementSource, Prisma } from '@prisma/client';
+import { EntitlementSource } from '@app/finance/common/finance.enums';
 import { Buffer } from 'buffer';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { BookmarkListQueryDto } from '@app/catalog/bookmarks/dtos/bookmark-query.dto';
@@ -133,6 +134,20 @@ export class BookmarksService {
       });
       likedRows.forEach((row) => likedSet.add(row.productId.toString()));
     }
+    const purchasedSet = new Set<string>();
+    if (productIds.length > 0) {
+      const entitlements = await this.prisma.financeEntitlement.findMany({
+        where: {
+          userId,
+          productId: { in: productIds },
+          source: EntitlementSource.PURCHASED as FinanceEntitlementSource,
+        },
+        select: { productId: true },
+      });
+      entitlements.forEach((row) =>
+        purchasedSet.add(row.productId.toString()),
+      );
+    }
 
     const items: UserBookmarkItemDto[] = rows.map(
       (b: BookmarkWithProduct) => {
@@ -140,8 +155,9 @@ export class BookmarksService {
           b.product as ProductWithRelations,
         );
         product.isBookmarkedByCurrentUser = true;
-        product.isLikedByCurrentUser = likedSet.has(b.productId.toString());
-        return {
+      product.isLikedByCurrentUser = likedSet.has(b.productId.toString());
+      product.hasPurchased = purchasedSet.has(b.productId.toString());
+      return {
           product,
           bookmarkedAt: b.createdAt.toISOString(),
         };

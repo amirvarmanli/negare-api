@@ -2,142 +2,78 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-      args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
-        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/}
-    working_dir: /app
+      dockerfile: Dockerfile
+    ports:
+      - '4000:4000'
     env_file:
       - .env
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: ${PORT:-4000}
-      CHOKIDAR_USEPOLLING: 'true'
+      GLOBAL_PREFIX: ${GLOBAL_PREFIX:-api}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/negare_db}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
-      SET_PWD_JWT_SECRET: ${SET_PWD_JWT_SECRET:-changeme}
-      SET_PWD_JWT_EXPIRES: ${SET_PWD_JWT_EXPIRES:-15m}
-      ACCESS_JWT_SECRET: ${ACCESS_JWT_SECRET:-changeme}
-      ACCESS_JWT_EXPIRES: ${ACCESS_JWT_EXPIRES:-10m}
-      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
-      KAVENEGAR_TEMPLATE: ${KAVENEGAR_TEMPLATE:-send-code}
-      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      MAIL_FROM: '${MAIL_FROM:-Negare <no-reply@negare.test>}'
-
-      # ===== FTP / CDN =====
-      FTP_HOST: ${FTP_HOST}
-      FTP_PORT: ${FTP_PORT:-21}
-      FTP_USER: ${FTP_USER}
-      FTP_PASS: ${FTP_PASS}
-      FTP_SECURE: ${FTP_SECURE:-false}
-      FTP_PUBLIC_ROOT: ${FTP_PUBLIC_ROOT:-public_html}
-      CDN_BASE_URL: ${CDN_BASE_URL}
-
-      # ===== Upload (Phase 1) =====
       UPLOAD_TMP_DIR: ${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
-      UPLOAD_CHUNK_SIZE: ${UPLOAD_CHUNK_SIZE:-5242880}
-      UPLOAD_TTL_SECONDS: ${UPLOAD_TTL_SECONDS:-86400}
-      UPLOAD_MAX_SIZE_BYTES: ${UPLOAD_MAX_SIZE_BYTES:-5368709120}
-      UPLOAD_CLEAN_INTERVAL_MIN: ${UPLOAD_CLEAN_INTERVAL_MIN:-30}
-      UPLOAD_MAX_TEMP_AGE_HOURS: ${UPLOAD_MAX_TEMP_AGE_HOURS:-6}
-      ALLOWED_EXTS: ${ALLOWED_EXTS:-zip,rar,png,jpg,jpeg,webp,mp4,mkv}
-      ALLOWED_MIME: ${ALLOWED_MIME:-image/png,image/jpeg,image/webp,application/zip,application/x-rar-compressed,video/mp4,video/x-matroska}
-
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
-    ports:
-      - '4000:4000'
     volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/dist
-      # ولوم موقت فایل‌های چانک‌شده:
       - upload-tmp:${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: >
-      sh -c "npm run prisma:generate && npm run start:dev"
+    healthcheck:
+      test: ["CMD-SHELL", "curl", "--fail", "http://localhost:${PORT:-4000}/${GLOBAL_PREFIX:-api}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     restart: unless-stopped
-    tty: true
-    stdin_open: true
-    develop:
-      watch:
-        - action: sync
-          path: ./apps/api/src
-          target: /app/apps/api/src
-          ignore:
-            - node_modules/
-            - dist/
-        - action: sync
-          path: ./prisma
-          target: /app/prisma
-        - action: sync+restart
-          path: package.json
-          target: /app/package.json
 
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: negare_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-negare_db}
     ports:
       - '5432:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./docker/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d negare_db']
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-negare_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 6
     restart: unless-stopped
 
-  studio:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    working_dir: /app
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/negare_db}
+  adminer:
+    image: adminer:latest
     ports:
-      - '5555:5555'
-    volumes:
-      - .:/app
-      - /app/node_modules
+      - '8080:8080'
     depends_on:
       db:
         condition: service_healthy
-    command: >
-      sh -c "npm run prisma:generate &&
-             npx prisma studio --schema prisma/schema.prisma --hostname 0.0.0.0 --port 5555"
     restart: unless-stopped
     profiles:
-      - studio
+      - tools
 
 volumes:
   db-data:
   upload-tmp:
+  api-node-modules:

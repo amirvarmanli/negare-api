@@ -8,6 +8,8 @@ import { AppConfigModule } from '@app/config/config.module';
 import { PrismaModule } from '@app/prisma/prisma.module';
 import { BlogModule } from '@app/blog/blog.module';
 import { NewsletterModule } from '@app/newsletter/newsletter.module';
+import { FinanceModule } from '@app/finance/finance.module';
+import { OrderRequestsModule } from '@app/order-requests/order-requests.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { NewsletterModule } from '@app/newsletter/newsletter.module';
     ArtistModule,
     BlogModule,
     NewsletterModule,
+    OrderRequestsModule,
+    FinanceModule,
   ],
 })
 export class AppModule {}

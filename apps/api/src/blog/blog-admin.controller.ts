@@ -40,11 +40,11 @@ import {
 
 function requireAuthenticatedUser(
   user: CurrentUserPayload | undefined,
-): string {
+): CurrentUserPayload {
   if (!user) {
     throw new ForbiddenException('Authentication required');
   }
-  return user.id;
+  return user;
 }
 
 @ApiTags('Blog Admin')
@@ -58,8 +58,37 @@ export class BlogAdminController {
   @ApiOkResponse({ type: BlogPostListResponseDto })
   async listPosts(
     @Query() query: BlogAdminPostsQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<BlogPostListResponseDto> {
-    return this.blogService.adminListPosts(query);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.blogService.adminListPosts(query, currentUser);
+  }
+
+  @Get('posts/:id')
+  @ApiOperation({
+    summary: 'Get a blog post by ID (supplier/admin panel, preferred)',
+  })
+  @ApiOkResponse({ type: BlogPostDto })
+  async getPostById(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<BlogPostDto> {
+    const currentUser = requireAuthenticatedUser(user);
+    return this.blogService.findAdminBlogPostById(id, currentUser);
+  }
+
+  @Get('posts/slug/:slug')
+  @ApiOperation({
+    summary:
+      'Get a blog post by slug (legacy supplier/admin panel fallback, accepts Persian slugs)',
+  })
+  @ApiOkResponse({ type: BlogPostDto })
+  async getPostBySlug(
+    @Param('slug') slug: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<BlogPostDto> {
+    const currentUser = requireAuthenticatedUser(user);
+    return this.blogService.findAdminBlogPostBySlug(slug, currentUser);
   }
 
   @Post('posts')
@@ -69,8 +98,8 @@ export class BlogAdminController {
     @Body() dto: CreateBlogPostDto,
     @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<BlogPostDto> {
-    const userId = requireAuthenticatedUser(user);
-    return this.blogService.createPost(dto, userId);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.blogService.createPost(dto, currentUser.id);
   }
 
   @Patch('posts/:id')
@@ -79,8 +108,10 @@ export class BlogAdminController {
   async updatePost(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateBlogPostDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<BlogPostDto> {
-    return this.blogService.updatePost(id, dto);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.blogService.updatePost(id, dto, currentUser);
   }
 
   @Delete('posts/:id')
@@ -89,8 +120,10 @@ export class BlogAdminController {
   @ApiNoContentResponse()
   async deletePost(
     @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<void> {
-    await this.blogService.softDeletePost(id);
+    const currentUser = requireAuthenticatedUser(user);
+    await this.blogService.softDeletePost(id, currentUser);
   }
 
   @Post('posts/:id/pin')

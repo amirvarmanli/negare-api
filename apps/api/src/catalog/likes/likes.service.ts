@@ -6,7 +6,8 @@ import {
   productInclude,
   type ProductWithRelations,
 } from '@app/catalog/product/product.mapper';
-import { Prisma } from '@prisma/client';
+import { FinanceEntitlementSource, Prisma } from '@prisma/client';
+import { EntitlementSource } from '@app/finance/common/finance.enums';
 import { Buffer } from 'buffer';
 import { LikeToggleResponseDto } from '@app/catalog/likes/dtos/like-toggle.dto';
 import { UserLikeItemDto, UserLikesResultDto } from '@app/catalog/likes/dtos/likes-response.dto';
@@ -131,6 +132,20 @@ export class LikesService {
       });
       bookmarked.forEach((row) => bookmarkedSet.add(row.productId.toString()));
     }
+    const purchasedSet = new Set<string>();
+    if (productIds.length > 0) {
+      const entitlements = await this.prisma.financeEntitlement.findMany({
+        where: {
+          userId,
+          productId: { in: productIds },
+          source: EntitlementSource.PURCHASED as FinanceEntitlementSource,
+        },
+        select: { productId: true },
+      });
+      entitlements.forEach((row) =>
+        purchasedSet.add(row.productId.toString()),
+      );
+    }
 
     const items: UserLikeItemDto[] = typed.map((l) => {
       const product = ProductMapper.toBrief(l.product as ProductWithRelations);
@@ -138,6 +153,7 @@ export class LikesService {
       product.isBookmarkedByCurrentUser = bookmarkedSet.has(
         l.productId.toString(),
       );
+      product.hasPurchased = purchasedSet.has(l.productId.toString());
       return {
         product,
         likedAt: l.createdAt.toISOString(),

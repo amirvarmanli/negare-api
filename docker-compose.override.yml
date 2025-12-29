@@ -1,0 +1,9 @@
+services:
+  api:
+    command: ["npm", "run", "start:dev"]
+    environment:
+      NODE_ENV: development
+      RUN_SEED: "false"
+    volumes:
+      - .:/app:delegated
+      - api-node-modules:/app/node_modules

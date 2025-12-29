@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { z } from 'zod';
 import { authConfig, AuthConfig } from '@app/config/auth.config';
+import { zibalConfig, ZibalConfig } from '@app/config/zibal.config';
 
 /**
  * Base ENV schema
@@ -38,6 +39,20 @@ const envSchema = z
     GLOBAL_PREFIX: z.string().optional(),
     MOCK_AUTH_ENABLED: z.string().optional(),
     FRONTEND_URL: z.string().default('http://localhost:3000'),
+    FRONTEND_BASE_URL: z.string().url().optional(),
+    API_BASE_URL: z.string().url().optional(),
+    API_PUBLIC_BASE_URL: z.string().url().optional(),
+    APP_PUBLIC_BASE_URL: z.string().url().optional(),
+    UPLOAD_DIR: z.string().default('./uploads'),
+
+    // Zibal payment gateway
+    ZIBAL_MERCHANT: z.string().min(1, {
+      message: 'ZIBAL_MERCHANT must be provided',
+    }),
+    ZIBAL_BASE_URL: z.string().url().default('https://gateway.zibal.ir'),
+    ZIBAL_CALLBACK_URL: z
+      .string()
+      .url({ message: 'ZIBAL_CALLBACK_URL must be a valid URL' }),
   })
   .passthrough();
 
@@ -51,6 +66,7 @@ export type AppConfig = RawEnv & {
 
 export type AllConfig = AppConfig & {
   auth: AuthConfig;
+  zibal: ZibalConfig;
 };
 
 /**
@@ -98,7 +114,7 @@ export const validateEnv = (config: Record<string, unknown>): AppConfig => {
       expandVariables: true,
       envFilePath: ['.env'],
       validate: validateEnv,
-      load: [authConfig],
+      load: [authConfig, zibalConfig],
     }),
   ],
 })

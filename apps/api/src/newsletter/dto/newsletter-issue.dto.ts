@@ -15,6 +15,9 @@ export class NewsletterIssueDto {
   @ApiProperty()
   slug!: string;
 
+  @ApiProperty({ required: false, nullable: true, description: 'Short summary used by the frontend.' })
+  summary!: string | null;
+
   @ApiProperty({ required: false, nullable: true })
   excerpt!: string | null;
 

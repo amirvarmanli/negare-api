@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import {
   CommentStatus,
   Prisma,
   PublicationStatus,
+  RoleName,
 } from '@prisma/client';
 import { PrismaService, PrismaTxClient } from '@app/prisma/prisma.service';
 import { CreateBlogPostDto } from '@app/blog/dto/create-blog-post.dto';
@@ -36,6 +38,9 @@ import {
 import { UpdateBlogCommentStatusDto } from '@app/blog/dto/update-blog-comment-status.dto';
 import { UpdateBlogPinStatusDto } from '@app/blog/dto/update-blog-pin-status.dto';
 import { createSlug } from '@app/shared/utils/slug.util';
+import {
+  CurrentUserPayload,
+} from '@app/common/decorators/current-user.decorator';
 
 const AUTHOR_SUMMARY_SELECT = {
   id: true,
@@ -47,6 +52,12 @@ const POST_SUMMARY_SELECT = {
   id: true,
   title: true,
   slug: true,
+} as const;
+
+const ADMIN_POST_INCLUDE = {
+  category: true,
+  author: { select: AUTHOR_SUMMARY_SELECT },
+  _count: { select: { comments: true } },
 } as const;
 
 type BlogPostWithRelations = Prisma.BlogPostGetPayload<{
@@ -101,23 +112,22 @@ export class BlogService {
       query.limit,
     );
 
+    const now = new Date();
     const where: Prisma.BlogPostWhereInput = {
       deletedAt: null,
-      status: query.status ?? PublicationStatus.PUBLISHED,
+      status: PublicationStatus.PUBLISHED,
       category: query.categorySlug
         ? { is: { slug: query.categorySlug, isActive: true } }
         : undefined,
     };
 
-    if (query.q) {
-      const search = query.q.trim();
-      if (search.length > 0) {
-        where.OR = [
-          { title: { contains: search, mode: 'insensitive' } },
-          { content: { contains: search, mode: 'insensitive' } },
-        ];
-      }
+    if (query.supplierId) {
+      where.authorId = query.supplierId;
     }
+
+    this.ensurePublicPublicationClause(where, now);
+
+    this.applySearchFilters(where, query.q);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.blogPost.findMany({
@@ -163,8 +173,17 @@ export class BlogService {
   }
 
   async getPostBySlug(slug: string): Promise<BlogPostDto> {
+    const now = new Date();
     const post = await this.prisma.blogPost.findFirst({
-      where: { slug, deletedAt: null },
+      where: {
+        slug,
+        deletedAt: null,
+        status: PublicationStatus.PUBLISHED,
+        OR: [
+          { publishedAt: { lte: now } },
+          { publishedAt: null },
+        ],
+      },
       include: {
         category: true,
         author: { select: AUTHOR_SUMMARY_SELECT },
@@ -200,6 +219,46 @@ export class BlogService {
       }),
     );
     return dto;
+  }
+
+  async findAdminBlogPostById(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<BlogPostDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
+    const isAdmin = this.isAdmin(authenticatedUser);
+
+    const where: Prisma.BlogPostWhereInput = {
+      id,
+      deletedAt: null,
+      ...(isAdmin ? undefined : { authorId: authenticatedUser.id }),
+    };
+
+    const post = await this.findAdminPost(where);
+    if (!post) {
+      throw new NotFoundException('Blog post not found');
+    }
+    return this.toPostDto(post);
+  }
+
+  async findAdminBlogPostBySlug(
+    slug: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<BlogPostDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
+    const isAdmin = this.isAdmin(authenticatedUser);
+
+    const where: Prisma.BlogPostWhereInput = {
+      slug,
+      deletedAt: null,
+      ...(isAdmin ? undefined : { authorId: authenticatedUser.id }),
+    };
+
+    const post = await this.findAdminPost(where);
+    if (!post) {
+      throw new NotFoundException('Blog post not found');
+    }
+    return this.toPostDto(post);
   }
 
   async listPostComments(
@@ -268,6 +327,8 @@ export class BlogService {
     await this.ensureCategoryExists(dto.categoryId);
     const slugSource = dto.slug ?? dto.title;
     const slug = await this.ensureUniquePostSlug(createSlug(slugSource));
+    const status = dto.status ?? PublicationStatus.DRAFT;
+    const publishedAt = this.resolvePublishedAt(status, dto.publishedAt);
 
     const post = await this.prisma.$transaction(async (tx) => {
       if (dto.isPinned) {
@@ -281,8 +342,8 @@ export class BlogService {
           content: dto.content,
           excerpt: dto.excerpt,
           coverImageUrl: dto.coverImageUrl,
-          status: dto.status ?? PublicationStatus.DRAFT,
-          publishedAt: dto.publishedAt,
+          status,
+          publishedAt,
           categoryId: dto.categoryId,
           authorId,
           isFeatured: dto.isFeatured ?? false,
@@ -299,14 +360,27 @@ export class BlogService {
     return this.toPostDto(post);
   }
 
-  async updatePost(id: string, dto: UpdateBlogPostDto): Promise<BlogPostDto> {
+  async updatePost(
+    id: string,
+    dto: UpdateBlogPostDto,
+    currentUser: CurrentUserPayload,
+  ): Promise<BlogPostDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
     const existing = await this.prisma.blogPost.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, slug: true },
+      select: {
+        id: true,
+        slug: true,
+        authorId: true,
+        status: true,
+        publishedAt: true,
+      },
     });
     if (!existing) {
       throw new NotFoundException('Blog post not found');
     }
+
+    this.ensureOwnership(existing.authorId, authenticatedUser);
 
     const data: Prisma.BlogPostUpdateInput = {};
 
@@ -335,6 +409,17 @@ export class BlogService {
       );
     }
 
+    const newStatus = dto.status ?? existing.status;
+    if (dto.publishedAt !== undefined) {
+      data.publishedAt = dto.publishedAt;
+    } else if (
+      newStatus === PublicationStatus.PUBLISHED &&
+      existing.status !== PublicationStatus.PUBLISHED &&
+      !existing.publishedAt
+    ) {
+      data.publishedAt = new Date();
+    }
+
     const post = await this.prisma.$transaction(async (tx) => {
       if (dto.isPinned === true) {
         await this.unpinOtherBlogPosts(tx, id);
@@ -354,14 +439,20 @@ export class BlogService {
     return this.toPostDto(post);
   }
 
-  async softDeletePost(id: string): Promise<void> {
+  async softDeletePost(
+    id: string,
+    currentUser: CurrentUserPayload,
+  ): Promise<void> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
     const existing = await this.prisma.blogPost.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: { id: true, authorId: true },
     });
     if (!existing) {
       throw new NotFoundException('Blog post not found');
     }
+
+    this.ensureOwnership(existing.authorId, authenticatedUser);
 
     await this.prisma.blogPost.update({
       where: { id },
@@ -374,7 +465,10 @@ export class BlogService {
 
   async adminListPosts(
     query: BlogAdminPostsQueryDto,
+    currentUser: CurrentUserPayload | undefined,
   ): Promise<BlogPostListResponseDto> {
+    const authenticatedUser = this.assertAuthenticated(currentUser);
+    const isAdmin = this.isAdmin(authenticatedUser);
     const { page, limit, skip } = this.resolvePagination(
       query.page,
       query.limit,
@@ -384,21 +478,20 @@ export class BlogService {
       deletedAt: null,
       status: query.status,
       categoryId: query.categoryId,
-      authorId: query.authorId,
       category: query.categorySlug
         ? { is: { slug: query.categorySlug } }
         : undefined,
     };
 
-    if (query.q) {
-      const search = query.q.trim();
-      if (search) {
-        where.OR = [
-          { title: { contains: search, mode: 'insensitive' } },
-          { content: { contains: search, mode: 'insensitive' } },
-        ];
+    if (isAdmin) {
+      if (query.authorId) {
+        where.authorId = query.authorId;
       }
+    } else {
+      where.authorId = authenticatedUser.id;
     }
+
+    this.applySearchFilters(where, query.q);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.blogPost.findMany({
@@ -641,11 +734,106 @@ export class BlogService {
     return { page: safePage, limit: safeLimit, skip };
   }
 
+  private resolvePublishedAt(
+    status: PublicationStatus,
+    provided?: string | Date | null,
+  ): Date | string | null {
+    if (provided !== undefined) {
+      return provided;
+    }
+    if (status === PublicationStatus.PUBLISHED) {
+      return new Date();
+    }
+    return null;
+  }
+
+  private async findAdminPost(
+    where: Prisma.BlogPostWhereInput,
+  ): Promise<BlogPostWithRelations | null> {
+    return this.prisma.blogPost.findFirst({
+      where,
+      include: ADMIN_POST_INCLUDE,
+    });
+  }
+
+  private ensurePublicPublicationClause(
+    where: Prisma.BlogPostWhereInput,
+    now: Date,
+  ): void {
+    this.addAndClause(where, {
+      OR: [
+        { publishedAt: { lte: now } },
+        { publishedAt: null },
+      ],
+    });
+  }
+
+  private addAndClause(
+    where: Prisma.BlogPostWhereInput,
+    clause: Prisma.BlogPostWhereInput,
+  ): void {
+    const existing = where.AND;
+    if (!existing) {
+      where.AND = [clause];
+      return;
+    }
+    where.AND = Array.isArray(existing)
+      ? [...existing, clause]
+      : [existing, clause];
+  }
+
+  private applySearchFilters(
+    where: Prisma.BlogPostWhereInput,
+    query?: string,
+  ): void {
+    if (!query) {
+      return;
+    }
+    const search = query.trim();
+    if (!search) {
+      return;
+    }
+
+    const clause: Prisma.BlogPostWhereInput = {
+      OR: [
+        { title: { contains: search, mode: 'insensitive' } },
+        { slug: { contains: search, mode: 'insensitive' } },
+        { excerpt: { contains: search, mode: 'insensitive' } },
+        { content: { contains: search, mode: 'insensitive' } },
+      ],
+    };
+
+    this.addAndClause(where, clause);
+  }
+
+  private assertAuthenticated(
+    user?: CurrentUserPayload | undefined,
+  ): CurrentUserPayload {
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
+    return user;
+  }
+
+  private isAdmin(user: CurrentUserPayload): boolean {
+    return Boolean(user.roles?.includes(RoleName.admin));
+  }
+
+  private ensureOwnership(
+    authorId: string,
+    user: CurrentUserPayload,
+  ): void {
+    if (!this.isAdmin(user) && authorId !== user.id) {
+      throw new ForbiddenException('Not authorized to modify this post');
+    }
+  }
+
   private toPostDto(post: BlogPostWithRelations): BlogPostDto {
     return {
       id: post.id,
       title: post.title,
       slug: post.slug,
+      summary: post.excerpt,
       excerpt: post.excerpt,
       content: post.content,
       coverImageUrl: post.coverImageUrl,
@@ -805,7 +993,7 @@ export class BlogService {
     ignoreId?: string,
   ): Promise<string> {
     let candidate = baseSlug;
-    let counter = 1;
+    let counter = 2;
 
     while (true) {
       const existing = await this.prisma.blogPost.findFirst({

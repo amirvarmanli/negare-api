@@ -1,0 +1,77 @@
+{
+  "info": {
+    "name": "Negare Order Requests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000/api" },
+    { "key": "orderRequestId", "value": "" },
+    { "key": "paymentId", "value": "" },
+    { "key": "trackId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Photo Restore",
+      "item": [
+        {
+          "name": "Request Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/special/photo-restore/request-payment",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Martyr Example\",\n  \"messenger\": \"telegram\",\n  \"phoneNumber\": \"09123456789\",\n  \"description\": \"Sample description\",\n  \"imageCount\": 3,\n  \"fileUrl\": \"https://cdn.example.com/uploads/file.zip\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/special/photo-restore/payments/{{paymentId}}"
+          },
+          "response": [
+            {
+              "name": "Example",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/special/photo-restore/payments/{{paymentId}}"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"payment-uuid\",\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"PENDING\",\n  \"amountToman\": 2100000,\n  \"imageCount\": 3,\n  \"fileUrl\": \"https://cdn.example.com/uploads/file.zip\",\n  \"trackId\": \"123456\",\n  \"orderRequestId\": null,\n  \"createdAt\": \"2025-01-01T10:00:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Zibal Callback (Simulate)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/payments/zibal/callback?trackId={{trackId}}&success=1"
+          }
+        },
+        {
+          "name": "Verify Payment (Dev)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/special/photo-restore/zibal/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": \"{{paymentId}}\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -111,6 +111,12 @@ export class ProductBriefDto {
   })
   isBookmarkedByCurrentUser!: boolean;
 
+  @ApiProperty({
+    description: 'Whether the current user has purchased this product',
+    default: false,
+  })
+  hasPurchased!: boolean;
+
   @ApiPropertyOptional() shortLink?: string | null;
 
   @ApiPropertyOptional({ type: [String] }) seoKeywords?: string[];

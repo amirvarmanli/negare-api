@@ -5,48 +5,64 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["analytics", "catalog", "core", "public"]
+  schemas  = ["analytics", "catalog", "core", "finance", "public"]
 }
 
 model User {
-  id                  String               @id @default(uuid()) @db.Uuid
-  createdAt           DateTime             @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime             @updatedAt @db.Timestamptz(6)
-  username            String?              @unique @db.Citext
-  email               String?              @unique @db.Citext
-  phone               String?              @unique @db.VarChar(32)
-  name                String?              @db.VarChar(255)
-  bio                 String?
-  city                String?              @db.VarChar(255)
-  avatarUrl           String?              @db.VarChar(255)
-  passwordHash        String?              @db.VarChar(255)
-  isEmailVerified     Boolean              @default(false)
-  isPhoneVerified     Boolean              @default(false)
-  status              UserStatus           @default(active)
-  passwordChangedAt   DateTime?            @db.Timestamptz(6)
-  lastLoginAt         DateTime?            @db.Timestamptz(6)
-  deletedAt           DateTime?            @db.Timestamptz(6)
-  downloads           ProductDownload[]
-  productViews        ProductView[]
-  bookmarks           Bookmark[]
-  comments            Comment[]
-  likes               Like[]
-  artistFollowings    ArtistFollow[]       @relation("ArtistFollowFollower")
-  artistFollowers     ArtistFollow[]       @relation("ArtistFollowArtist")
-  productSuppliers    ProductSupplier[]    @relation("ProductSuppliersUser")
-  auditLogs           AuditLog[]
-  passwordResetTokens PasswordResetToken[]
-  sessions            Session[]
-  userRoles           UserRole[]
-  walletAuditLogs     WalletAuditLog[]
-  createdTransactions WalletTransaction[]  @relation("WalletTransactionsCreatedBy")
-  walletTransactions  WalletTransaction[]  @relation("WalletTransactionsUser")
-  wallet              Wallet?
-  skills              UserSkill[]
-  BlogPost            BlogPost[]
-  BlogComment         BlogComment[]
-  NewsletterIssue     NewsletterIssue[]
-  NewsletterComment   NewsletterComment[]
+  id                          String                               @id @default(uuid()) @db.Uuid
+  createdAt                   DateTime                             @default(now()) @db.Timestamptz(6)
+  updatedAt                   DateTime                             @updatedAt @db.Timestamptz(6)
+  username                    String?                              @unique @db.Citext
+  email                       String?                              @unique @db.Citext
+  phone                       String?                              @unique @db.VarChar(32)
+  name                        String?                              @db.VarChar(255)
+  bio                         String?
+  city                        String?                              @db.VarChar(255)
+  avatarUrl                   String?                              @db.VarChar(255)
+  passwordHash                String?                              @db.VarChar(255)
+  isEmailVerified             Boolean                              @default(false)
+  isPhoneVerified             Boolean                              @default(false)
+  status                      UserStatus                           @default(active)
+  passwordChangedAt           DateTime?                            @db.Timestamptz(6)
+  lastLoginAt                 DateTime?                            @db.Timestamptz(6)
+  deletedAt                   DateTime?                            @db.Timestamptz(6)
+  downloads                   ProductDownload[]
+  productViews                ProductView[]
+  bookmarks                   Bookmark[]
+  comments                    Comment[]
+  likes                       Like[]
+  artistFollowings            ArtistFollow[]                       @relation("ArtistFollowFollower")
+  artistFollowers             ArtistFollow[]                       @relation("ArtistFollowArtist")
+  productSuppliers            ProductSupplier[]                    @relation("ProductSuppliersUser")
+  auditLogs                   AuditLog[]
+  passwordResetTokens         PasswordResetToken[]
+  sessions                    Session[]
+  userRoles                   UserRole[]
+  walletAuditLogs             WalletAuditLog[]
+  createdTransactions         WalletTransaction[]                  @relation("WalletTransactionsCreatedBy")
+  walletTransactions          WalletTransaction[]                  @relation("WalletTransactionsUser")
+  wallet                      Wallet?
+  skills                      UserSkill[]
+  BlogPost                    BlogPost[]
+  BlogComment                 BlogComment[]
+  NewsletterIssue             NewsletterIssue[]
+  NewsletterComment           NewsletterComment[]
+  financeProductContributions FinanceProductContributor[]          @relation("FinanceProductContributor_supplier")
+  financeOrders               FinanceOrder[]                       @relation("FinanceOrder_user")
+  financePayments             FinancePayment[]                     @relation("FinancePayment_user")
+  financeWalletTransactions   FinanceWalletTransaction[]           @relation("FinanceWalletTransaction_user")
+  financeWallet               FinanceWallet?                       @relation("FinanceWallet_user")
+  financeEntitlements         FinanceEntitlement[]                 @relation("FinanceEntitlement_user")
+  financeDownloadUsage        FinanceDownloadUsageDaily[]          @relation("FinanceDownloadUsageDaily_user")
+  financeDownloadLogs         FinanceDownloadLog[]                 @relation("FinanceDownloadLog_user")
+  financeSubscriptions        FinanceUserSubscription[]            @relation("FinanceUserSubscription_user")
+  financeSubscriptionPurchases FinanceSubscriptionPurchase[]
+  financeSubscriptionEarnings FinanceSubscriptionSupplierEarning[] @relation("FinanceSubscriptionSupplierEarning_supplier")
+  financeUserDiscounts        FinanceUserDiscount[]
+  financeCouponRedemptions    FinanceCouponRedemption[]
+  financeSupplierPayouts      FinanceSupplierPayout[]
+  financeCart                 FinanceCart?                         @relation("FinanceCart_user")
+  financeDonations            FinanceDonation[]                    @relation("FinanceDonation_user")
 
   @@index([status])
   @@index([createdAt], map: "users_created_at_idx")
@@ -245,39 +261,47 @@ model File {
 }
 
 model Product {
-  id             BigInt            @id @default(autoincrement())
-  slug           String            @unique @db.VarChar(200)
-  title          String            @db.VarChar(255)
-  description    String?           @db.VarChar(1400)
-  coverUrl       String?           @db.VarChar(255)
-  graphicFormats GraphicFormat[]   @default([])
-  colors         String[]          @default([])
-  shortLink      String?           @unique @db.VarChar(80)
-  seoTitle       String?           @db.VarChar(250)
-  seoDescription String?           @db.VarChar(1400)
-  seoKeywords    String[]          @default([])
-  pricingType    PricingType
-  price          Decimal?          @db.Decimal(12, 2)
-  status         ProductStatus     @default(DRAFT)
-  publishedAt    DateTime?         @db.Timestamptz(6)
-  viewsCount     Int               @default(0)
-  downloadsCount Int               @default(0)
-  likesCount     Int               @default(0)
-  fileSizeMB     Int               @default(0)
-  fileBytes      BigInt?
-  createdAt      DateTime          @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime          @updatedAt @db.Timestamptz(6)
-  downloads      ProductDownload[]
-  views          ProductView[]
-  bookmarks      Bookmark[]
-  comments       Comment[]         @relation("ProductComments")
-  likes          Like[]
-  assets         ProductAsset[]
-  categoryLinks  ProductCategory[]
-  supplierLinks  ProductSupplier[] @relation("ProductSuppliersProduct")
-  tagLinks       ProductTag[]
-  topics         ProductTopic[]
-  file           ProductFile?
+  id                         BigInt                      @id @default(autoincrement())
+  slug                       String                      @unique @db.VarChar(200)
+  title                      String                      @db.VarChar(255)
+  description                String?                     @db.VarChar(1400)
+  coverUrl                   String?                     @db.VarChar(255)
+  graphicFormats             GraphicFormat[]             @default([])
+  colors                     String[]                    @default([])
+  shortLink                  String?                     @unique @db.VarChar(80)
+  seoTitle                   String?                     @db.VarChar(250)
+  seoDescription             String?                     @db.VarChar(1400)
+  seoKeywords                String[]                    @default([])
+  searchTextNormalized       String?                     @map("search_text_normalized") @db.Text
+  pricingType                PricingType
+  price                      Decimal?                    @db.Decimal(12, 2)
+  status                     ProductStatus               @default(DRAFT)
+  publishedAt                DateTime?                   @db.Timestamptz(6)
+  viewsCount                 Int                         @default(0)
+  downloadsCount             Int                         @default(0)
+  likesCount                 Int                         @default(0)
+  fileSizeMB                 Int                         @default(0)
+  fileBytes                  BigInt?
+  createdAt                  DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime                    @updatedAt @db.Timestamptz(6)
+  downloads                  ProductDownload[]
+  views                      ProductView[]
+  bookmarks                  Bookmark[]
+  comments                   Comment[]                   @relation("ProductComments")
+  likes                      Like[]
+  assets                     ProductAsset[]
+  categoryLinks              ProductCategory[]
+  supplierLinks              ProductSupplier[]           @relation("ProductSuppliersProduct")
+  tagLinks                   ProductTag[]
+  topics                     ProductTopic[]
+  file                       ProductFile?
+  financeProductContributors FinanceProductContributor[] @relation("FinanceProductContributor_product")
+  financeOrderItems          FinanceOrderItem[]          @relation("FinanceOrderItem_product")
+  financeEntitlements        FinanceEntitlement[]        @relation("FinanceEntitlement_product")
+  financeDownloadLogs        FinanceDownloadLog[]        @relation("FinanceDownloadLog_product")
+  financeOrderRevenueSplits  FinanceOrderRevenueSplit[]  @relation("FinanceOrderRevenueSplit_product")
+  financeProductDiscounts    FinanceProductDiscount[]
+  financeCartItems           FinanceCartItem[]           @relation("FinanceCartItem_product")
 
   @@index([status, pricingType], map: "products_status_pricing_idx")
   @@index([createdAt], map: "products_created_at_idx")
@@ -787,7 +811,6 @@ enum AuditAction {
 
 enum PricingType {
   FREE
-  SUBSCRIPTION
   PAID
   PAID_OR_SUBSCRIPTION
 
@@ -848,4 +871,710 @@ enum CommentTarget {
 
   @@map("enum_content_comment_target")
   @@schema("catalog")
+}
+
+enum FinanceOrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+  FAILED
+  EXPIRED
+
+  @@map("finance_order_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceOrderKind {
+  PRODUCT
+  SUBSCRIPTION
+  TOPUP
+
+  @@map("finance_order_kind_enum")
+  @@schema("finance")
+}
+
+enum FinanceDiscountType {
+  NONE
+  FIXED
+  PERCENT
+  COUPON
+
+  @@map("finance_discount_type_enum")
+  @@schema("finance")
+}
+
+enum FinanceDiscountValueType {
+  FIXED
+  PERCENT
+
+  @@map("finance_discount_value_type_enum")
+  @@schema("finance")
+}
+
+enum FinancePaymentProvider {
+  MOCK
+  ZIBAL
+
+  @@map("finance_payment_provider_enum")
+  @@schema("finance")
+}
+
+enum FinancePaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+
+  @@map("finance_payment_status_enum")
+  @@schema("finance")
+}
+
+enum FinancePaymentPurpose {
+  ORDER
+  WALLET_TOPUP
+  DONATION
+
+  @@map("finance_payment_purpose_enum")
+  @@schema("finance")
+}
+
+enum FinancePaymentReferenceType {
+  cart
+  subscription
+  wallet_charge
+  donation
+
+  @@map("finance_payment_reference_type_enum")
+  @@schema("finance")
+}
+
+enum FinanceDonationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+
+  @@map("finance_donation_status_enum")
+  @@schema("finance")
+}
+
+enum Messenger {
+  telegram
+  eitaa
+  ble
+
+  @@map("order_request_messenger_enum")
+  @@schema("public")
+}
+
+enum OrderFileKind {
+  IMAGE
+  ZIP
+
+  @@map("order_request_file_kind_enum")
+  @@schema("public")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+
+  @@map("order_request_payment_status_enum")
+  @@schema("public")
+}
+
+enum OrderRequestPaymentPurpose {
+  PHOTO_RESTORE
+
+  @@map("order_request_payment_purpose_enum")
+  @@schema("public")
+}
+
+enum FinanceWalletTransactionType {
+  CREDIT
+  DEBIT
+
+  @@map("finance_wallet_transaction_type_enum")
+  @@schema("finance")
+}
+
+enum FinanceWalletTransactionReason {
+  TOPUP
+  ORDER_PAYMENT
+  REFUND
+  ADJUSTMENT
+  WITHDRAWAL
+
+  @@map("finance_wallet_transaction_reason_enum")
+  @@schema("finance")
+}
+
+enum FinanceWalletTransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+
+  @@map("finance_wallet_transaction_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceWalletStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("finance_wallet_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceEntitlementSource {
+  PURCHASED
+  SUB_QUOTA
+  FREE_QUOTA
+
+  @@map("finance_entitlement_source_enum")
+  @@schema("finance")
+}
+
+enum FinanceSubscriptionPlanCode {
+  A
+  B
+  C
+
+  @@map("finance_subscription_plan_code_enum")
+  @@schema("finance")
+}
+
+enum FinanceSubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+
+  @@map("finance_subscription_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceSubscriptionPurchaseStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+
+  @@map("finance_subscription_purchase_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceRevenuePoolStatus {
+  DRAFT
+  COMPUTED
+  OPEN
+  FINALIZED
+
+  @@map("finance_revenue_pool_status_enum")
+  @@schema("finance")
+}
+
+enum FinancePayoutStatus {
+  PENDING
+  PAID
+  FAILED
+
+  @@map("finance_payout_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceEarningStatus {
+  PENDING
+  PAID
+
+  @@map("finance_earning_status_enum")
+  @@schema("finance")
+}
+
+enum FinanceRevenueBeneficiaryType {
+  PLATFORM
+  SUPPLIER
+
+  @@map("finance_revenue_beneficiary_type_enum")
+  @@schema("finance")
+}
+
+enum FinanceCartStatus {
+  ACTIVE
+  CHECKED_OUT
+  ABANDONED
+
+  @@map("finance_cart_status_enum")
+  @@schema("finance")
+}
+
+model FinanceProductContributor {
+  id            String  @id @default(uuid()) @db.Uuid
+  productId     BigInt  @map("product_id")
+  supplierId    String  @map("supplier_id") @db.Uuid
+  supplierCount Int     @map("supplier_count")
+  sharePercent  Int?    @map("share_percent")
+  product       Product @relation("FinanceProductContributor_product", fields: [productId], references: [id])
+  supplier      User    @relation("FinanceProductContributor_supplier", fields: [supplierId], references: [id])
+
+  @@unique([productId, supplierId])
+  @@map("product_contributors")
+  @@schema("finance")
+}
+
+model FinanceCart {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @unique @map("user_id") @db.Uuid
+  status    FinanceCartStatus @default(ACTIVE)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items     FinanceCartItem[]
+  user      User              @relation("FinanceCart_user", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("carts")
+  @@schema("finance")
+}
+
+model FinanceCartItem {
+  id        String      @id @default(uuid()) @db.Uuid
+  cartId    String      @map("cart_id") @db.Uuid
+  productId BigInt      @map("product_id")
+  quantity  Int         @default(1)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  cart      FinanceCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product     @relation("FinanceCartItem_product", fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+  @@index([cartId, productId])
+  @@map("cart_items")
+  @@schema("finance")
+}
+
+model FinanceOrder {
+  id                         String                     @id @default(uuid()) @db.Uuid
+  userId                     String                     @map("user_id") @db.Uuid
+  status                     FinanceOrderStatus
+  orderKind                  FinanceOrderKind           @map("order_kind")
+  subtotal                   Int
+  discountType               FinanceDiscountType        @map("discount_type")
+  discountValue              Int                        @map("discount_value")
+  total                      Int
+  currency                   String                     @db.VarChar(8)
+  subscriptionPlanId         String?                    @map("subscription_plan_id") @db.Uuid
+  subscriptionDurationMonths Int?                       @map("subscription_duration_months")
+  createdAt                  DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  paidAt                     DateTime?                  @map("paid_at") @db.Timestamptz(6)
+  expiresAt                  DateTime?                  @map("expires_at") @db.Timestamptz(6)
+  items                      FinanceOrderItem[]         @relation("FinanceOrder_items")
+  payments                   FinancePayment[]           @relation("FinanceOrder_payments")
+  revenueSplits              FinanceOrderRevenueSplit[] @relation("FinanceOrder_revenue_splits")
+  couponRedemptions          FinanceCouponRedemption[]
+  user                       User                       @relation("FinanceOrder_user", fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("orders")
+  @@schema("finance")
+}
+
+model FinanceProductDiscount {
+  id        String                   @id @default(uuid()) @db.Uuid
+  productId BigInt                   @map("product_id")
+  type      FinanceDiscountValueType
+  value     Int
+  startsAt  DateTime?                @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime?                @map("ends_at") @db.Timestamptz(6)
+  isActive  Boolean                  @default(true) @map("is_active")
+  createdAt DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  product   Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, isActive])
+  @@map("product_discounts")
+  @@schema("finance")
+}
+
+model FinanceUserDiscount {
+  id        String                   @id @default(uuid()) @db.Uuid
+  userId    String                   @map("user_id") @db.Uuid
+  type      FinanceDiscountValueType
+  value     Int
+  startsAt  DateTime?                @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime?                @map("ends_at") @db.Timestamptz(6)
+  isActive  Boolean                  @default(true) @map("is_active")
+  createdAt DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User                     @relation(fields: [userId], references: [id])
+
+  @@index([userId, isActive])
+  @@map("user_discounts")
+  @@schema("finance")
+}
+
+model FinanceCoupon {
+  id              String                    @id @default(uuid()) @db.Uuid
+  code            String                    @unique @db.VarChar(64)
+  type            FinanceDiscountValueType
+  value           Int
+  maxUsage        Int?                      @map("max_usage")
+  maxUsagePerUser Int?                      @map("max_usage_per_user")
+  expiresAt       DateTime?                 @map("expires_at") @db.Timestamptz(6)
+  isActive        Boolean                   @default(true) @map("is_active")
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  redemptions     FinanceCouponRedemption[]
+
+  @@index([code, isActive])
+  @@map("coupons")
+  @@schema("finance")
+}
+
+model FinanceCouponRedemption {
+  id        String        @id @default(uuid()) @db.Uuid
+  couponId  String        @map("coupon_id") @db.Uuid
+  userId    String        @map("user_id") @db.Uuid
+  orderId   String        @map("order_id") @db.Uuid
+  amount    Int
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  coupon    FinanceCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  order     FinanceOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id])
+
+  @@unique([couponId, orderId])
+  @@index([couponId, userId])
+  @@map("coupon_redemptions")
+  @@schema("finance")
+}
+
+model FinanceOrderItem {
+  id                  String       @id @default(uuid()) @db.Uuid
+  orderId             String       @map("order_id") @db.Uuid
+  productId           BigInt       @map("product_id")
+  unitPriceSnapshot   Int          @map("unit_price_snapshot")
+  quantity            Int
+  lineTotal           Int          @map("line_total")
+  productTypeSnapshot PricingType  @map("product_type_snapshot")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  order               FinanceOrder @relation("FinanceOrder_items", fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product      @relation("FinanceOrderItem_product", fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+  @@schema("finance")
+}
+
+model FinancePayment {
+  id         String                 @id @default(uuid()) @db.Uuid
+  orderId    String?                @map("order_id") @db.Uuid
+  userId     String                 @map("user_id") @db.Uuid
+  purpose    FinancePaymentPurpose  @default(ORDER)
+  referenceType FinancePaymentReferenceType? @map("reference_type")
+  referenceId   String?             @map("reference_id") @db.VarChar(128)
+  provider   FinancePaymentProvider
+  status     FinancePaymentStatus
+  amount     Int
+  currency   String                 @db.VarChar(8)
+  trackId    String?                @unique @map("track_id") @db.VarChar(128)
+  authority  String?                @db.VarChar(128)
+  refId      String?                @map("ref_id") @db.VarChar(128)
+  failureReason String?             @map("failure_reason") @db.VarChar(512)
+  createdAt  DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  verifiedAt DateTime?              @map("verified_at") @db.Timestamptz(6)
+  paidAt     DateTime?              @map("paid_at") @db.Timestamptz(6)
+  meta       Json?
+  order      FinanceOrder?          @relation("FinanceOrder_payments", fields: [orderId], references: [id])
+  subscriptionPurchases FinanceSubscriptionPurchase[]
+  user       User                   @relation("FinancePayment_user", fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([orderId], map: "payments_order_id_idx")
+  @@index([status], map: "payments_status_idx")
+  @@index([referenceType, referenceId], map: "payments_reference_idx")
+  @@map("payments")
+  @@schema("finance")
+}
+
+model FinanceWallet {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @unique @map("user_id") @db.Uuid
+  balance   Int                @default(0)
+  currency  String             @default("TOMAN") @db.VarChar(8)
+  status    FinanceWalletStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  transactions FinanceWalletTransaction[]
+  user      User               @relation("FinanceWallet_user", fields: [userId], references: [id])
+
+  @@map("wallets")
+  @@schema("finance")
+}
+
+model FinanceWalletTransaction {
+  id             String                        @id @default(uuid()) @db.Uuid
+  walletId       String                        @map("wallet_id") @db.Uuid
+  userId         String                        @map("user_id") @db.Uuid
+  type           FinanceWalletTransactionType
+  reason         FinanceWalletTransactionReason
+  status         FinanceWalletTransactionStatus @default(PENDING)
+  amount         Int
+  balanceAfter   Int?                          @map("balance_after")
+  referenceId    String?                       @map("reference_id") @db.VarChar(128)
+  description    String?                       @db.VarChar(1000)
+  idempotencyKey String?                       @map("idempotency_key") @db.VarChar(255)
+  createdAt      DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user           User                          @relation("FinanceWalletTransaction_user", fields: [userId], references: [id])
+  wallet         FinanceWallet                 @relation(fields: [walletId], references: [id])
+
+  @@unique([walletId, idempotencyKey], map: "UQ_finance_wallet_tx_idempotency")
+  @@index([userId, createdAt])
+  @@index([walletId, createdAt])
+  @@index([referenceId])
+  @@map("wallet_transactions")
+  @@schema("finance")
+}
+
+model FinanceEntitlement {
+  id        String                   @id @default(uuid()) @db.Uuid
+  userId    String                   @map("user_id") @db.Uuid
+  productId BigInt                   @map("product_id")
+  source    FinanceEntitlementSource
+  orderId   String?                  @map("order_id") @db.Uuid
+  purchasedAt DateTime               @default(now()) @map("purchased_at") @db.Timestamptz(6)
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User                     @relation("FinanceEntitlement_user", fields: [userId], references: [id])
+  product   Product                  @relation("FinanceEntitlement_product", fields: [productId], references: [id])
+
+  @@unique([userId, productId], map: "entitlements_user_id_product_id_key")
+  @@index([userId, purchasedAt], map: "entitlements_user_purchased_idx")
+  @@index([orderId], map: "entitlements_order_idx")
+  @@map("entitlements")
+  @@schema("finance")
+}
+
+model FinanceDownloadUsageDaily {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  dateKey   String   @map("date_key") @db.VarChar(10)
+  usedFree  Int      @default(0) @map("used_free")
+  usedSub   Int      @default(0) @map("used_sub")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User     @relation("FinanceDownloadUsageDaily_user", fields: [userId], references: [id])
+
+  @@unique([userId, dateKey])
+  @@map("download_usage_daily")
+  @@schema("finance")
+}
+
+model FinanceDownloadLog {
+  id             String                   @id @default(uuid()) @db.Uuid
+  userId         String                   @map("user_id") @db.Uuid
+  productId      BigInt                   @map("product_id")
+  dateTime       DateTime                 @default(now()) @map("date_time") @db.Timestamptz(6)
+  dateKey        String                   @map("date_key") @db.VarChar(10)
+  source         FinanceEntitlementSource
+  subscriptionId String?                  @map("subscription_id") @db.Uuid
+  orderId        String?                  @map("order_id") @db.Uuid
+  user           User                     @relation("FinanceDownloadLog_user", fields: [userId], references: [id])
+  product        Product                  @relation("FinanceDownloadLog_product", fields: [productId], references: [id])
+
+  @@index([userId, dateKey])
+  @@map("download_logs")
+  @@schema("finance")
+}
+
+model FinanceSubscriptionPlan {
+  id             String                      @id @default(uuid()) @db.Uuid
+  code           FinanceSubscriptionPlanCode @unique
+  dailySubLimit  Int                         @map("daily_sub_limit")
+  dailyFreeLimit Int                         @map("daily_free_limit")
+  isActive       Boolean                     @default(true) @map("is_active")
+  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  subscriptions  FinanceUserSubscription[]
+  purchases      FinanceSubscriptionPurchase[]
+
+  @@map("subscription_plans")
+  @@schema("finance")
+}
+
+model FinanceDonation {
+  id             String                 @id @default(uuid()) @db.Uuid
+  userId         String?                @map("user_id") @db.Uuid
+  amount         Int
+  status         FinanceDonationStatus
+  gatewayTrackId String?                @map("gateway_track_id") @db.VarChar(128)
+  referenceId    String?                @map("reference_id") @db.VarChar(128)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user           User?                  @relation("FinanceDonation_user", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("donations")
+  @@schema("finance")
+}
+
+model FinanceUserSubscription {
+  id        String                    @id @default(uuid()) @db.Uuid
+  userId    String                    @map("user_id") @db.Uuid
+  planId    String                    @map("plan_id") @db.Uuid
+  startAt   DateTime                  @map("start_at") @db.Timestamptz(6)
+  endAt     DateTime                  @map("end_at") @db.Timestamptz(6)
+  status    FinanceSubscriptionStatus
+  createdAt DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  plan      FinanceSubscriptionPlan   @relation(fields: [planId], references: [id])
+  user      User                      @relation("FinanceUserSubscription_user", fields: [userId], references: [id])
+
+  @@index([userId, endAt])
+  @@map("user_subscriptions")
+  @@schema("finance")
+}
+
+model FinanceSubscriptionPurchase {
+  id             String                           @id @default(uuid()) @db.Uuid
+  userId         String                           @map("user_id") @db.Uuid
+  planId         String                           @map("plan_id") @db.Uuid
+  status         FinanceSubscriptionPurchaseStatus @default(PENDING)
+  amount         Int
+  currency       String                           @db.VarChar(8)
+  durationMonths Int                              @default(1) @map("duration_months")
+  createdAt      DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  paidAt         DateTime?                        @map("paid_at") @db.Timestamptz(6)
+  paymentId      String?                          @map("payment_id") @db.Uuid
+  user           User                             @relation(fields: [userId], references: [id])
+  plan           FinanceSubscriptionPlan          @relation(fields: [planId], references: [id])
+  payment        FinancePayment?                  @relation(fields: [paymentId], references: [id])
+
+  @@index([userId, createdAt], map: "subscription_purchases_user_id_created_at_idx")
+  @@index([planId], map: "subscription_purchases_plan_id_idx")
+  @@index([paymentId], map: "subscription_purchases_payment_id_idx")
+  @@map("subscription_purchases")
+  @@schema("finance")
+}
+
+model FinanceSubscriptionRevenuePool {
+  id                  String                               @id @default(uuid()) @db.Uuid
+  periodStart         DateTime                             @map("period_start") @db.Date
+  periodEnd           DateTime                             @map("period_end") @db.Date
+  totalRevenue        Int                                  @map("total_revenue")
+  platformShareAmount Int                                  @map("platform_share_amount")
+  distributableAmount Int                                  @map("distributable_amount")
+  status              FinanceRevenuePoolStatus
+  createdAt           DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  earnings            FinanceSubscriptionSupplierEarning[]
+
+  @@unique([periodStart, periodEnd])
+  @@map("subscription_revenue_pools")
+  @@schema("finance")
+}
+
+model FinanceSubscriptionSupplierEarning {
+  id              String                         @id @default(uuid()) @db.Uuid
+  poolId          String                         @map("pool_id") @db.Uuid
+  supplierId      String                         @map("supplier_id") @db.Uuid
+  downloadsCredit Decimal                        @map("downloads_credit") @db.Decimal(10, 2)
+  amount          Int
+  status          FinanceEarningStatus
+  payoutId        String?                        @map("payout_id") @db.Uuid
+  createdAt       DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  pool            FinanceSubscriptionRevenuePool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  supplier        User                           @relation("FinanceSubscriptionSupplierEarning_supplier", fields: [supplierId], references: [id])
+  payout          FinanceSupplierPayout?         @relation(fields: [payoutId], references: [id])
+
+  @@index([supplierId])
+  @@map("subscription_supplier_earnings")
+  @@schema("finance")
+}
+
+model FinanceSupplierPayout {
+  id                   String                               @id @default(uuid()) @db.Uuid
+  supplierId           String                               @map("supplier_id") @db.Uuid
+  amount               Int
+  periodStart          DateTime?                            @map("period_start") @db.Date
+  periodEnd            DateTime?                            @map("period_end") @db.Date
+  status               FinancePayoutStatus
+  reference            String?                              @db.VarChar(128)
+  createdAt            DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  supplier             User                                 @relation(fields: [supplierId], references: [id])
+  subscriptionEarnings FinanceSubscriptionSupplierEarning[]
+  orderSplits          FinanceOrderRevenueSplit[]
+
+  @@index([supplierId, status])
+  @@map("supplier_payouts")
+  @@schema("finance")
+}
+
+model FinanceOrderRevenueSplit {
+  id              String                        @id @default(uuid()) @db.Uuid
+  orderId         String                        @map("order_id") @db.Uuid
+  productId       BigInt                        @map("product_id")
+  beneficiaryType FinanceRevenueBeneficiaryType @map("beneficiary_type")
+  supplierId      String?                       @map("supplier_id") @db.Uuid
+  amount          Int
+  payoutId        String?                       @map("payout_id") @db.Uuid
+  createdAt       DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  order           FinanceOrder                  @relation("FinanceOrder_revenue_splits", fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product                       @relation("FinanceOrderRevenueSplit_product", fields: [productId], references: [id])
+  payout          FinanceSupplierPayout?        @relation(fields: [payoutId], references: [id])
+
+  @@unique([orderId, productId, beneficiaryType, supplierId])
+  @@index([orderId])
+  @@index([supplierId])
+  @@map("order_revenue_splits")
+  @@schema("finance")
+}
+
+model OrderRequest {
+  id               String        @id @default(uuid()) @db.Uuid
+  fullName         String        @map("full_name") @db.VarChar(255)
+  messenger        Messenger
+  phoneNumber      String        @map("phone_number") @db.VarChar(32)
+  description      String?       @db.VarChar(2000)
+  imageCount       Int           @map("image_count")
+  amountToman      Int           @map("amount_toman")
+  fileUrl          String        @map("file_url") @db.VarChar(1000)
+  fileSource       String?       @map("file_source") @db.VarChar(64)
+  fileKind         OrderFileKind? @map("file_kind")
+  originalFileName String?       @map("original_file_name") @db.VarChar(255)
+  fileMimeType     String?       @map("file_mime_type") @db.VarChar(128)
+  fileSize         Int?          @map("file_size")
+  storageKey       String?       @map("storage_key") @db.VarChar(500)
+  payment          Payment?
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([createdAt], map: "order_requests_created_at_idx")
+  @@map("order_requests")
+  @@schema("public")
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  orderRequestId String?       @unique @map("order_request_id") @db.Uuid
+  orderRequest   OrderRequest? @relation(fields: [orderRequestId], references: [id], onDelete: SetNull)
+  gateway        String        @db.VarChar(32)
+  purpose        OrderRequestPaymentPurpose @default(PHOTO_RESTORE)
+  amountToman    Int           @map("amount_toman")
+  status         PaymentStatus @default(PENDING)
+  trackId        String?       @unique @map("track_id") @db.VarChar(64)
+  transactionId  String?       @map("transaction_id") @db.VarChar(128)
+  redirectUrl    String?       @map("redirect_url") @db.VarChar(512)
+  result         Int?          @map("result")
+  message        String?       @db.VarChar(512)
+  orderDraft     Json?         @map("order_draft")
+  rawRequest     Json?         @map("raw_request")
+  rawVerify      Json?         @map("raw_verify")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([trackId], map: "order_request_payments_track_idx")
+  @@map("order_request_payments")
+  @@schema("public")
 }

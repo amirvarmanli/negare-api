@@ -5,7 +5,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProductStatus, RoleName, UserStatus } from '@prisma/client';
+import {
+  FinanceEntitlementSource,
+  Prisma,
+  ProductStatus,
+  RoleName,
+  UserStatus,
+} from '@prisma/client';
 
 import { PrismaService } from '@app/prisma/prisma.service';
 import {
@@ -37,6 +43,7 @@ import {
   type ArtistSortMode,
   ArtistListResultDto,
 } from '@app/catalog/artist/dtos/artist-list.dto';
+import { EntitlementSource } from '@app/finance/common/finance.enums';
 
 const PUBLIC_PRODUCT_STATUSES: ProductStatus[] = [ProductStatus.PUBLISHED];
 const TOP_PRODUCTS_LIMIT = 8;
@@ -298,11 +305,29 @@ export class ArtistService {
 
     const profileEntity = this.toProfileEntity(artist);
 
-    return ArtistMapper.toProfile(
+    const profile = ArtistMapper.toProfile(
       profileEntity,
       stats,
       topProducts as ProductWithRelations[],
     );
+    if (viewerId && profile.topProducts && profile.topProducts.length > 0) {
+      const productIds = topProducts.map((product) => product.id);
+      const entitlements = await this.prisma.financeEntitlement.findMany({
+        where: {
+          userId: viewerId,
+          productId: { in: productIds },
+          source: EntitlementSource.PURCHASED as FinanceEntitlementSource,
+        },
+        select: { productId: true },
+      });
+      const purchasedSet = new Set(
+        entitlements.map((row) => row.productId.toString()),
+      );
+      profile.topProducts.forEach((product) => {
+        product.hasPurchased = purchasedSet.has(product.id);
+      });
+    }
+    return profile;
   }
 
   // ───────────────────────────────────────────────────────────────
@@ -344,6 +369,7 @@ export class ArtistService {
   async listProducts(
     artistId: string,
     query: ArtistProductsQueryDto,
+    viewerId?: string,
   ): Promise<ProductListResultDto> {
     await this.ensureArtistUser(artistId);
 
@@ -353,7 +379,7 @@ export class ArtistService {
       sort: (query.sort ?? 'latest') as ProductSort,
     };
 
-    return this.productService.findAll(mergedQuery);
+    return this.productService.findAll(mergedQuery, viewerId);
   }
 
   // ───────────────────────────────────────────────────────────────

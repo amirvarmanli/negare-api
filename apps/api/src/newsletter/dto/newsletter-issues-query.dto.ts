@@ -32,18 +32,30 @@ export class NewsletterIssuesQueryDto {
   @IsString()
   categorySlug?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Filter issues by supplier (author) id (UUID)' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Search query across title, slug, summary/excerpt, and content fields',
+  })
   @IsOptional()
   @IsString()
   q?: string;
 
-  @ApiPropertyOptional({ enum: PublicationStatus })
-  @IsOptional()
-  @IsEnum(PublicationStatus)
-  status?: PublicationStatus;
 }
 
 export class NewsletterAdminIssuesQueryDto extends NewsletterIssuesQueryDto {
+  @ApiPropertyOptional({
+    enum: PublicationStatus,
+    description: 'Optional publication status filter for admin/panel',
+  })
+  @IsOptional()
+  @IsEnum(PublicationStatus)
+  status?: PublicationStatus;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()

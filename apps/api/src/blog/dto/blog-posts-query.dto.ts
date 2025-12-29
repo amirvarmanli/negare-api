@@ -32,18 +32,30 @@ export class BlogPostsQueryDto {
   @IsString()
   categorySlug?: string;
 
-  @ApiPropertyOptional({ description: 'Search query across title/content' })
+  @ApiPropertyOptional({ description: 'Filter posts by supplier (author) id (UUID)' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Search query across title, slug, summary/excerpt, and content fields',
+  })
   @IsOptional()
   @IsString()
   q?: string;
 
-  @ApiPropertyOptional({ enum: PublicationStatus })
-  @IsOptional()
-  @IsEnum(PublicationStatus)
-  status?: PublicationStatus;
 }
 
 export class BlogAdminPostsQueryDto extends BlogPostsQueryDto {
+  @ApiPropertyOptional({
+    enum: PublicationStatus,
+    description: 'Optional publication status filter for admin/panel',
+  })
+  @IsOptional()
+  @IsEnum(PublicationStatus)
+  status?: PublicationStatus;
+
   @ApiPropertyOptional({ description: 'Filter by author id (UUID)' })
   @IsOptional()
   @IsUUID()

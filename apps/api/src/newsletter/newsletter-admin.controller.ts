@@ -16,6 +16,7 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { NewsletterService } from '@app/newsletter/newsletter.service';
@@ -45,11 +46,11 @@ import {
 
 function requireAuthenticatedUser(
   user: CurrentUserPayload | undefined,
-): string {
+): CurrentUserPayload {
   if (!user) {
     throw new ForbiddenException('Authentication required');
   }
-  return user.id;
+  return user;
 }
 
 @ApiTags('Newsletter Admin')
@@ -63,8 +64,45 @@ export class NewsletterAdminController {
   @ApiOkResponse({ type: NewsletterIssueListResponseDto })
   async listIssues(
     @Query() query: NewsletterAdminIssuesQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<NewsletterIssueListResponseDto> {
-    return this.newsletterService.adminListIssues(query);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.newsletterService.adminListIssues(query, currentUser);
+  }
+
+  @Get('issues/:id')
+  @ApiOperation({ summary: 'Get a newsletter issue by ID (supplier/admin panel)' })
+  @ApiParam({ name: 'id', description: 'Newsletter issue UUID' })
+  @ApiOkResponse({ type: NewsletterIssueDto })
+  async getIssueById(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<NewsletterIssueDto> {
+    const currentUser = requireAuthenticatedUser(user);
+    return this.newsletterService.findAdminNewsletterIssueById(
+      id,
+      currentUser,
+    );
+  }
+
+  @Get('issues/slug/:slug')
+  @ApiOperation({
+    summary: 'Get a newsletter issue by slug (legacy supplier/admin panel fallback)',
+  })
+  @ApiParam({
+    name: 'slug',
+    description: 'Legacy slug (Persian/Unicode supported)',
+  })
+  @ApiOkResponse({ type: NewsletterIssueDto })
+  async getIssueBySlug(
+    @Param('slug') slug: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<NewsletterIssueDto> {
+    const currentUser = requireAuthenticatedUser(user);
+    return this.newsletterService.findAdminNewsletterIssueBySlug(
+      slug,
+      currentUser,
+    );
   }
 
   @Post('issues')
@@ -74,8 +112,8 @@ export class NewsletterAdminController {
     @Body() dto: CreateNewsletterIssueDto,
     @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<NewsletterIssueDto> {
-    const userId = requireAuthenticatedUser(user);
-    return this.newsletterService.createIssue(dto, userId);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.newsletterService.createIssue(dto, currentUser.id);
   }
 
   @Patch('issues/:id')
@@ -84,8 +122,10 @@ export class NewsletterAdminController {
   async updateIssue(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateNewsletterIssueDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<NewsletterIssueDto> {
-    return this.newsletterService.updateIssue(id, dto);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.newsletterService.updateIssue(id, dto, currentUser);
   }
 
   @Delete('issues/:id')
@@ -94,8 +134,10 @@ export class NewsletterAdminController {
   @ApiNoContentResponse()
   async deleteIssue(
     @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<void> {
-    await this.newsletterService.softDeleteIssue(id);
+    const currentUser = requireAuthenticatedUser(user);
+    await this.newsletterService.softDeleteIssue(id, currentUser);
   }
 
   @Post('issues/:id/pin')

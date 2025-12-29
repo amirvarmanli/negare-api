@@ -1,0 +1,842 @@
+{
+  "info": {
+    "name": "Negare Finance",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "API_BASE", "value": "http://localhost:4000/api" },
+    { "key": "ACCESS_TOKEN", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "ORDER_ID", "value": "" },
+    { "key": "PAYMENT_ID", "value": "" },
+    { "key": "cartItemId", "value": "" },
+    { "key": "trackId", "value": "" },
+    { "key": "poolId", "value": "" },
+    { "key": "payoutId", "value": "" },
+    { "key": "supplierId", "value": "" },
+    { "key": "purchaseProductId", "value": "" },
+    { "key": "fileId", "value": "" },
+    { "key": "downloadToken", "value": "" },
+    { "key": "DONATION_ID", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [{\n    \"productId\": \"1024\",\n    \"quantity\": 1\n  }],\n  \"discount\": {\n    \"type\": \"FIXED\",\n    \"value\": 50000\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Order",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}"
+          }
+        },
+        {
+          "name": "Get Purchase Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}/purchase-result"
+          }
+        },
+        {
+          "name": "Pay Order via Gateway Init",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}/pay/gateway/init"
+          }
+        },
+        {
+          "name": "Pay Order via Wallet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('order paid', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('PAID');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}/pay-with-wallet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Me Purchases",
+      "item": [
+        {
+          "name": "Get Purchases",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const first = body?.data?.items?.[0];",
+                  "if (first) {",
+                  "  pm.collectionVariables.set('purchaseProductId', first.productId);",
+                  "  const dl = first.downloads?.[0];",
+                  "  if (dl) {",
+                  "    pm.collectionVariables.set('fileId', dl.fileId);",
+                  "    const url = dl.url || '';",
+                  "    const token = url.includes('token=') ? url.split('token=')[1] : '';",
+                  "    if (token) pm.collectionVariables.set('downloadToken', token);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/me/purchases?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "Get Purchase By Product",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/me/purchases/{{purchaseProductId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Negative Cases",
+      "item": [
+        {
+          "name": "Add Purchased Product To Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/cart/items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\\n  \\\"productId\\\": \\\"{{purchaseProductId}}\\\",\\n  \\\"quantity\\\": 1\\n}"
+            }
+          }
+        },
+        {
+          "name": "Download Purchased File With Invalid Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{API_BASE}}/downloads/files/{{fileId}}?token=invalid"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "item": [
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/cart"
+          }
+        },
+        {
+          "name": "Add Cart Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/cart/items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Cart Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/cart/items/{{cartItemId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Remove Cart Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/cart/items/{{cartItemId}}"
+          }
+        },
+        {
+          "name": "Clear Cart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/cart/clear"
+          }
+        },
+        {
+          "name": "Checkout Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/cart/checkout",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"couponCode\": \"WELCOME10\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Pay Order via Gateway Init (Cart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}/pay/gateway/init"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Verify Gateway Payment (Mock)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/payments/gateway/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": \"payment-uuid\",\n  \"success\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify Payment By Id",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/{{PAYMENT_ID}}/verify"
+          }
+        },
+        {
+          "name": "Get Payment Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/{{PAYMENT_ID}}/result"
+          }
+        },
+        {
+          "name": "Zibal Callback Verify",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{API_BASE}}/payments/zibal/callback?trackId={{trackId}}"
+          }
+        },
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments?page=1&limit=20&status=SUCCESS"
+          },
+          "response": [
+            {
+              "name": "Payments Page",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+                ],
+                "url": "{{API_BASE}}/payments?page=1&limit=20"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"payment-uuid\",\n      \"orderId\": \"order-uuid\",\n      \"referenceType\": \"subscription\",\n      \"referenceId\": \"purchase-uuid\",\n      \"provider\": \"ZIBAL\",\n      \"status\": \"SUCCESS\",\n      \"amount\": 250000,\n      \"currency\": \"TOMAN\",\n      \"createdAt\": \"2025-01-01T12:00:00.000Z\",\n      \"paidAt\": \"2025-01-01T12:05:00.000Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"totalItems\": 1,\n    \"totalPages\": 1,\n    \"hasNextPage\": false,\n    \"hasPrevPage\": false\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Payment By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/{{PAYMENT_ID}}"
+          },
+          "response": [
+            {
+              "name": "Payment Detail",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+                ],
+                "url": "{{API_BASE}}/payments/{{PAYMENT_ID}}"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"payment-uuid\",\n  \"orderId\": \"order-uuid\",\n  \"referenceType\": \"subscription\",\n  \"referenceId\": \"purchase-uuid\",\n  \"provider\": \"ZIBAL\",\n  \"status\": \"SUCCESS\",\n  \"amount\": 250000,\n  \"currency\": \"TOMAN\",\n  \"gatewayReferenceId\": \"ref_123\",\n  \"failureReason\": null,\n  \"createdAt\": \"2025-01-01T12:00:00.000Z\",\n  \"paidAt\": \"2025-01-01T12:05:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Order Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}/payments?page=1&limit=20"
+          },
+          "response": [
+            {
+              "name": "Order Payments Page",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+                ],
+                "url": "{{API_BASE}}/orders/{{ORDER_ID}}/payments?page=1&limit=20"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"payment-uuid\",\n      \"orderId\": \"order-uuid\",\n      \"referenceType\": null,\n      \"referenceId\": null,\n      \"provider\": \"ZIBAL\",\n      \"status\": \"PENDING\",\n      \"amount\": 250000,\n      \"currency\": \"TOMAN\",\n      \"createdAt\": \"2025-01-01T12:00:00.000Z\",\n      \"paidAt\": null\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"totalItems\": 1,\n    \"totalPages\": 1,\n    \"hasNextPage\": false,\n    \"hasPrevPage\": false\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get Wallet",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/wallet"
+          }
+        },
+        {
+          "name": "List Wallet Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/wallet/transactions?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Wallet Topup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.paymentId) {",
+                  "  pm.collectionVariables.set('PAYMENT_ID', body.paymentId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/wallet/topup",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200000\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Downloads",
+      "item": [
+        {
+          "name": "Download Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/products/:id/download"
+          }
+        },
+        {
+          "name": "Download Purchased File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{API_BASE}}/downloads/files/{{fileId}}?token={{downloadToken}}"
+          }
+        },
+        {
+          "name": "Today Quotas",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/me/quotas/today"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "List Plans",
+          "request": {
+            "method": "GET",
+            "url": "{{API_BASE}}/subscription/plans"
+          }
+        },
+        {
+          "name": "My Subscription",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/subscription/me"
+          }
+        },
+        {
+          "name": "Purchase Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/subscription/purchase",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planCode\": \"A\",\n  \"durationMonths\": 3\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Revenue",
+      "item": [
+        {
+          "name": "Compute Subscription Pool",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/revenue/subscription-pools/compute?year=2024&month=1"
+          }
+        },
+        {
+          "name": "Supplier Subscription Earnings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/supplier/revenue/subscription-earnings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Discounts",
+      "item": [
+        {
+          "name": "Create Product Discount",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/discounts/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"1024\",\n  \"type\": \"PERCENT\",\n  \"value\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "List Product Discounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/discounts/products"
+          }
+        },
+        {
+          "name": "Create User Discount",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/discounts/users",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"user-uuid\",\n  \"type\": \"PERCENT\",\n  \"value\": 15\n}"
+            }
+          }
+        },
+        {
+          "name": "List User Discounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/discounts/users"
+          }
+        },
+        {
+          "name": "Create Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/discounts/coupons",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"WELCOME10\",\n  \"type\": \"PERCENT\",\n  \"value\": 10,\n  \"maxUsage\": 100,\n  \"maxUsagePerUser\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "List Coupons",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/discounts/coupons"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Supplier Reports",
+      "item": [
+        {
+          "name": "Revenue Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/supplier/revenue/summary?supplierId={{supplierId}}"
+          }
+        },
+        {
+          "name": "Revenue Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/supplier/revenue/orders?supplierId={{supplierId}}"
+          }
+        },
+        {
+          "name": "Revenue Subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/supplier/revenue/subscriptions?supplierId={{supplierId}}"
+          }
+        },
+        {
+          "name": "Supplier Downloads",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/supplier/downloads?supplierId={{supplierId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payouts",
+      "item": [
+        {
+          "name": "Compute Payouts",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/payouts/compute",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"periodStart\": \"2024-01-01\",\n  \"periodEnd\": \"2024-01-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Mark Payout Paid",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/payouts/{{payoutId}}/mark-paid",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"bank-ref-123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Mark Payout Failed",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/payouts/{{payoutId}}/mark-failed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Revenue Finalization",
+      "item": [
+        {
+          "name": "Finalize Subscription Pool",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/revenue/subscription-pools/{{poolId}}/finalize"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Donations",
+      "item": [
+        {
+          "name": "Create Donation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.donationId) pm.collectionVariables.set('DONATION_ID', body.donationId);",
+                  "if (body.paymentId) pm.collectionVariables.set('PAYMENT_ID', body.paymentId);",
+                  "if (body.trackId) pm.collectionVariables.set('trackId', body.trackId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/donations/init",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify Donation Payment By Id",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/{{PAYMENT_ID}}/verify"
+          }
+        },
+        {
+          "name": "Get Donation Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/donations/{{DONATION_ID}}/result"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "List Products (hasPurchased)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/catalog/products?limit=10"
+          }
+        },
+        {
+          "name": "Search Products (single term)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/catalog/products/search?q=%D8%A8%D9%87%D8%B4%D8%AA%DB%8C&page=1&limit=20"
+          }
+        },
+        {
+          "name": "Search Products (multi-term)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/catalog/products/search?q=%D8%B4%D9%87%DB%8C%D8%AF%20%D8%A8%D9%87%D8%B4%D8%AA%DB%8C&page=1&limit=20"
+          }
+        },
+        {
+          "name": "Search Products (phrase)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/catalog/products/search?q=%22%D8%B4%D9%87%DB%8C%D8%AF%20%D9%85%D8%AD%D9%85%D8%AF%D8%AD%D8%B3%DB%8C%D9%86%20%D8%A8%D9%87%D8%B4%D8%AA%DB%8C%22&page=1&limit=20"
+          }
+        },
+        {
+          "name": "Search Products (Arabic variants)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/catalog/products/search?q=%D8%B4%D9%87%D9%8A%D8%AF%20%D9%83%D8%A7%D8%B8%D9%85&page=1&limit=20"
+          }
+        },
+        {
+          "name": "Profile Likes (hasPurchased)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/catalog/profile/likes?limit=10"
+          }
+        }
+      ]
+    }
+  ]
+}

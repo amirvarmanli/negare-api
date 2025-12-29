@@ -158,8 +158,9 @@ export class ArtistController {
   async listProducts(
     @Param() params: ArtistIdParamDto,
     @Query() query: ArtistProductsQueryDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<ProductListResultDto> {
-    return this.service.listProducts(params.id, query);
+    return this.service.listProducts(params.id, query, user?.id);
   }
 
   // ───────────────────────────────────────────────────────────────

@@ -37,11 +37,11 @@ import { Public } from '@app/common/decorators/public.decorator';
 
 function requireAuthenticatedUser(
   user: CurrentUserPayload | undefined,
-): string {
+): CurrentUserPayload {
   if (!user) {
     throw new ForbiddenException('Authentication required');
   }
-  return user.id;
+  return user;
 }
 
 @ApiTags('Newsletter')
@@ -114,7 +114,7 @@ export class NewsletterController {
     @Body() dto: CreateNewsletterCommentDto,
     @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<NewsletterCommentDto> {
-    const userId = requireAuthenticatedUser(user);
-    return this.newsletterService.createComment(id, dto, userId);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.newsletterService.createComment(id, dto, currentUser.id);
   }
 }

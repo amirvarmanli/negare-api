@@ -11,6 +11,7 @@ import {
   PricingType,
   ProductStatus,
   GraphicFormat,
+  FinanceEntitlementSource,
 } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import type { PrismaTxClient } from '@app/prisma/prisma.service';
@@ -40,6 +41,10 @@ import {
   safeDecodeSlug,
 } from '@shared-slug/slug/fa-slug.util';
 import {
+  normalizeFaText as normalizeFaSearchText,
+  tokenizeFaText,
+} from '@shared-slug/search/fa-search.util';
+import {
   clampPagination,
   toPaginationResult,
 } from '@app/catalog/utils/pagination.util';
@@ -48,6 +53,7 @@ import {
   productInclude,
   type ProductWithRelations,
 } from '@app/catalog/product/product.mapper';
+import { EntitlementSource } from '@app/finance/common/finance.enums';
 
 type ProductWithReactions = ProductWithRelations & {
   likes?: Array<{ productId: bigint }>;
@@ -75,6 +81,27 @@ const PRODUCT_TX_OPTIONS: Parameters<PrismaService['$transaction']>[1] = {
   maxWait: 5000,
   timeout: 20000,
 };
+const MAX_SEARCH_TOKENS = 8;
+const MAX_SEARCH_PHRASES = 2;
+const MAX_SEARCH_TOKEN_LENGTH = 64;
+
+const SEARCH_TITLE_TOKENS = [
+  'شهید',
+  'حاج',
+  'حاجی',
+  'سید',
+  'دکتر',
+  'مهندس',
+  'آیت الله',
+  'آقا',
+  'خانم',
+];
+
+const NORMALIZED_TITLE_TOKENS = new Set(
+  SEARCH_TITLE_TOKENS.map((token) => normalizeFaSearchText(token)).filter(
+    (token) => token.length > 0,
+  ),
+);
 
 type UploadedFileMeta = {
   id: string;
@@ -155,6 +182,55 @@ function normalizeTagLabel(raw?: string): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
   return trimmed.replace(/\s+/g, ' ');
+}
+
+function buildSearchTextNormalized(
+  parts: Array<string | null | undefined>,
+): string | null {
+  const merged = parts
+    .map((part) => (part ? part.trim() : ''))
+    .filter((part) => part.length > 0)
+    .join(' ');
+  if (!merged) {
+    return null;
+  }
+  const normalized = normalizeFaSearchText(merged);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function extractQuotedPhrases(input: string): { phrases: string[]; rest: string } {
+  const normalizedQuotes = input.replace(/[“”«»]/gu, '"');
+  const phrases: string[] = [];
+  let rest = normalizedQuotes;
+  const regex = /"([^"]+)"/gu;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(normalizedQuotes)) !== null) {
+    const phrase = normalizeFaSearchText(match[1]);
+    if (phrase.length > 0) {
+      phrases.push(phrase);
+    }
+  }
+  rest = rest.replace(regex, ' ');
+  return { phrases, rest };
+}
+
+function parseSearchTerms(input: string): {
+  phrases: string[];
+  requiredTokens: string[];
+  optionalTokens: string[];
+} {
+  const { phrases, rest } = extractQuotedPhrases(input);
+  const tokens = tokenizeFaText(rest);
+  const uniqueTokens = Array.from(new Set(tokens));
+  const titleTokens = uniqueTokens.filter((token) =>
+    NORMALIZED_TITLE_TOKENS.has(token),
+  );
+  const nonTitleTokens = uniqueTokens.filter(
+    (token) => !NORMALIZED_TITLE_TOKENS.has(token),
+  );
+  const requiredTokens = nonTitleTokens.length > 0 ? nonTitleTokens : uniqueTokens;
+  const optionalTokens = nonTitleTokens.length > 0 ? titleTokens : [];
+  return { phrases, requiredTokens, optionalTokens };
 }
 
 export function parseGraphicFormatList(raw?: string): GraphicFormat[] {
@@ -242,6 +318,7 @@ export class ProductService {
   private mapProductDetail(
     product: ProductWithReactions,
     viewerId?: string,
+    hasPurchased = false,
   ): ProductDetailDto {
     const dto = ProductMapper.toDetail(product);
     const reactions = this.getReactionFlags(product);
@@ -255,6 +332,7 @@ export class ProductService {
     });
     dto.isLikedByCurrentUser = reactions.isLikedByCurrentUser;
     dto.isBookmarkedByCurrentUser = reactions.isBookmarkedByCurrentUser;
+    dto.hasPurchased = hasPurchased;
     return dto;
   }
 
@@ -306,6 +384,26 @@ export class ProductService {
     return { liked, bookmarked };
   }
 
+  private async resolveUserPurchases(
+    productIds: bigint[],
+    userId?: string,
+  ): Promise<Set<string>> {
+    const purchased = new Set<string>();
+    if (!userId || productIds.length === 0) {
+      return purchased;
+    }
+    const rows = await this.prisma.financeEntitlement.findMany({
+      where: {
+        userId,
+        productId: { in: productIds },
+        source: EntitlementSource.PURCHASED as FinanceEntitlementSource,
+      },
+      select: { productId: true },
+    });
+    rows.forEach((item) => purchased.add(item.productId.toString()));
+    return purchased;
+  }
+
   async create(dto: CreateProductDto, actor: Actor): Promise<ProductDetailDto> {
     const title = normalizeFaText(dto.title);
     const slug = await this.ensureUniqueSlug(dto.slug ?? dto.title);
@@ -322,6 +420,13 @@ export class ProductService {
 
     const createdId = await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       const shortLink = await this.resolveShortLink(trx, dto.shortLink);
+      const searchTextNormalized = buildSearchTextNormalized([
+        title,
+        dto.description ?? null,
+        dto.seoTitle ?? null,
+        dto.seoDescription ?? null,
+        slug,
+      ]);
       const product = await trx.product.create({
         data: {
           slug,
@@ -334,6 +439,7 @@ export class ProductService {
           seoTitle: dto.seoTitle ?? null,
           seoDescription: dto.seoDescription ?? null,
           seoKeywords: dto.seoKeywords ?? [],
+          searchTextNormalized,
           pricingType: dto.pricingType as PricingType,
           price: this.toDecimal(dto.price),
           status: (dto.status ?? ProductStatus.DRAFT) as ProductStatus,
@@ -422,6 +528,22 @@ export class ProductService {
     const nextSlug = slugSource
       ? await this.ensureUniqueSlug(slugSource, product.id)
       : undefined;
+    const nextSearchTextNormalized =
+      dto.title !== undefined ||
+      dto.description !== undefined ||
+      dto.seoTitle !== undefined ||
+      dto.seoDescription !== undefined ||
+      nextSlug !== undefined
+        ? buildSearchTextNormalized([
+            nextTitle ?? product.title,
+            dto.description !== undefined ? dto.description : product.description,
+            dto.seoTitle !== undefined ? dto.seoTitle : product.seoTitle,
+            dto.seoDescription !== undefined
+              ? dto.seoDescription
+              : product.seoDescription,
+            nextSlug ?? product.slug,
+          ])
+        : undefined;
 
     const fileInstruction = await this.resolveFileInstruction(
       dto.fileId ?? undefined,
@@ -444,6 +566,7 @@ export class ProductService {
         seoTitle: dto.seoTitle ?? undefined,
         seoDescription: dto.seoDescription ?? undefined,
         seoKeywords: dto.seoKeywords ? { set: dto.seoKeywords } : undefined,
+        searchTextNormalized: nextSearchTextNormalized ?? undefined,
         pricingType: dto.pricingType ?? undefined,
         price:
           dto.price !== undefined
@@ -603,7 +726,15 @@ export class ProductService {
       likesCount: withReactions.likes?.length ?? 0,
       bookmarksCount: withReactions.bookmarks?.length ?? 0,
     });
-    return this.mapProductDetail(withReactions, viewerId);
+    const purchased = await this.resolveUserPurchases(
+      [withReactions.id],
+      viewerId,
+    );
+    return this.mapProductDetail(
+      withReactions,
+      viewerId,
+      purchased.has(withReactions.id.toString()),
+    );
   }
 
   async findByShortCode(
@@ -627,7 +758,15 @@ export class ProductService {
       likesCount: withReactions.likes?.length ?? 0,
       bookmarksCount: withReactions.bookmarks?.length ?? 0,
     });
-    return this.mapProductDetail(withReactions, viewerId);
+    const purchased = await this.resolveUserPurchases(
+      [withReactions.id],
+      viewerId,
+    );
+    return this.mapProductDetail(
+      withReactions,
+      viewerId,
+      purchased.has(withReactions.id.toString()),
+    );
   }
 
   async findForRoute(
@@ -667,8 +806,16 @@ export class ProductService {
         likesCount: withReactions.likes?.length ?? 0,
         bookmarksCount: withReactions.bookmarks?.length ?? 0,
       });
+      const purchased = await this.resolveUserPurchases(
+        [withReactions.id],
+        viewerId,
+      );
       return {
-        product: this.mapProductDetail(withReactions, viewerId),
+        product: this.mapProductDetail(
+          withReactions,
+          viewerId,
+          purchased.has(withReactions.id.toString()),
+        ),
       };
     }
     const redirect = await this.prisma.slugRedirect.findUnique({
@@ -859,10 +1006,9 @@ export class ProductService {
       include: productInclude,
     });
 
-    const reactions = await this.resolveUserReactions(
-      rows.map((r) => r.id),
-      viewerId,
-    );
+    const ids = rows.map((r) => r.id);
+    const reactions = await this.resolveUserReactions(ids, viewerId);
+    const purchased = await this.resolveUserPurchases(ids, viewerId);
 
     const items: ProductBriefDto[] = (rows as ProductWithRelations[]).map(
       (p) => {
@@ -871,6 +1017,7 @@ export class ProductService {
         brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
           p.id.toString(),
         );
+        brief.hasPurchased = purchased.has(p.id.toString());
         return brief;
       },
     );
@@ -950,6 +1097,7 @@ export class ProductService {
     );
 
     const reactions = await this.resolveUserReactions(ids, viewerId);
+    const purchased = await this.resolveUserPurchases(ids, viewerId);
 
     return (rows as ProductWithRelations[]).map((p) => {
       const brief = ProductMapper.toBrief(p);
@@ -957,6 +1105,7 @@ export class ProductService {
       brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
         p.id.toString(),
       );
+      brief.hasPurchased = purchased.has(p.id.toString());
       return brief;
     });
   }
@@ -965,10 +1114,43 @@ export class ProductService {
     query: ProductSearchQueryDto,
     viewerId?: string,
   ): Promise<ProductSearchResultDto> {
-    const term = normalizeFaText(query.q);
-    if (!term || term.length < 2) {
+    const { phrases, requiredTokens, optionalTokens } = parseSearchTerms(
+      query.q,
+    );
+    if (
+      phrases.length === 0 &&
+      requiredTokens.length === 0 &&
+      optionalTokens.length === 0
+    ) {
       throw new BadRequestException('Search text must be at least 2 characters long.');
     }
+    if (phrases.length > MAX_SEARCH_PHRASES) {
+      throw new BadRequestException(
+        `Search phrases must be at most ${MAX_SEARCH_PHRASES}.`,
+      );
+    }
+    if (requiredTokens.length > MAX_SEARCH_TOKENS) {
+      throw new BadRequestException(
+        `Search tokens must be at most ${MAX_SEARCH_TOKENS}.`,
+      );
+    }
+    if (
+      [...requiredTokens, ...optionalTokens].some(
+        (token) => token.length > MAX_SEARCH_TOKEN_LENGTH,
+      )
+    ) {
+      throw new BadRequestException('Search token is too long.');
+    }
+
+    this.logger.debug({
+      context: 'ProductSearch',
+      phrasesCount: phrases.length,
+      requiredTokensCount: requiredTokens.length,
+      optionalTokensCount: optionalTokens.length,
+      sort: query.sort ?? 'latest',
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+    });
 
     const sort: ProductSort = (query.sort ?? 'latest') as ProductSort;
     const { page, limit, skip } = clampPagination(
@@ -998,9 +1180,6 @@ export class ProductService {
         hasNext: empty.hasNext,
       };
     }
-    const likeTerm = `%${term}%`;
-    const startsWithTerm = `${term}%`;
-
     const statuses = query.status
       ? [query.status as ProductStatus]
       : ACTIVE_PRODUCT_STATUSES;
@@ -1017,6 +1196,26 @@ export class ProductService {
         Prisma.sql`p."pricingType"::text = ${query.pricingType as PricingType}`,
       );
     }
+
+    const buildTagMatchClause = (pattern: string) => Prisma.sql`
+      EXISTS (
+        SELECT 1
+        FROM "catalog"."product_tags" spt
+        JOIN "catalog"."tags" st ON st.id = spt."tag_id"
+        WHERE spt."product_id" = p.id
+          AND (
+            st.name ILIKE ${pattern}
+            OR st.slug ILIKE ${pattern}
+          )
+      )
+    `;
+
+    const buildTokenMatchClause = (pattern: string) => Prisma.sql`
+      (
+        p."search_text_normalized" ILIKE ${pattern}
+        OR ${buildTagMatchClause(pattern)}
+      )
+    `;
 
     const graphicFormats = parseGraphicFormatList(query.graphicFormat);
     if (graphicFormats.length) {
@@ -1063,7 +1262,7 @@ export class ProductService {
     if (query.tagName) {
       const normalizedTag = normalizeTagLabel(query.tagName);
       if (normalizedTag) {
-        const tagTerm = normalizeFaText(normalizedTag);
+        const tagTerm = normalizeFaSearchText(normalizedTag);
         if (tagTerm) {
           const explicitTagLike = `%${tagTerm}%`;
           conditions.push(
@@ -1125,26 +1324,17 @@ export class ProductService {
       );
     }
 
-    const tagMatchClause = Prisma.sql`
-      EXISTS (
-        SELECT 1
-        FROM "catalog"."product_tags" spt
-        JOIN "catalog"."tags" st ON st.id = spt."tag_id"
-        WHERE spt."product_id" = p.id
-          AND (
-            st.name ILIKE ${likeTerm}
-            OR st.slug ILIKE ${likeTerm}
-          )
-      )
-    `;
+    phrases.forEach((phrase) => {
+      const pattern = `%${phrase}%`;
+      conditions.push(
+        Prisma.sql`p."search_text_normalized" ILIKE ${pattern}`,
+      );
+    });
 
-    conditions.push(
-      Prisma.sql`(
-        p.title ILIKE ${likeTerm}
-        OR p."description" ILIKE ${likeTerm}
-        OR ${tagMatchClause}
-      )`,
-    );
+    requiredTokens.forEach((token) => {
+      const pattern = `%${token}%`;
+      conditions.push(buildTokenMatchClause(pattern));
+    });
 
     const whereClause =
       conditions.length > 0
@@ -1154,12 +1344,29 @@ export class ProductService {
           )}`
         : Prisma.sql``;
 
-    const scoreExpression = Prisma.sql`
-      (CASE WHEN p.title ILIKE ${startsWithTerm} THEN 4 ELSE 0 END)
-      + (CASE WHEN p.title ILIKE ${likeTerm} THEN 2 ELSE 0 END)
-      + (CASE WHEN p."description" ILIKE ${likeTerm} THEN 1 ELSE 0 END)
-      + (CASE WHEN ${tagMatchClause} THEN 3 ELSE 0 END)
-    `;
+    const scoreParts: Prisma.Sql[] = [];
+    phrases.forEach((phrase) => {
+      const pattern = `%${phrase}%`;
+      scoreParts.push(
+        Prisma.sql`(CASE WHEN p."search_text_normalized" ILIKE ${pattern} THEN 6 ELSE 0 END)`,
+      );
+    });
+    requiredTokens.forEach((token) => {
+      const pattern = `%${token}%`;
+      scoreParts.push(
+        Prisma.sql`(CASE WHEN ${buildTokenMatchClause(pattern)} THEN 3 ELSE 0 END)`,
+      );
+    });
+    optionalTokens.forEach((token) => {
+      const pattern = `%${token}%`;
+      scoreParts.push(
+        Prisma.sql`(CASE WHEN ${buildTokenMatchClause(pattern)} THEN 1 ELSE 0 END)`,
+      );
+    });
+    const scoreExpression =
+      scoreParts.length > 0
+        ? Prisma.join(scoreParts, ' + ')
+        : Prisma.sql`0`;
 
     const secondaryOrder = (() => {
       if (sort === 'popular') {
@@ -1224,12 +1431,14 @@ export class ProductService {
         (order.get(b.id.toString()) ?? 0),
     );
     const reactions = await this.resolveUserReactions(ids, viewerId);
+    const purchased = await this.resolveUserPurchases(ids, viewerId);
     const items = (products as ProductWithRelations[]).map((p) => {
       const brief = ProductMapper.toBrief(p);
       brief.isLikedByCurrentUser = reactions.liked.has(p.id.toString());
       brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
         p.id.toString(),
       );
+      brief.hasPurchased = purchased.has(p.id.toString());
       return brief;
     });
 
@@ -1272,6 +1481,7 @@ export class ProductService {
     const reactions = await this.resolveUserReactions(productIds, userId, {
       skipLiked: true,
     });
+    const purchased = await this.resolveUserPurchases(productIds, userId);
 
     const items = (likes as LikeWithProduct[]).map((like) => {
       const brief = ProductMapper.toBrief(
@@ -1281,6 +1491,7 @@ export class ProductService {
       brief.isBookmarkedByCurrentUser = reactions.bookmarked.has(
         like.productId.toString(),
       );
+      brief.hasPurchased = purchased.has(like.productId.toString());
       return brief;
     });
 
@@ -1323,6 +1534,7 @@ export class ProductService {
     const reactions = await this.resolveUserReactions(productIds, userId, {
       skipBookmarked: true,
     });
+    const purchased = await this.resolveUserPurchases(productIds, userId);
 
     const items = (bookmarks as BookmarkWithProduct[]).map((bookmark) => {
       const brief = ProductMapper.toBrief(
@@ -1332,6 +1544,7 @@ export class ProductService {
       brief.isLikedByCurrentUser = reactions.liked.has(
         bookmark.productId.toString(),
       );
+      brief.hasPurchased = purchased.has(bookmark.productId.toString());
       return brief;
     });
 
