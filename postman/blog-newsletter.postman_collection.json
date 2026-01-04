@@ -6,7 +6,11 @@
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "API_BASE", "value": "http://localhost:4000" },
     { "key": "accessToken", "value": "" },
+    { "key": "ADMIN_TOKEN", "value": "" },
+    { "key": "BLOG_ID", "value": "" },
+    { "key": "NEWSLETTER_ID", "value": "" },
     { "key": "blogPostId", "value": "" },
     { "key": "blogPostSlug", "value": "" },
     { "key": "blogCommentId", "value": "" },
@@ -485,6 +489,255 @@
               "raw": "{{baseUrl}}/api/newsletter/categories/all",
               "host": ["{{baseUrl}}"],
               "path": ["api", "newsletter", "categories", "all"]
+            }
+          }
+        }
+      ]
+    }
+    },
+    {
+      "name": "Admin / Blogs",
+      "item": [
+        {
+          "name": "List Blogs (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs?page=1&limit=20&q=design&status=APPROVED&sort=createdAt&order=desc",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Page number" },
+                { "key": "limit", "value": "20", "description": "Page size" },
+                { "key": "q", "value": "design", "description": "Search query" },
+                { "key": "status", "value": "APPROVED", "description": "Publication status" },
+                { "key": "authorId", "value": "", "disabled": true },
+                { "key": "from", "value": "2025-01-01T00:00:00.000Z", "disabled": true },
+                { "key": "to", "value": "2025-12-31T23:59:59.000Z", "disabled": true },
+                { "key": "sort", "value": "createdAt" },
+                { "key": "order", "value": "desc" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Blog (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Blog (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Admin Blog Title\",\n  \"excerpt\": \"Short summary\",\n  \"status\": \"APPROVED\"\n}"
+            },
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "Approve Blog (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/approve",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Reject Blog (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Needs revisions\"\n}"
+            },
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/reject",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "reject"]
+            }
+          }
+        },
+        {
+          "name": "Archive Blog (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/archive",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "archive"]
+            }
+          }
+        },
+        {
+          "name": "Unarchive Blog (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/unarchive",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "unarchive"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin / Newsletters",
+      "item": [
+        {
+          "name": "List Newsletters (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters?page=1&limit=20&q=design&status=APPROVED&sort=createdAt&order=desc",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Page number" },
+                { "key": "limit", "value": "20", "description": "Page size" },
+                { "key": "q", "value": "design", "description": "Search query" },
+                { "key": "status", "value": "APPROVED", "description": "Publication status" },
+                { "key": "authorId", "value": "", "disabled": true },
+                { "key": "from", "value": "2025-01-01T00:00:00.000Z", "disabled": true },
+                { "key": "to", "value": "2025-12-31T23:59:59.000Z", "disabled": true },
+                { "key": "sort", "value": "createdAt" },
+                { "key": "order", "value": "desc" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Newsletter (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Newsletter (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Admin Newsletter\",\n  \"excerpt\": \"Short summary\",\n  \"status\": \"APPROVED\"\n}"
+            },
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "Approve Newsletter (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/approve",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Reject Newsletter (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Needs revisions\"\n}"
+            },
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/reject",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "reject"]
+            }
+          }
+        },
+        {
+          "name": "Archive Newsletter (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/archive",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "archive"]
+            }
+          }
+        },
+        {
+          "name": "Unarchive Newsletter (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": {
+              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/unarchive",
+              "host": ["{{API_BASE}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "unarchive"]
             }
           }
         }

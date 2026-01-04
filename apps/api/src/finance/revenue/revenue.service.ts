@@ -25,32 +25,84 @@ import type {
   Prisma,
 } from '@prisma/client';
 import { Prisma as PrismaNamespace } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import type { AllConfig } from '@app/config/config.module';
 
 @Injectable()
 export class RevenueService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly productsService: ProductsService,
+    private readonly config: ConfigService<AllConfig>,
   ) {}
 
   async recordOrderRevenueSplits(
     order: FinanceOrder,
     items: FinanceOrderItem[],
-  ): Promise<void> {
+    tx?: Prisma.TransactionClient,
+    platformUserId?: string,
+  ): Promise<Prisma.FinanceOrderRevenueSplitCreateManyInput[]> {
     if ((order.orderKind as OrderKind) !== OrderKind.PRODUCT) {
-      return;
+      return [];
     }
 
+    const splits = await this.buildOrderRevenueSplits(
+      order,
+      items,
+      tx,
+      platformUserId,
+    );
+
+    const prisma = tx ?? this.prisma;
+
+    if (splits.length > 0) {
+      await prisma.financeOrderRevenueSplit.createMany({
+        data: splits,
+        skipDuplicates: true,
+      });
+    }
+    return splits;
+  }
+
+  async buildOrderRevenueSplits(
+    order: FinanceOrder,
+    items: FinanceOrderItem[],
+    tx?: Prisma.TransactionClient,
+    platformUserId?: string,
+  ): Promise<Prisma.FinanceOrderRevenueSplitCreateManyInput[]> {
+    if ((order.orderKind as OrderKind) !== OrderKind.PRODUCT) {
+      return [];
+    }
+
+    const { supplierPercent } = this.getRevenueSplitPercents();
     const splits: Prisma.FinanceOrderRevenueSplitCreateManyInput[] = [];
 
     for (const item of items) {
       const { supplierIds, supplierCount } =
         await this.productsService.resolveContributors(
           toBigIntString(item.productId),
+          tx,
         );
 
-      const platformShare = Math.floor((item.lineTotal * 30) / 100);
-      const supplierShareTotal = item.lineTotal - platformShare;
+      const total = item.lineTotal;
+
+      if (supplierCount === 0) {
+        throw new BadRequestException('Product supplier not found.');
+      }
+
+      if (supplierCount === 1 && supplierIds[0] === platformUserId) {
+        splits.push({
+          orderId: order.id,
+          productId: item.productId,
+          beneficiaryType: RevenueBeneficiaryType.PLATFORM as FinanceRevenueBeneficiaryType,
+          supplierId: null,
+          amount: total,
+        });
+        continue;
+      }
+
+      const supplierShareTotal = Math.floor((total * supplierPercent) / 100);
+      const platformShare = total - supplierShareTotal;
 
       splits.push({
         orderId: order.id,
@@ -60,7 +112,10 @@ export class RevenueService {
         amount: platformShare,
       });
 
-      if (supplierCount === 1 && supplierIds[0]) {
+      if (supplierCount === 1) {
+        if (!supplierIds[0]) {
+          throw new BadRequestException('Product supplier not found.');
+        }
         splits.push({
           orderId: order.id,
           productId: item.productId,
@@ -69,6 +124,9 @@ export class RevenueService {
           amount: supplierShareTotal,
         });
       } else if (supplierCount === 2) {
+        if (!supplierIds[0] || !supplierIds[1]) {
+          throw new BadRequestException('Product suppliers not found.');
+        }
         const first = Math.floor(supplierShareTotal / 2);
         const second = supplierShareTotal - first;
         splits.push(
@@ -76,27 +134,42 @@ export class RevenueService {
             orderId: order.id,
             productId: item.productId,
             beneficiaryType: RevenueBeneficiaryType.SUPPLIER as FinanceRevenueBeneficiaryType,
-            supplierId: supplierIds[0] ?? null,
+            supplierId: supplierIds[0],
             amount: first,
           },
           {
             orderId: order.id,
             productId: item.productId,
             beneficiaryType: RevenueBeneficiaryType.SUPPLIER as FinanceRevenueBeneficiaryType,
-            supplierId: supplierIds[1] ?? null,
+            supplierId: supplierIds[1],
             amount: second,
           },
         );
       }
-
     }
 
-    if (splits.length > 0) {
-      await this.prisma.financeOrderRevenueSplit.createMany({
-        data: splits,
-        skipDuplicates: true,
-      });
+    return splits;
+  }
+
+  private getRevenueSplitPercents(): {
+    platformPercent: number;
+    supplierPercent: number;
+  } {
+    const platformPercent =
+      this.config.get<number>('PLATFORM_COMMISSION_PERCENT') ?? 30;
+    const supplierPercent =
+      this.config.get<number>('SUPPLIER_REVENUE_PERCENT') ?? 70;
+
+    if (!Number.isInteger(platformPercent) || !Number.isInteger(supplierPercent)) {
+      throw new BadRequestException('Revenue split percents must be integers.');
     }
+    if (platformPercent + supplierPercent !== 100) {
+      throw new BadRequestException(
+        'Revenue split percents must sum to 100.',
+      );
+    }
+
+    return { platformPercent, supplierPercent };
   }
 
   async computeSubscriptionPool(

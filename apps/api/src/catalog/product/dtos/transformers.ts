@@ -48,9 +48,14 @@ export function toColorArray({
   const arr = toStringArray({ value } as TransformFnParams);
   if (!arr) return undefined;
   const normalized = arr
-    .map((s) => s.trim().replace(/^#/u, '').toUpperCase())
-    .filter((s) => /^[0-9A-F]{6}$/u.test(s))
-    .map((s) => `#${s}`);
+    .map((raw) => raw.trim())
+    .map((raw) => {
+      if (raw.toUpperCase() === 'OTHER') return 'OTHER';
+      const hex = raw.replace(/^#/u, '').toUpperCase();
+      if (/^[0-9A-F]{6}$/u.test(hex)) return `#${hex}`;
+      return '';
+    })
+    .filter((s) => s.length > 0);
   return normalized.length ? Array.from(new Set(normalized)) : [];
 }
 

@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -22,12 +23,15 @@ import {
   CurrentUserPayload,
 } from '@app/common/decorators/current-user.decorator';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { CreateUserDto } from '@app/core/users/dto/create-user.dto';
 import { FindUsersQueryDto } from '@app/core/users/dto/find-users-query.dto';
 import { UpdateUserDto } from '@app/core/users/dto/update-user.dto';
 import { UserIdParamDto } from '@app/core/users/dto/user-id-param.dto';
 import { UsersService } from '@app/core/users/users.service';
 import { RoleName } from '@prisma/client';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('Users')
 @ApiBearerAuth('bearer')
@@ -43,7 +47,9 @@ export class UsersController {
    * @param query Filter and pagination options.
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({
     summary: 'List users',
     description:
@@ -85,7 +91,9 @@ export class UsersController {
    * @param createUserDto Payload validated by DTO.
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({
     summary: 'Create user',
     description:
@@ -102,7 +110,9 @@ export class UsersController {
    * @param updateUserDto Partial update payload.
    */
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({
     summary: 'Update user',
     description:

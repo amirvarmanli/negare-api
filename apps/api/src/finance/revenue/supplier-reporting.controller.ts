@@ -7,6 +7,8 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { RoleName } from '@prisma/client';
 import {
   CurrentUser,
@@ -31,8 +33,9 @@ import { SupplierReportingService } from '@app/finance/revenue/supplier-reportin
 @ApiTags('Finance / Supplier Reports')
 @ApiBearerAuth()
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Roles(RoleName.supplier, RoleName.admin)
+@Permissions('supplier.orders:read')
 export class SupplierReportingController {
   constructor(private readonly reportingService: SupplierReportingService) {}
 

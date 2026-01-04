@@ -161,6 +161,22 @@ export class OrdersService {
           },
         });
 
+        if (
+          resolution.source === 'SUBSCRIPTION' &&
+          resolution.subscriptionId &&
+          resolution.subscriptionPercent
+        ) {
+          await tx.subscriptionDiscountUsage.create({
+            data: {
+              subscriptionId: resolution.subscriptionId,
+              orderId: order.id,
+              userId,
+              discountPercent: resolution.subscriptionPercent,
+              discountAmount: resolution.discountValue,
+            },
+          });
+        }
+
         const itemsData = lineItems.map((item) => ({
           orderId: order.id,
           productId: toBigInt(item.product.id),

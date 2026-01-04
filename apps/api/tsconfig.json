@@ -5,7 +5,7 @@
     "outDir": "../../dist/apps/api",
     "tsBuildInfoFile": "../../dist/apps/api/tsconfig.tsbuildinfo",
     "declaration": false,
-    "types": ["node"],
+    "types": ["node", "express", "multer"],
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],

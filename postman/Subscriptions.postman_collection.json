@@ -1,0 +1,142 @@
+{
+  "info": {
+    "name": "Negare Subscriptions",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "API_BASE", "value": "http://localhost:4000/api" },
+    { "key": "ACCESS_TOKEN", "value": "" },
+    { "key": "PLAN_ID", "value": "" },
+    { "key": "SUBSCRIPTION_ID", "value": "" },
+    { "key": "PRODUCT_ID", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Admin Plans",
+      "item": [
+        {
+          "name": "List Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/subscription-plans"
+          }
+        },
+        {
+          "name": "Create Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/subscription-plans",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Starter\",\n  \"price\": 150000,\n  \"durationDays\": 30,\n  \"dailySubscriptionDownloadLimit\": 5,\n  \"dailyFreeDownloadLimitWithSubscription\": 10,\n  \"description\": \"Starter plan\",\n  \"isActive\": true,\n  \"discountPercent\": 10,\n  \"discountQuota\": 5\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Plan",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/subscription-plans/{{PLAN_ID}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Starter Plus\",\n  \"isActive\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Plan",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/subscription-plans/{{PLAN_ID}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Subscriptions",
+      "item": [
+        {
+          "name": "List Active Plans",
+          "request": {
+            "method": "GET",
+            "url": "{{API_BASE}}/subscriptions/plans"
+          }
+        },
+        {
+          "name": "Get My Subscription",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/subscriptions/me"
+          }
+        },
+        {
+          "name": "Purchase Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/subscriptions/purchase",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{PLAN_ID}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscription Downloads",
+      "item": [
+        {
+          "name": "Validate Download",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/subscriptions/downloads/validate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{PRODUCT_ID}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settlements",
+      "item": [
+        {
+          "name": "Settle Expired Subscriptions",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/subscriptions/settlements/expired?limit=50"
+          }
+        }
+      ]
+    }
+  ]
+}

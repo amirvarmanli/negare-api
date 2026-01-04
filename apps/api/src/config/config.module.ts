@@ -45,6 +45,13 @@ const envSchema = z
     APP_PUBLIC_BASE_URL: z.string().url().optional(),
     UPLOAD_DIR: z.string().default('./uploads'),
 
+    // Revenue split (orders)
+    PLATFORM_WALLET_USER_ID: z.string().uuid({
+      message: 'PLATFORM_WALLET_USER_ID must be a valid UUID',
+    }),
+    PLATFORM_COMMISSION_PERCENT: z.coerce.number().int().min(0).max(100).default(30),
+    SUPPLIER_REVENUE_PERCENT: z.coerce.number().int().min(0).max(100).default(70),
+
     // Zibal payment gateway
     ZIBAL_MERCHANT: z.string().min(1, {
       message: 'ZIBAL_MERCHANT must be provided',
@@ -88,6 +95,13 @@ export const validateEnv = (config: Record<string, unknown>): AppConfig => {
   }
 
   const env = parsed.data;
+
+  const splitTotal = env.PLATFORM_COMMISSION_PERCENT + env.SUPPLIER_REVENUE_PERCENT;
+  if (splitTotal !== 100) {
+    throw new Error(
+      `Environment validation error: PLATFORM_COMMISSION_PERCENT + SUPPLIER_REVENUE_PERCENT must equal 100 (got ${splitTotal}).`,
+    );
+  }
 
   const redisUrl =
     env.REDIS_URL ??

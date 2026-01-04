@@ -103,7 +103,7 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: 'HEX colors (#RRGGBB)',
+    description: 'HEX colors (#RRGGBB) or OTHER',
   })
   @IsOptional()
   @IsArray()

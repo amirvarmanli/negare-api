@@ -15,6 +15,7 @@ import {
   ForbiddenException,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -34,6 +35,8 @@ import {
   CurrentUserPayload,
 } from '@app/common/decorators/current-user.decorator';
 import { Public } from '@app/common/decorators/public.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 
 import { ProductService, Actor } from '@app/catalog/product/product.service';
 import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
@@ -55,6 +58,7 @@ import { UserProductListQueryDto } from '@app/catalog/product/dtos/product-user-
 import { LikeToggleResponseDto } from '@app/catalog/likes/dtos/like-toggle.dto';
 import { BookmarkToggleResponseDto } from '@app/catalog/bookmarks/dtos/bookmark-toggle.dto';
 import { requireUserId } from '@app/catalog/utils/current-user.util';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 function requireActor(user: CurrentUserPayload | undefined): Actor {
   if (!user) {
@@ -75,6 +79,8 @@ export class ProductController {
 
   @Post()
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('supplier.products:manage')
   @ApiOperation({
     summary: 'Create a product',
     description:
@@ -91,6 +97,8 @@ export class ProductController {
 
   @Patch(':idOrSlug')
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('supplier.products:manage')
   @ApiOperation({
     summary: 'Update a product (partial)',
     description:
@@ -252,6 +260,8 @@ export class ProductController {
 
   @Delete(':idOrSlug')
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('supplier.products:manage')
   @ApiOperation({ summary: 'Archive a product (soft remove)' })
   @ApiOkResponse({ type: ProductDetailDto })
   async remove(

@@ -11,6 +11,7 @@ export class CategoryMapper {
       slug: c.slug,
       parentId: c.parentId ? String(c.parentId) : null,
       coverUrl: c.coverUrl ?? undefined,
+      sortOrder: c.sortOrder ?? 0,
     };
   }
 

@@ -46,6 +46,11 @@ async function main() {
     },
   });
 
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { role: RoleName.admin },
+  });
+
   console.log(`🎉 User "${username}" is now ADMIN`);
 }
 

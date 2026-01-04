@@ -11,6 +11,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,15 +20,20 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { AssignRoleDto } from '@app/core/roles/dto/assign-role.dto';
 import { FindUserRolesQueryDto } from '@app/core/roles/dto/find-user-roles-query.dto';
 import { UserRoleIdParamDto } from '@app/core/roles/dto/user-role-id-param.dto';
 import { UserRolesService } from '@app/core/roles/user-roles.service';
 import { RoleName } from '@prisma/client';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('User Roles')
 @ApiBearerAuth('bearer')
 @Controller('core/user-roles')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('admin.users:manage')
 /**
  * Provides CRUD-ish operations for the user–role join table.
  */

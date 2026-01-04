@@ -51,11 +51,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     const traceId = request.txId ?? randomUUID();
+    const isAuthFailure =
+      status === HttpStatus.UNAUTHORIZED || status === HttpStatus.FORBIDDEN;
 
-    this.logger.error(
-      `traceId=${traceId} status=${status} message=${message}`,
-      stack,
-    );
+    const logMessage = `traceId=${traceId} status=${status} message=${message}`;
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logger.error(logMessage, stack);
+    } else if (isAuthFailure) {
+      this.logger.debug(logMessage);
+    } else {
+      this.logger.error(logMessage, stack);
+    }
 
     response.status(status).json({
       success: false,

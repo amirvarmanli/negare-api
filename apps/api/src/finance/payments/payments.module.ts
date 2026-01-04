@@ -11,6 +11,8 @@ import { SubscriptionsModule } from '@app/finance/subscriptions/subscriptions.mo
 import { CartModule } from '@app/finance/cart/cart.module';
 import { DonationsModule } from '@app/finance/donations/donations.module';
 import { OrderRequestsModule } from '@app/order-requests/order-requests.module';
+import { ProductsModule } from '@app/finance/products/products.module';
+import { NotificationsModule } from '@app/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { OrderRequestsModule } from '@app/order-requests/order-requests.module';
     CartModule,
     DonationsModule,
     OrderRequestsModule,
+    ProductsModule,
+    NotificationsModule,
   ],
   controllers: [PaymentsController],
   providers: [

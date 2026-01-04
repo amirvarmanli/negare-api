@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -37,6 +38,9 @@ import {
   CurrentUser,
   CurrentUserPayload,
 } from '@app/common/decorators/current-user.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 function requireAuthenticatedUser(
   user: CurrentUserPayload | undefined,
@@ -50,6 +54,8 @@ function requireAuthenticatedUser(
 @ApiTags('Blog Admin')
 @ApiBearerAuth()
 @Controller('admin/blog')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('admin.blog:manage')
 export class BlogAdminController {
   constructor(private readonly blogService: BlogService) {}
 
@@ -127,13 +133,19 @@ export class BlogAdminController {
   }
 
   @Post('posts/:id/pin')
-  @ApiOperation({ summary: 'Pin or unpin a blog post' })
+  @ApiOperation({
+    summary: 'Pin or unpin a blog post',
+    description:
+      'Only one item can be pinned at a time; pinning a new item automatically unpins the previous one.',
+  })
   @ApiOkResponse({ type: BlogPostDto })
   async updatePinStatus(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateBlogPinStatusDto,
+    @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<BlogPostDto> {
-    return this.blogService.updatePostPinStatus(id, dto);
+    const currentUser = requireAuthenticatedUser(user);
+    return this.blogService.updatePostPinStatus(id, dto, currentUser);
   }
 
   @Get('comments')

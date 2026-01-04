@@ -132,7 +132,8 @@ export class ProfileService {
     };
 
     try {
-      const updated = await this.prisma.$transaction(async (trx) => {
+      const updated = await this.prisma.$transaction(
+        async (trx) => {
         // اول پروفایل را آپدیت می‌کنیم
         const user = await trx.user.update({
           where: { id: userId },
@@ -174,7 +175,9 @@ export class ProfileService {
         }
 
         return reloaded;
-      });
+      },
+        { timeout: 20000 },
+      );
 
       return this.serialize(updated);
     } catch (error: unknown) {

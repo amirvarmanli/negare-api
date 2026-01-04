@@ -6,16 +6,20 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Readable } from 'stream';
 import {
   Prisma,
   PricingType,
   ProductStatus,
   GraphicFormat,
   FinanceEntitlementSource,
+  NotificationType,
 } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import type { PrismaTxClient } from '@app/prisma/prisma.service';
 import { Buffer } from 'buffer';
+import { NotificationsService } from '@app/notifications/notifications.service';
+import { StorageService } from '@app/catalog/storage/storage.service';
 
 import { CreateProductDto } from '@app/catalog/product/dtos/product-create.dto';
 import { UpdateProductDto } from '@app/catalog/product/dtos/product-update.dto';
@@ -66,6 +70,12 @@ type ProductDetailInclude = typeof productInclude & {
 };
 
 export type Actor = { id: string; isAdmin: boolean };
+export type ProductFileDownload = {
+  stream: Readable;
+  filename: string;
+  mimeType?: string;
+  size?: number;
+};
 
 const MAX_AUTHORS = 3;
 const SHORT_LINK_PREFIX = 'p/';
@@ -73,6 +83,9 @@ const SHORT_LINK_RANDOM_DIGITS = 6;
 const SHORT_LINK_MAX_LENGTH = 32;
 const SHORT_LINK_MAX_ATTEMPTS = 10;
 const PRODUCT_ENTITY_TYPE = 'product' as const;
+const PUBLIC_PRODUCT_STATUSES: ProductStatus[] = [
+  ProductStatus.PUBLISHED,
+];
 const ACTIVE_PRODUCT_STATUSES: ProductStatus[] = [
   ProductStatus.DRAFT,
   ProductStatus.PUBLISHED,
@@ -266,7 +279,7 @@ function makeTagSearchWhere(term: string): Prisma.ProductWhereInput {
   };
 }
 
-function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
+export function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
   if (!q) return undefined;
   const term = normalizeFaText(q.trim());
   if (!term) return undefined;
@@ -283,9 +296,22 @@ function makeTextWhere(q?: string): Prisma.ProductWhereInput | undefined {
   };
 }
 
+export function buildProductIdOrSlugWhere(
+  idOrSlug: string,
+): Prisma.ProductWhereInput {
+  if (/^\d+$/u.test(idOrSlug)) {
+    return { id: BigInt(idOrSlug) };
+  }
+  return { slug: normalizeFaText(safeDecodeSlug(idOrSlug)) };
+}
+
 @Injectable()
 export class ProductService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+    private readonly storage: StorageService,
+  ) {}
 
   private readonly logger = new Logger(ProductService.name);
 
@@ -418,6 +444,16 @@ export class ProductService {
       false,
     );
 
+    const status = actor.isAdmin
+      ? ProductStatus.PUBLISHED
+      : ProductStatus.DRAFT;
+    const publishedAt =
+      status === ProductStatus.PUBLISHED
+        ? dto.publishedAt
+          ? new Date(dto.publishedAt)
+          : new Date()
+        : null;
+
     const createdId = await this.prisma.$transaction(async (trx: PrismaTxClient) => {
       const shortLink = await this.resolveShortLink(trx, dto.shortLink);
       const searchTextNormalized = buildSearchTextNormalized([
@@ -442,8 +478,8 @@ export class ProductService {
           searchTextNormalized,
           pricingType: dto.pricingType as PricingType,
           price: this.toDecimal(dto.price),
-          status: (dto.status ?? ProductStatus.DRAFT) as ProductStatus,
-          publishedAt: dto.publishedAt ? new Date(dto.publishedAt) : null,
+          status,
+          publishedAt,
           fileSizeMB: dto.fileSizeMB ?? 0,
           fileBytes:
             dto.fileBytes !== undefined && dto.fileBytes !== null
@@ -492,6 +528,10 @@ export class ProductService {
       include: productInclude,
     });
 
+    if (created.status === ProductStatus.PUBLISHED) {
+      await this.notifyProductPublished(created as ProductWithRelations);
+    }
+
     return ProductMapper.toDetail(created as ProductWithRelations);
   }
 
@@ -500,7 +540,7 @@ export class ProductService {
     dto: UpdateProductDto,
     actor: Actor,
   ): Promise<ProductDetailDto> {
-    const product = await this.getByIdOrSlugStrict(idOrSlug);
+    const product = await this.getByIdOrSlugForEdit(idOrSlug, actor);
 
     if (!(await this.canEdit(product.id, actor))) {
       throw new ForbiddenException('You are not allowed to edit this product.');
@@ -704,6 +744,13 @@ export class ProductService {
       include: productInclude,
     });
 
+    if (
+      product.status !== ProductStatus.PUBLISHED &&
+      updated.status === ProductStatus.PUBLISHED
+    ) {
+      await this.notifyProductPublished(updated as ProductWithRelations);
+    }
+
     return ProductMapper.toDetail(updated as ProductWithRelations);
   }
 
@@ -713,7 +760,7 @@ export class ProductService {
   ): Promise<ProductDetailDto> {
     const include = this.buildProductDetailInclude(viewerId);
     const product = (await this.prisma.product.findFirst({
-      where: this.withActiveStatus(this.idOrSlugWhere(idOrSlug)),
+      where: this.withPublicStatus(buildProductIdOrSlugWhere(idOrSlug)),
       include,
     })) as ProductWithReactions | null;
     if (!product) throw new NotFoundException('Product not found');
@@ -746,7 +793,7 @@ export class ProductService {
       where: { shortLink },
       include: this.buildProductDetailInclude(viewerId),
     });
-    if (!product || !this.isActiveStatus(product.status)) {
+    if (!product || !this.isPublicStatus(product.status)) {
       throw new NotFoundException('Product not found');
     }
     const withReactions = product as unknown as ProductWithReactions;
@@ -796,7 +843,7 @@ export class ProductService {
       where: { slug },
       include: this.buildProductDetailInclude(viewerId),
     });
-    if (product && this.isActiveStatus(product.status)) {
+    if (product && this.isPublicStatus(product.status)) {
       const withReactions = product as unknown as ProductWithReactions;
       this.logger.debug({
         context: 'ProductDetailFlags',
@@ -857,11 +904,7 @@ export class ProductService {
         },
       });
     }
-    if (query.status) {
-      ands.push({ status: query.status as ProductStatus });
-    } else {
-      ands.push({ status: { in: ACTIVE_PRODUCT_STATUSES } });
-    }
+    ands.push({ status: { in: PUBLIC_PRODUCT_STATUSES } });
 
     const colorFilter = normalizeColorFilter(query.color);
     if (colorFilter) {
@@ -934,64 +977,129 @@ export class ProductService {
     type LatestCursor = { createdAt: string; id: string };
     type CountCursor = { primary: number; id: string };
 
+    const buildPinnedCursorWhere = (
+      pinnedAt: Date | null,
+      withinPinned: Prisma.ProductWhereInput,
+    ): Prisma.ProductWhereInput => {
+      if (!pinnedAt) {
+        return { AND: [{ pinnedAt: null }, withinPinned] };
+      }
+      return {
+        OR: [
+          { pinnedAt: null },
+          { pinnedAt: { lt: pinnedAt } },
+          { AND: [{ pinnedAt }, withinPinned] },
+        ],
+      };
+    };
+
     let orderBy: Prisma.ProductOrderByWithRelationInput[] = [];
     let cursorWhere: Prisma.ProductWhereInput | undefined;
 
+    // IMPORTANT:
+    // pinnedAt is a bump ACTION.
+    // It must ALWAYS be sorted DESC with NULLS LAST,
+    // otherwise bumped products will fall to the bottom.
     if (sort === 'latest') {
-      orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
-      const c = decodeCursor<LatestCursor>(query.cursor);
+      orderBy = [
+        {
+          pinnedAt: {
+            sort: 'desc',
+            nulls: 'last',
+          },
+        },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ];
+      const c = decodeCursor<LatestCursor & { pinnedAt?: string | null }>(
+        query.cursor,
+      );
       if (c) {
+        const pinnedAt = c.pinnedAt ? new Date(c.pinnedAt) : null;
         const createdAt = new Date(c.createdAt);
         const id = BigInt(c.id);
-        cursorWhere = {
+        cursorWhere = buildPinnedCursorWhere(pinnedAt, {
           OR: [
             { createdAt: { lt: createdAt } },
             { AND: [{ createdAt }, { id: { lt: id } }] },
           ],
-        };
+        });
       }
     } else if (sort === 'popular') {
       orderBy = [
+        {
+          pinnedAt: {
+            sort: 'desc',
+            nulls: 'last',
+          },
+        },
         { downloadsCount: 'desc' },
         { likesCount: 'desc' },
         { id: 'desc' },
       ];
-      const c = decodeCursor<CountCursor>(query.cursor);
+      const c = decodeCursor<CountCursor & { pinnedAt?: string | null }>(
+        query.cursor,
+      );
       if (c) {
+        const pinnedAt = c.pinnedAt ? new Date(c.pinnedAt) : null;
         const primary = Number(c.primary);
         const id = BigInt(c.id);
-        cursorWhere = {
+        cursorWhere = buildPinnedCursorWhere(pinnedAt, {
           OR: [
             { downloadsCount: { lt: primary } },
             { AND: [{ downloadsCount: primary }, { id: { lt: id } }] },
           ],
-        };
+        });
       }
     } else if (sort === 'viewed') {
-      orderBy = [{ viewsCount: 'desc' }, { id: 'desc' }];
-      const c = decodeCursor<CountCursor>(query.cursor);
+      orderBy = [
+        {
+          pinnedAt: {
+            sort: 'desc',
+            nulls: 'last',
+          },
+        },
+        { viewsCount: 'desc' },
+        { id: 'desc' },
+      ];
+      const c = decodeCursor<CountCursor & { pinnedAt?: string | null }>(
+        query.cursor,
+      );
       if (c) {
+        const pinnedAt = c.pinnedAt ? new Date(c.pinnedAt) : null;
         const primary = Number(c.primary);
         const id = BigInt(c.id);
-        cursorWhere = {
+        cursorWhere = buildPinnedCursorWhere(pinnedAt, {
           OR: [
             { viewsCount: { lt: primary } },
             { AND: [{ viewsCount: primary }, { id: { lt: id } }] },
           ],
-        };
+        });
       }
     } else if (sort === 'liked') {
-      orderBy = [{ likesCount: 'desc' }, { id: 'desc' }];
-      const c = decodeCursor<CountCursor>(query.cursor);
+      orderBy = [
+        {
+          pinnedAt: {
+            sort: 'desc',
+            nulls: 'last',
+          },
+        },
+        { likesCount: 'desc' },
+        { id: 'desc' },
+      ];
+      const c = decodeCursor<CountCursor & { pinnedAt?: string | null }>(
+        query.cursor,
+      );
       if (c) {
+        const pinnedAt = c.pinnedAt ? new Date(c.pinnedAt) : null;
         const primary = Number(c.primary);
         const id = BigInt(c.id);
-        cursorWhere = {
+        cursorWhere = buildPinnedCursorWhere(pinnedAt, {
           OR: [
             { likesCount: { lt: primary } },
             { AND: [{ likesCount: primary }, { id: { lt: id } }] },
           ],
-        };
+        });
       }
     }
 
@@ -1027,21 +1135,25 @@ export class ProductService {
       const last = rows[rows.length - 1] as ProductWithRelations;
       if (sort === 'latest') {
         nextCursor = encodeCursor({
+          pinnedAt: last.pinnedAt ? last.pinnedAt.toISOString() : null,
           createdAt: last.createdAt.toISOString(),
           id: String(last.id),
         });
       } else if (sort === 'popular') {
         nextCursor = encodeCursor({
+          pinnedAt: last.pinnedAt ? last.pinnedAt.toISOString() : null,
           primary: last.downloadsCount,
           id: String(last.id),
         });
       } else if (sort === 'viewed') {
         nextCursor = encodeCursor({
+          pinnedAt: last.pinnedAt ? last.pinnedAt.toISOString() : null,
           primary: last.viewsCount,
           id: String(last.id),
         });
       } else if (sort === 'liked') {
         nextCursor = encodeCursor({
+          pinnedAt: last.pinnedAt ? last.pinnedAt.toISOString() : null,
           primary: last.likesCount,
           id: String(last.id),
         });
@@ -1057,14 +1169,14 @@ export class ProductService {
     viewerId?: string,
   ): Promise<ProductBriefDto[]> {
     const safeLimit = Math.min(Math.max(limit ?? 12, 1), 24);
-    const product = await this.getByIdOrSlugStrict(idOrSlug);
+    const product = await this.getByIdOrSlugPublicStrict(idOrSlug);
     const tagIds = uniq(
       (product.tagLinks ?? []).map((link) => link.tagId as bigint),
     );
     if (!tagIds.length) return [];
 
     const statusList = Prisma.join(
-      ACTIVE_PRODUCT_STATUSES.map((status) => Prisma.sql`${status}`),
+      PUBLIC_PRODUCT_STATUSES.map((status) => Prisma.sql`${status}`),
     );
     const tagList = Prisma.join(tagIds.map((tagId) => Prisma.sql`${tagId}`));
 
@@ -1180,9 +1292,7 @@ export class ProductService {
         hasNext: empty.hasNext,
       };
     }
-    const statuses = query.status
-      ? [query.status as ProductStatus]
-      : ACTIVE_PRODUCT_STATUSES;
+    const statuses = PUBLIC_PRODUCT_STATUSES;
     const statusList = Prisma.join(
       statuses.map((status) => Prisma.sql`${status}`),
     );
@@ -1381,7 +1491,11 @@ export class ProductService {
       return Prisma.sql`p."createdAt" DESC, p.id DESC`;
     })();
 
-    const orderByClause = Prisma.sql`ORDER BY score DESC, ${secondaryOrder}`;
+    // IMPORTANT:
+    // pinnedAt is a bump ACTION.
+    // It must ALWAYS be sorted DESC with NULLS LAST,
+    // otherwise bumped products will fall to the bottom.
+    const orderByClause = Prisma.sql`ORDER BY p."pinnedAt" DESC NULLS LAST, score DESC, ${secondaryOrder}`;
 
     const rows = await this.prisma.$queryRaw<
       Array<{ id: bigint; score: number }>
@@ -1687,6 +1801,45 @@ export class ProductService {
     ]);
   }
 
+  async downloadProductFile(
+    idOrSlug: string,
+    actor: Actor,
+  ): Promise<ProductFileDownload> {
+    const product = await this.getByIdOrSlugForEdit(idOrSlug, actor);
+    if (!(await this.canEdit(product.id, actor))) {
+      throw new ForbiddenException('Access denied.');
+    }
+
+    const file = await this.prisma.productFile.findUnique({
+      where: { productId: product.id },
+      select: {
+        storageKey: true,
+        originalName: true,
+        mimeType: true,
+        size: true,
+        sourceFile: { select: { filename: true, mime: true, size: true } },
+      },
+    });
+    if (!file) {
+      throw new NotFoundException('File not found.');
+    }
+
+    const filename =
+      file.originalName ??
+      file.sourceFile?.filename ??
+      `product-${product.id.toString()}`;
+    const rawSize = file.size ?? file.sourceFile?.size;
+    const size =
+      rawSize !== null && rawSize !== undefined ? Number(rawSize) : undefined;
+
+    return {
+      stream: this.storage.getDownloadStream(file.storageKey),
+      filename,
+      mimeType: file.mimeType ?? file.sourceFile?.mime ?? undefined,
+      size,
+    };
+  }
+
   private async canEdit(productId: bigint, actor: Actor): Promise<boolean> {
     if (actor.isAdmin) return true;
     const link = await this.prisma.productSupplier.findFirst({
@@ -1697,7 +1850,7 @@ export class ProductService {
   }
 
   private async getByIdOrSlugStrict(idOrSlug: string) {
-    const where = this.withActiveStatus(this.idOrSlugWhere(idOrSlug));
+    const where = this.withActiveStatus(buildProductIdOrSlugWhere(idOrSlug));
     const prod = await this.prisma.product.findFirst({
       where,
       include: productInclude,
@@ -1706,11 +1859,26 @@ export class ProductService {
     return prod as ProductWithRelations;
   }
 
-  private idOrSlugWhere(idOrSlug: string): Prisma.ProductWhereInput {
-    if (/^\d+$/u.test(idOrSlug)) {
-      return { id: BigInt(idOrSlug) };
-    }
-    return { slug: normalizeFaText(safeDecodeSlug(idOrSlug)) };
+  private async getByIdOrSlugPublicStrict(idOrSlug: string) {
+    const where = this.withPublicStatus(buildProductIdOrSlugWhere(idOrSlug));
+    const prod = await this.prisma.product.findFirst({
+      where,
+      include: productInclude,
+    });
+    if (!prod) throw new NotFoundException('Product not found');
+    return prod as ProductWithRelations;
+  }
+
+  private async getByIdOrSlugForEdit(idOrSlug: string, actor: Actor) {
+    const where = actor.isAdmin
+      ? buildProductIdOrSlugWhere(idOrSlug)
+      : this.withActiveStatus(buildProductIdOrSlugWhere(idOrSlug));
+    const prod = await this.prisma.product.findFirst({
+      where,
+      include: productInclude,
+    });
+    if (!prod) throw new NotFoundException('Product not found');
+    return prod as ProductWithRelations;
   }
 
   private withActiveStatus(
@@ -1726,6 +1894,21 @@ export class ProductService {
 
   private isActiveStatus(status: ProductStatus): boolean {
     return ACTIVE_PRODUCT_STATUSES.includes(status);
+  }
+
+  private withPublicStatus(
+    where: Prisma.ProductWhereInput,
+  ): Prisma.ProductWhereInput {
+    return {
+      AND: [
+        where,
+        { status: { in: PUBLIC_PRODUCT_STATUSES } },
+      ],
+    };
+  }
+
+  private isPublicStatus(status: ProductStatus): boolean {
+    return PUBLIC_PRODUCT_STATUSES.includes(status);
   }
 
   private async resolveFileInstruction(
@@ -1763,6 +1946,70 @@ export class ProductService {
       throw new BadRequestException('Invalid fileId: file not found');
     }
     return { kind: 'link-upload', uploaded };
+  }
+
+  private async notifyProductPublished(
+    product: ProductWithRelations,
+  ): Promise<void> {
+    const supplierIds = uniq(
+      product.supplierLinks?.map((link) => link.userId) ?? [],
+    );
+    if (supplierIds.length === 0) {
+      return;
+    }
+    const productId = product.id.toString();
+    const productSlug = product.slug;
+    const productTitle = product.title;
+    for (const supplierId of supplierIds) {
+      const supplier = product.supplierLinks?.find(
+        (link) => link.userId === supplierId,
+      )?.user;
+      const artistName =
+        supplier?.name?.trim() ||
+        supplier?.username ||
+        'هنرمند';
+      const actor = {
+        id: supplierId,
+        fullName: artistName,
+        username: supplier?.username ?? null,
+        avatarUrl: supplier?.avatarUrl ?? null,
+      };
+      const productData = {
+        id: productId,
+        title: productTitle,
+        slug: productSlug,
+      };
+      const data = {
+        artistId: supplierId,
+        artistName,
+        artistUsername: supplier?.username ?? null,
+        artistAvatarUrl: supplier?.avatarUrl ?? null,
+        productId,
+        productTitle,
+        productSlug,
+        actor,
+        product: productData,
+      };
+      const actionUrl = this.notificationsService.buildActionUrl(
+        NotificationType.NEW_PRODUCT_FROM_FOLLOWED,
+        data,
+      );
+      const notificationId = await this.notificationsService.createNotification({
+        type: NotificationType.NEW_PRODUCT_FROM_FOLLOWED,
+        title: 'New notification',
+        body: 'You have a new notification.',
+        actionUrl,
+        entityType: 'PRODUCT',
+        entitySlug: productSlug,
+        entityId: productId,
+        data,
+      });
+      await this.notificationsService.enqueueToFollowers(
+        notificationId,
+        supplierId,
+        `new_product:${productId}:${supplierId}:`,
+      );
+    }
   }
 
   private async applyFileInstruction(

@@ -42,6 +42,8 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('wallet')
 export class WalletController {
+  private readonly productSaleDescription = 'فروش محصول';
+
   constructor(
     private readonly walletService: WalletService,
     private readonly paymentsService: PaymentsService,
@@ -76,7 +78,10 @@ export class WalletController {
       items: result.items.map((transaction) => ({
         id: transaction.id,
         type: transaction.type as WalletTransactionType,
-        reason: transaction.reason as WalletTransactionReason,
+        reason:
+          transaction.description === this.productSaleDescription
+            ? ('فروش محصول' as WalletTransactionReason)
+            : (transaction.reason as WalletTransactionReason),
         status: transaction.status as WalletTransactionStatus,
         amount: transaction.amount,
         balanceAfter: transaction.balanceAfter ?? null,

@@ -1,19 +1,26 @@
 // apps/api/src/catalog/catalog.module.ts
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '@app/notifications/notifications.module';
 
 // Product
 import { ProductController } from '@app/catalog/product/products.controller';
 import { ProductService } from '@app/catalog/product/product.service';
+import { ProductManagementService } from '@app/catalog/product/product-management.service';
+import { AdminProductsController } from '@app/catalog/product/admin-products.controller';
+import { AdminProductsService } from '@app/catalog/product/admin-products.service';
+import { SupplierProductsController } from '@app/catalog/product/supplier-products.controller';
 
 // Categories
 import { CategoriesController } from '@app/catalog/categories/categories.controller';
 import { CategoriesService } from '@app/catalog/categories/categories.service';
+import { AdminCategoriesController } from '@app/catalog/categories/admin-categories.controller';
 
 // Tags & Topics
 import { TagsController } from '@app/catalog/tags/tags.controller';
 import { TagsService } from '@app/catalog/tags/tags.service';
 import { TopicsController } from '@app/catalog/topics/topics.controller';
 import { TopicsService } from '@app/catalog/topics/topics.service';
+import { AdminTopicsController } from '@app/catalog/topics/admin-topics.controller';
 
 // Likes
 import { LikesController } from '@app/catalog/likes/likes.controller';
@@ -48,12 +55,17 @@ import { CommentsService } from '@app/catalog/comments/comments.service';
     // StorageModule,
     // و همچنین اگر PrismaModule داری:
     // PrismaModule,
+    NotificationsModule,
   ],
   controllers: [
     ProductController,
+    AdminProductsController,
+    SupplierProductsController,
     CategoriesController,
+    AdminCategoriesController,
     TagsController,
     TopicsController,
+    AdminTopicsController,
     LikesController,
     ProfileLikesController,
     BookmarksController,
@@ -64,6 +76,8 @@ import { CommentsService } from '@app/catalog/comments/comments.service';
   ],
   providers: [
     ProductService,
+    ProductManagementService,
+    AdminProductsService,
     CategoriesService,
     TagsService,
     TopicsService,

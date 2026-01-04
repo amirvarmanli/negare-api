@@ -919,12 +919,223 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "List Products (publishStatus filter)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{API_BASE}}/admin/products?page=1&limit=20&publishStatus=PUBLISHED",
+                  "host": [
+                    "{{API_BASE}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {"key": "page", "value": "1"},
+                    {"key": "limit", "value": "20"},
+                    {"key": "publishStatus", "value": "PUBLISHED"}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Products (category filter)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{API_BASE}}/admin/products?page=1&limit=20&categoryId={{categoryId}}",
+                  "host": [
+                    "{{API_BASE}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {"key": "page", "value": "1"},
+                    {"key": "limit", "value": "20"},
+                    {"key": "categoryId", "value": "{{categoryId}}"}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Products (topic filter)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{API_BASE}}/admin/products?page=1&limit=20&topicId={{topicId}}",
+                  "host": [
+                    "{{API_BASE}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {"key": "page", "value": "1"},
+                    {"key": "limit", "value": "20"},
+                    {"key": "topicId", "value": "{{topicId}}"}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Products (saleType filter)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{API_BASE}}/admin/products?page=1&limit=20&saleType=PAID",
+                  "host": [
+                    "{{API_BASE}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {"key": "page", "value": "1"},
+                    {"key": "limit", "value": "20"},
+                    {"key": "saleType", "value": "PAID"}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Products (artist filter)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{API_BASE}}/admin/products?page=1&limit=20&artistId={{artistId}}",
+                  "host": [
+                    "{{API_BASE}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {"key": "page", "value": "1"},
+                    {"key": "limit", "value": "20"},
+                    {"key": "artistId", "value": "{{artistId}}"}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Products (artist search)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "description": "Search also matches artist name or username.",
+                "url": {
+                  "raw": "{{API_BASE}}/admin/products?page=1&limit=20&q=amir",
+                  "host": [
+                    "{{API_BASE}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ],
+                  "query": [
+                    {"key": "page", "value": "1"},
+                    {"key": "limit", "value": "20"},
+                    {"key": "q", "value": "amir"}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Bump Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": "{{API_BASE}}/admin/products/{{productId}}/bump"
+              }
+            },
+            {
+              "name": "Update Product (publishStatus)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-mock-user",
+                    "value": "{{adminUserHeader}}"
+                  }
+                ],
+                "url": "{{API_BASE}}/admin/products/{{productId}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"publishStatus\": \"ARCHIVED\"\n}"
+                }
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "baseUrl",
       "value": "http://localhost:4000"
+    },
+    {
+      "key": "API_BASE",
+      "value": "{{baseUrl}}"
     },
     {
       "key": "adminUserHeader",

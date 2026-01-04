@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { UserSubscriptionsService } from '@app/finance/subscription-system/user-subscriptions.service';
 import {
   DiscountType,
   DiscountValueType,
@@ -26,14 +27,19 @@ export interface DiscountLineItem {
 export interface DiscountResolution {
   discountType: DiscountType;
   discountValue: number;
-  source: 'COUPON' | 'USER' | 'PRODUCT' | 'NONE';
+  source: 'COUPON' | 'USER' | 'PRODUCT' | 'SUBSCRIPTION' | 'NONE';
   couponId?: string;
   couponCode?: string;
+  subscriptionId?: string;
+  subscriptionPercent?: number;
 }
 
 @Injectable()
 export class DiscountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly subscriptionsService: UserSubscriptionsService,
+  ) {}
 
   async resolveDiscount(
     tx: Prisma.TransactionClient,
@@ -65,15 +71,6 @@ export class DiscountsService {
       return this.resolveCouponDiscount(tx, params.couponCode, payableSubtotal, params.userId);
     }
 
-    const userDiscount = await this.resolveUserDiscount(
-      tx,
-      params.userId,
-      payableSubtotal,
-    );
-    if (userDiscount) {
-      return userDiscount;
-    }
-
     if (params.orderKind === OrderKind.SUBSCRIPTION) {
       return {
         discountType: DiscountType.NONE,
@@ -82,15 +79,30 @@ export class DiscountsService {
       };
     }
 
+    const subscriptionDiscount = await this.resolveSubscriptionDiscount(
+      tx,
+      params.userId,
+      payableSubtotal,
+    );
+
+    const userDiscount = await this.resolveUserDiscount(
+      tx,
+      params.userId,
+      payableSubtotal,
+    );
+
     const productDiscount = await this.resolveProductDiscount(
       tx,
       payableItems,
     );
-    if (productDiscount) {
-      return productDiscount;
-    }
 
-    return {
+    const best = this.pickBestResolution([
+      subscriptionDiscount,
+      userDiscount,
+      productDiscount,
+    ]);
+
+    return best ?? {
       discountType: DiscountType.NONE,
       discountValue: 0,
       source: 'NONE',
@@ -217,6 +229,53 @@ export class DiscountsService {
       discountValue: best.amount,
       source: 'PRODUCT',
     };
+  }
+
+  private async resolveSubscriptionDiscount(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    subtotal: number,
+  ): Promise<DiscountResolution | null> {
+    const candidate = await this.subscriptionsService.getDiscountCandidate(
+      userId,
+      tx,
+    );
+    if (!candidate) {
+      return null;
+    }
+
+    const discountValue = this.applyDiscount(
+      subtotal,
+      DiscountValueType.PERCENT as FinanceDiscountValueType,
+      candidate.discountPercent,
+    );
+
+    if (discountValue <= 0) {
+      return null;
+    }
+
+    return {
+      discountType: DiscountType.PERCENT,
+      discountValue,
+      source: 'SUBSCRIPTION',
+      subscriptionId: candidate.subscription.id,
+      subscriptionPercent: candidate.discountPercent,
+    };
+  }
+
+  private pickBestResolution(
+    resolutions: Array<DiscountResolution | null>,
+  ): DiscountResolution | null {
+    let best: DiscountResolution | null = null;
+    for (const resolution of resolutions) {
+      if (!resolution) {
+        continue;
+      }
+      if (!best || resolution.discountValue > best.discountValue) {
+        best = resolution;
+      }
+    }
+    return best;
   }
 
   private pickBestDiscount(

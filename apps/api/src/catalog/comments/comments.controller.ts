@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -24,6 +25,8 @@ import {
 } from '@app/common/decorators/current-user.decorator';
 import { Public } from '@app/common/decorators/public.decorator';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { requireUserId } from '@app/catalog/utils/current-user.util';
 import { CommentsService } from '@app/catalog/comments/comments.service';
 import { CreateCommentDto } from '@app/catalog/comments/dtos/comment-create.dto';
@@ -35,6 +38,7 @@ import {
   ProductCommentsResultDto,
 } from '@app/catalog/comments/dtos/comment-response.dto';
 import { ProductCommentQueryDto } from '@app/catalog/comments/dtos/product-comment-query.dto';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('Catalog / Comments')
 @Controller('catalog/comments')
@@ -55,7 +59,9 @@ export class CommentsController {
 
   @Get()
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.comments:moderate')
   @ApiOperation({ summary: 'List comments for moderation' })
   @ApiOkResponse({ type: CommentListDto })
   async list(@Query() query: CommentQueryDto): Promise<CommentListDto> {
@@ -75,7 +81,9 @@ export class CommentsController {
 
   @Patch(':id')
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.comments:moderate')
   @ApiOperation({ summary: 'Update or moderate a comment' })
   @ApiOkResponse({ type: CommentDto })
   async update(
@@ -87,7 +95,9 @@ export class CommentsController {
 
   @Delete(':id')
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.comments:moderate')
   @ApiOperation({ summary: 'Delete a comment and its replies' })
   @ApiNoContentResponse()
   @HttpCode(HttpStatus.NO_CONTENT)

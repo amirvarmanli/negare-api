@@ -164,21 +164,19 @@ export class RefreshService {
     sessionId?: string,
   ): Promise<TokenPair> {
     const jti = randomUUID();
-    const rawRoles = (user.userRoles ?? [])
-      .map(
-        (relation: UserWithRelations['userRoles'][number]) =>
-          relation.role?.name,
-      )
-      .filter(
-        (name: RoleName | null | undefined): name is RoleName => Boolean(name),
-      );
-    const roleNames = Array.from(new Set(rawRoles)).map((role) =>
-      role.toString(),
-    );
+    const roleNames = new Set<RoleName>();
+    if (user.role) {
+      roleNames.add(user.role);
+    }
+    for (const relation of user.userRoles ?? []) {
+      if (relation.role?.name) {
+        roleNames.add(relation.role.name);
+      }
+    }
 
     const accessToken = this.tokens.signAccess({
       userId: user.id,
-      roles: roleNames as RoleName[],
+      roles: Array.from(roleNames).map((role) => role.toString()) as RoleName[],
     });
 
     const refreshToken = this.tokens.signRefresh({

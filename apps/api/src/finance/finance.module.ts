@@ -12,6 +12,7 @@ import { PayoutsModule } from '@app/finance/payouts/payouts.module';
 import { CartModule } from '@app/finance/cart/cart.module';
 import { PurchasesModule } from '@app/finance/purchases/purchases.module';
 import { DonationsModule } from '@app/finance/donations/donations.module';
+import { SubscriptionSystemModule } from '@app/finance/subscription-system/subscription-system.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DonationsModule } from '@app/finance/donations/donations.module';
     CartModule,
     PurchasesModule,
     DonationsModule,
+    SubscriptionSystemModule,
   ],
 })
 export class FinanceModule {}

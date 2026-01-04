@@ -25,7 +25,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
 RUN chmod +x ./scripts/docker-entrypoint.sh \
-  && apk add --no-cache curl postgresql-client
+  && apk add --no-cache curl postgresql-client su-exec
 
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
 CMD ["npm", "run", "start:prod"]

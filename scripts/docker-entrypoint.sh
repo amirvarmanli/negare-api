@@ -6,6 +6,7 @@ DB_HOST=${DB_HOST:-db}
 DB_PORT=${DB_PORT:-5432}
 DB_USER=${DB_USER:-postgres}
 DB_PASSWORD=${DB_PASSWORD:-postgres}
+UPLOAD_TMP_DIR=${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
 
 export PGPASSWORD=$DB_PASSWORD
 
@@ -24,5 +25,8 @@ if [ "${RUN_SEED:-false}" = "true" ]; then
   node dist/scripts/seed-subscription-plans.js
 fi
 
+mkdir -p "$UPLOAD_TMP_DIR"
+chown -R node:node "$UPLOAD_TMP_DIR" 2>/dev/null || true
+
 echo "Starting application process"
-exec "$@"
+exec su-exec node "$@"

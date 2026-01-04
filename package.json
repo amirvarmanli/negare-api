@@ -34,6 +34,7 @@
     "postinstall": "node -e \"console.log('skip prisma generate on postinstall (Liara)')\""
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -45,6 +46,7 @@
     "@prisma/client": "^6.19.0",
     "basic-ftp": "^5.0.5",
     "bcrypt": "^6.0.0",
+    "bullmq": "^5.66.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",

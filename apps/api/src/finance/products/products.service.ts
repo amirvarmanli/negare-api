@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { toBigInt, toBigIntString } from '@app/finance/common/prisma.utils';
-import type { PricingType, Product } from '@prisma/client';
+import type { Prisma, PricingType, Product } from '@prisma/client';
 import { ProductPricingType } from '@app/finance/common/finance.enums';
 
 export interface ProductContributorsResult {
@@ -38,8 +38,11 @@ export class ProductsService {
     return file?.storageKey ?? null;
   }
 
-  async resolveContributors(productId: string): Promise<ProductContributorsResult> {
-    const contributors = await this.prisma.financeProductContributor.findMany({
+  async resolveContributors(
+    productId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<ProductContributorsResult> {
+    const contributors = await tx.financeProductContributor.findMany({
       where: { productId: toBigInt(productId) },
     });
 
@@ -50,7 +53,7 @@ export class ProductsService {
       };
     }
 
-    const suppliers = await this.prisma.productSupplier.findMany({
+    const suppliers = await tx.productSupplier.findMany({
       where: { productId: toBigInt(productId) },
     });
 
@@ -69,7 +72,7 @@ export class ProductsService {
     }));
 
     try {
-      await this.prisma.financeProductContributor.createMany({
+      await tx.financeProductContributor.createMany({
         data: entries,
         skipDuplicates: true,
       });

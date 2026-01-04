@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { DiscountsService } from '@app/finance/discounts/discounts.service';
 import { DiscountsAdminService } from '@app/finance/discounts/discounts-admin.service';
 import { DiscountsController } from '@app/finance/discounts/discounts.controller';
+import { SubscriptionSystemModule } from '@app/finance/subscription-system/subscription-system.module';
 
 @Module({
+  imports: [SubscriptionSystemModule],
   controllers: [DiscountsController],
   providers: [DiscountsService, DiscountsAdminService],
   exports: [DiscountsService],

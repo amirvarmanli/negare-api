@@ -17,6 +17,7 @@ import {
   PaymentProvider,
   PaymentReferenceType,
   PaymentStatus,
+  RevenueBeneficiaryType,
   WalletTransactionReason,
   WalletTransactionStatus,
   WalletTransactionType,
@@ -42,11 +43,14 @@ import { RevenueService } from '@app/finance/revenue/revenue.service';
 import { SubscriptionsService } from '@app/finance/subscriptions/subscriptions.service';
 import { CartService, type CartSnapshot } from '@app/finance/cart/cart.service';
 import { DonationsService } from '@app/finance/donations/donations.service';
+import { ProductsService } from '@app/finance/products/products.service';
+import { NotificationsService } from '@app/notifications/notifications.service';
 import type { PaymentVerifyDto } from '@app/finance/payments/dto/payment-verify.dto';
 import type { PaymentInitResponseDto } from '@app/finance/payments/dto/payment-init.dto';
 import type { PaymentStartDto, PaymentStartResponseDto } from '@app/finance/payments/dto/payment-start.dto';
 import {
   FinanceOrder,
+  FinanceOrderItem,
   FinanceDiscountType,
   FinanceDonationStatus,
   FinanceOrderKind,
@@ -59,6 +63,7 @@ import {
   FinanceSubscriptionPurchaseStatus,
   FinanceWalletStatus,
   PricingType,
+  NotificationType,
   Prisma,
 } from '@prisma/client';
 import type { AllConfig } from '@app/config/config.module';
@@ -70,6 +75,7 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
   // Platform amounts are TOMAN; Zibal expects IRR (rial).
   private readonly zibalMinAmountToman = 100;
+  private readonly productSaleDescription = 'فروش محصول';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -80,9 +86,11 @@ export class PaymentsService {
     private readonly walletService: WalletService,
     private readonly entitlementsService: EntitlementsService,
     private readonly revenueService: RevenueService,
+    private readonly productsService: ProductsService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly cartService: CartService,
     private readonly donationsService: DonationsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async startPayment(
@@ -436,76 +444,84 @@ export class PaymentsService {
     refType: PaymentReferenceType.CART | PaymentReferenceType.SUBSCRIPTION,
     refId: string,
   ): Promise<{ receiptId: string; paidAmount: number; newBalance: number }> {
-    const result = await this.prisma.$transaction(async (tx) => {
-      if (refType === PaymentReferenceType.CART) {
-        const snapshot = await this.cartService.getCartSnapshotInTransaction(
-          tx,
-          userId,
-        );
-        if (snapshot.cart.id !== refId) {
-          throw new BadRequestException('Cart reference does not match.');
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        if (refType === PaymentReferenceType.CART) {
+          const snapshot = await this.cartService.getCartSnapshotInTransaction(
+            tx,
+            userId,
+          );
+          if (snapshot.cart.id !== refId) {
+            throw new BadRequestException('Cart reference does not match.');
+          }
+          const order = await this.createPaidOrderFromCartSnapshot(
+            tx,
+            userId,
+            snapshot,
+          );
+          const debitResult = await this.applyWalletDebit(tx, {
+            userId,
+            amount: snapshot.total,
+            reason: WalletTransactionReason.ORDER_PAYMENT,
+            referenceId: order.id,
+            idempotencyKey: `order:${order.id}`,
+            description: `Cart payment for order ${order.id}`,
+          });
+          const items = await tx.financeOrderItem.findMany({
+            where: { orderId: order.id },
+          });
+          await this.applyOrderRevenueSplitAndCredits(tx, order, items);
+          await this.applySubscriptionDiscountUsage(tx, order.id);
+          await this.cartService.clearCartInTransaction(
+            tx,
+            snapshot.cart.id,
+            CartStatus.CHECKED_OUT,
+          );
+          return {
+            receiptId: order.id,
+            paidAmount: snapshot.total,
+            newBalance: debitResult.newBalance,
+            orderId: order.id,
+          };
         }
-        const order = await this.createPaidOrderFromCartSnapshot(
-          tx,
+
+        const purchase = await this.ensurePendingSubscriptionPurchase(
           userId,
-          snapshot,
+          refId,
+          tx,
         );
         const debitResult = await this.applyWalletDebit(tx, {
           userId,
-          amount: snapshot.total,
+          amount: purchase.amount,
           reason: WalletTransactionReason.ORDER_PAYMENT,
-          referenceId: order.id,
-          idempotencyKey: `order:${order.id}`,
-          description: `Cart payment for order ${order.id}`,
+          referenceId: purchase.id,
+          idempotencyKey: `subscription:${purchase.id}`,
+          description: `Subscription payment ${purchase.id}`,
         });
-        await this.cartService.clearCartInTransaction(
+
+        await tx.financeSubscriptionPurchase.update({
+          where: { id: purchase.id },
+          data: {
+            status: FinanceSubscriptionPurchaseStatus.PAID,
+            paidAt: new Date(),
+          },
+        });
+        await this.subscriptionsService.activateSubscriptionFromPurchase(
           tx,
-          snapshot.cart.id,
-          CartStatus.CHECKED_OUT,
+          purchase,
         );
+
         return {
-          receiptId: order.id,
-          paidAmount: snapshot.total,
+          receiptId: purchase.id,
+          paidAmount: purchase.amount,
           newBalance: debitResult.newBalance,
-          orderId: order.id,
+          orderId: null,
         };
-      }
-
-      const purchase = await this.ensurePendingSubscriptionPurchase(
-        userId,
-        refId,
-        tx,
-      );
-      const debitResult = await this.applyWalletDebit(tx, {
-        userId,
-        amount: purchase.amount,
-        reason: WalletTransactionReason.ORDER_PAYMENT,
-        referenceId: purchase.id,
-        idempotencyKey: `subscription:${purchase.id}`,
-        description: `Subscription payment ${purchase.id}`,
-      });
-
-      await tx.financeSubscriptionPurchase.update({
-        where: { id: purchase.id },
-        data: {
-          status: FinanceSubscriptionPurchaseStatus.PAID,
-          paidAt: new Date(),
-        },
-      });
-      await this.subscriptionsService.activateSubscriptionFromPurchase(
-        tx,
-        purchase,
-      );
-
-      return {
-        receiptId: purchase.id,
-        paidAmount: purchase.amount,
-        newBalance: debitResult.newBalance,
-        orderId: null,
-      };
-    });
+      },
+      { timeout: 20000 },
+    );
     if (result.orderId) {
-      await this.ensureOrderRevenueSplits(result.orderId);
+      await this.notifyOrderEvents(result.orderId);
     }
     return {
       receiptId: result.receiptId,
@@ -649,13 +665,12 @@ export class PaymentsService {
         await this.fulfillPayment(tx, updatedPayment);
         return updatedPayment;
       },
+      { timeout: 20000 },
     );
     const refreshed = await this.prisma.financePayment.findUnique({
       where: { id: updatedPayment.id },
     });
-    await this.ensureOrderRevenueSplits(
-      refreshed?.orderId ?? updatedPayment.orderId,
-    );
+    await this.notifyOrderEvents(refreshed?.orderId ?? updatedPayment.orderId);
     return updatedPayment;
   }
 
@@ -690,7 +705,7 @@ export class PaymentsService {
       this.logger.log(
         `traceId=${traceId} Zibal callback: trackId=${trackId} orderId=${orderId ?? 'n/a'} status=already_verified`,
       );
-      await this.ensureOrderRevenueSplits(payment.orderId);
+      await this.notifyOrderEvents(payment.orderId);
       return payment;
     }
 
@@ -790,6 +805,7 @@ export class PaymentsService {
         await this.fulfillPayment(tx, updatedPayment);
         return updatedPayment;
       },
+      { timeout: 20000 },
     );
     const txDurationMs = Date.now() - txStart;
     this.logger.log(
@@ -799,9 +815,10 @@ export class PaymentsService {
     const refreshed = await this.prisma.financePayment.findUnique({
       where: { id: updatedPayment.id },
     });
-    await this.ensureOrderRevenueSplits(
+    await this.notifyOrderEvents(
       refreshed?.orderId ?? updatedPayment.orderId ?? payment.orderId,
     );
+    await this.notifyWalletCreditFromPayment(refreshed ?? updatedPayment);
     return updatedPayment;
   }
 
@@ -862,6 +879,8 @@ export class PaymentsService {
           items,
           paidOrder.paidAt ?? new Date(),
         );
+        await this.applyOrderRevenueSplitAndCredits(tx, paidOrder, items);
+        await this.applySubscriptionDiscountUsage(tx, paidOrder.id);
       }
 
       if ((paidOrder.orderKind as OrderKind) === OrderKind.SUBSCRIPTION) {
@@ -873,8 +892,9 @@ export class PaymentsService {
 
       return paidOrder;
     },
+      { timeout: 20000 },
     );
-    await this.ensureOrderRevenueSplits(paidOrder.id);
+    await this.notifyOrderEvents(paidOrder.id);
     return paidOrder;
   }
 
@@ -949,6 +969,32 @@ export class PaymentsService {
         `Amount must be at least ${this.zibalMinAmountToman} TOMAN.`,
       );
     }
+  }
+
+  private getRevenueSplitConfig(): {
+    platformPercent: number;
+    supplierPercent: number;
+    platformUserId: string;
+  } {
+    const platformPercent =
+      this.config.get<number>('PLATFORM_COMMISSION_PERCENT') ?? 30;
+    const supplierPercent =
+      this.config.get<number>('SUPPLIER_REVENUE_PERCENT') ?? 70;
+    const platformUserId = this.config.get<string>('PLATFORM_WALLET_USER_ID');
+
+    if (!platformUserId) {
+      throw new BadRequestException('PLATFORM_WALLET_USER_ID is not configured.');
+    }
+    if (!Number.isInteger(platformPercent) || !Number.isInteger(supplierPercent)) {
+      throw new BadRequestException('Revenue split percents must be integers.');
+    }
+    if (platformPercent + supplierPercent !== 100) {
+      throw new BadRequestException(
+        'Revenue split percents must sum to 100.',
+      );
+    }
+
+    return { platformPercent, supplierPercent, platformUserId };
   }
 
   private buildPaymentMessageFa(
@@ -1190,6 +1236,8 @@ export class PaymentsService {
       items,
       order.paidAt ?? new Date(),
     );
+    await this.applyOrderRevenueSplitAndCredits(tx, order, items);
+    await this.applySubscriptionDiscountUsage(tx, order.id);
 
     return order;
   }
@@ -1260,6 +1308,7 @@ export class PaymentsService {
       items,
       order.paidAt ?? new Date(),
     );
+    await this.applySubscriptionDiscountUsage(tx, order.id);
 
     return order;
   }
@@ -1568,6 +1617,107 @@ export class PaymentsService {
     };
   }
 
+  private async applyWalletCredit(
+    tx: Prisma.TransactionClient,
+    input: {
+      userId: string;
+      amount: number;
+      reason: WalletTransactionReason;
+      referenceId?: string | null;
+      idempotencyKey: string;
+      description?: string | null;
+    },
+  ): Promise<{
+    walletId: string;
+    newBalance: number;
+    transactionId: string;
+    alreadyProcessed: boolean;
+  }> {
+    const wallet = await this.walletService.getOrCreateWalletInTransaction(
+      tx,
+      input.userId,
+    );
+    if (wallet.status !== FinanceWalletStatus.ACTIVE) {
+      throw new BadRequestException('Wallet is suspended.');
+    }
+
+    let transaction: { id: string; status: WalletTransactionStatus } | null = null;
+    try {
+      const created = await this.walletService.createTransaction(tx, {
+        walletId: wallet.id,
+        userId: input.userId,
+        type: WalletTransactionType.CREDIT,
+        reason: input.reason,
+        status: WalletTransactionStatus.PENDING,
+        amount: input.amount,
+        referenceId: input.referenceId ?? null,
+        idempotencyKey: input.idempotencyKey,
+        description: input.description ?? null,
+      });
+      transaction = { id: created.id, status: created.status as WalletTransactionStatus };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const existing = await tx.financeWalletTransaction.findFirst({
+          where: { walletId: wallet.id, idempotencyKey: input.idempotencyKey },
+          select: { id: true, status: true },
+        });
+        if (!existing) {
+          throw error;
+        }
+        if (existing.status === WalletTransactionStatus.SUCCESS) {
+          return {
+            walletId: wallet.id,
+            newBalance: wallet.balance,
+            transactionId: existing.id,
+            alreadyProcessed: true,
+          };
+        }
+        throw new BadRequestException('Wallet transaction is already in progress.');
+      }
+      throw error;
+    }
+
+    if (!transaction) {
+      throw new BadRequestException('Unable to create wallet transaction.');
+    }
+
+    const statusUpdate = await tx.financeWalletTransaction.updateMany({
+      where: { id: transaction.id, status: WalletTransactionStatus.PENDING },
+      data: { status: WalletTransactionStatus.SUCCESS },
+    });
+    if (statusUpdate.count === 0) {
+      return {
+        walletId: wallet.id,
+        newBalance: wallet.balance,
+        transactionId: transaction.id,
+        alreadyProcessed: true,
+      };
+    }
+
+    const updatedWallet = await tx.financeWallet.update({
+      where: { id: wallet.id },
+      data: { balance: { increment: input.amount } },
+    });
+
+    await tx.financeWalletTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        status: WalletTransactionStatus.SUCCESS,
+        balanceAfter: updatedWallet.balance,
+      },
+    });
+
+    return {
+      walletId: wallet.id,
+      newBalance: updatedWallet.balance,
+      transactionId: transaction.id,
+      alreadyProcessed: false,
+    };
+  }
+
   private isOrderExpired(order: FinanceOrder): boolean {
     if ((order.status as OrderStatus) === OrderStatus.EXPIRED) {
       return true;
@@ -1657,6 +1807,8 @@ export class PaymentsService {
         items,
         paidOrder.paidAt ?? new Date(),
       );
+      await this.applyOrderRevenueSplitAndCredits(tx, paidOrder, items);
+      await this.applySubscriptionDiscountUsage(tx, paidOrder.id);
     }
 
     if ((paidOrder.orderKind as OrderKind) === OrderKind.SUBSCRIPTION) {
@@ -1667,9 +1819,111 @@ export class PaymentsService {
     }
   }
 
-  private async ensureOrderRevenueSplits(
-    orderId: string | null | undefined,
+  private async applyOrderRevenueSplitAndCredits(
+    tx: Prisma.TransactionClient,
+    order: FinanceOrder,
+    items: FinanceOrderItem[],
   ): Promise<void> {
+    if ((order.orderKind as OrderKind) !== OrderKind.PRODUCT) {
+      return;
+    }
+    if ((order.status as OrderStatus) !== OrderStatus.PAID) {
+      return;
+    }
+
+    const { platformUserId } = this.getRevenueSplitConfig();
+    const platformUser = await tx.user.findUnique({
+      where: { id: platformUserId },
+      select: { id: true },
+    });
+    if (!platformUser) {
+      throw new BadRequestException('PLATFORM_WALLET_USER_ID was not found.');
+    }
+
+    const splits = await this.revenueService.recordOrderRevenueSplits(
+      order,
+      items,
+      tx,
+      platformUserId,
+    );
+
+    for (const split of splits) {
+      if (split.amount <= 0) {
+        continue;
+      }
+      const productId = split.productId.toString();
+      if (split.beneficiaryType === RevenueBeneficiaryType.PLATFORM) {
+        await this.applyWalletCredit(tx, {
+          userId: platformUserId,
+          amount: split.amount,
+          reason: WalletTransactionReason.ADJUSTMENT,
+          referenceId: order.id,
+          idempotencyKey: `order:${order.id}:platform:${productId}`,
+          description: this.productSaleDescription,
+        });
+        continue;
+      }
+      if (split.beneficiaryType === RevenueBeneficiaryType.SUPPLIER) {
+        if (!split.supplierId) {
+          continue;
+        }
+        await this.applyWalletCredit(tx, {
+          userId: split.supplierId,
+          amount: split.amount,
+          reason: WalletTransactionReason.ADJUSTMENT,
+          referenceId: order.id,
+          idempotencyKey: `order:${order.id}:supplier:${split.supplierId}:${productId}`,
+          description: this.productSaleDescription,
+        });
+      }
+    }
+  }
+
+  private async applySubscriptionDiscountUsage(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ): Promise<void> {
+    const usage = await tx.subscriptionDiscountUsage.findUnique({
+      where: { orderId },
+    });
+    if (!usage || usage.consumedAt) {
+      return;
+    }
+
+    await tx.subscription.updateMany({
+      where: { id: usage.subscriptionId, discountRemaining: { gt: 0 } },
+      data: { discountRemaining: { decrement: 1 } },
+    });
+
+    await tx.subscriptionDiscountUsage.update({
+      where: { id: usage.id },
+      data: { consumedAt: new Date() },
+    });
+  }
+
+  private resolveBuyerDisplayName(
+    buyer: {
+      name: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      username: string | null;
+    } | null,
+  ): string {
+    if (!buyer) {
+      return 'کاربر';
+    }
+    const combined = `${buyer.firstName ?? ''} ${buyer.lastName ?? ''}`.trim();
+    if (combined.length > 0) {
+      return combined;
+    }
+    const name = buyer.name?.trim();
+    if (name) {
+      return name;
+    }
+    return buyer.username ?? 'کاربر';
+  }
+
+  private async notifyOrderEvents(orderId: string | null | undefined): Promise<void> {
     if (!orderId) {
       return;
     }
@@ -1686,6 +1940,264 @@ export class PaymentsService {
     if ((order.status as OrderStatus) !== OrderStatus.PAID) {
       return;
     }
-    await this.revenueService.recordOrderRevenueSplits(order, order.items);
+    await this.notifyOrderPaid(order);
+    await this.notifyOrderRevenueCredits(order);
+  }
+
+  private async notifyOrderRevenueCredits(
+    order: FinanceOrder & { items: { productId: bigint; lineTotal: number }[] },
+  ): Promise<void> {
+    if ((order.orderKind as OrderKind) !== OrderKind.PRODUCT) {
+      return;
+    }
+    if ((order.status as OrderStatus) !== OrderStatus.PAID) {
+      return;
+    }
+    const supplierSplits = await this.prisma.financeOrderRevenueSplit.findMany({
+      where: {
+        orderId: order.id,
+        beneficiaryType: RevenueBeneficiaryType.SUPPLIER,
+      },
+      select: { supplierId: true, amount: true, productId: true },
+    });
+    const { platformUserId } = this.getRevenueSplitConfig();
+
+    const productIds = Array.from(
+      new Set(order.items.map((item) => item.productId)),
+    );
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, title: true, slug: true },
+    });
+    const productMap = new Map(
+      products.map((product) => [
+        product.id.toString(),
+        { title: product.title, slug: product.slug },
+      ]),
+    );
+
+    for (const item of order.items) {
+      const productId = item.productId.toString();
+      const { supplierIds, supplierCount } =
+        await this.productsService.resolveContributors(productId);
+      if (supplierCount !== 1 || supplierIds[0] !== platformUserId) {
+        continue;
+      }
+      const productMeta = productMap.get(productId);
+      const data = {
+        orderId: order.id,
+        productId,
+        productTitle: productMeta?.title ?? 'محصول',
+        productSlug: productMeta?.slug ?? null,
+        amount: {
+          value: item.lineTotal,
+          currency: 'IRR' as const,
+        },
+        product: {
+          id: productId,
+          title: productMeta?.title ?? 'محصول',
+          slug: productMeta?.slug ?? null,
+        },
+      };
+      const actionUrl = this.notificationsService.buildActionUrl(
+        NotificationType.WALLET_CREDITED,
+        data,
+      );
+      const notificationId = await this.notificationsService.createNotification({
+        type: NotificationType.WALLET_CREDITED,
+        title: 'New notification',
+        body: 'You have a new notification.',
+        actionUrl,
+        entityType: productMeta?.slug ? 'PRODUCT' : null,
+        entitySlug: productMeta?.slug ?? null,
+        entityId: productId,
+        data,
+      });
+      await this.notificationsService.enqueueToUser(
+        notificationId,
+        platformUserId,
+        `wallet_credit:order:${order.id}:${platformUserId}:${productId}`,
+      );
+    }
+
+    for (const split of supplierSplits) {
+      if (!split.supplierId || split.amount <= 0) {
+        continue;
+      }
+      const productId = split.productId.toString();
+      const productMeta = productMap.get(productId);
+      const data = {
+        orderId: order.id,
+        productId,
+        productTitle: productMeta?.title ?? 'محصول',
+        productSlug: productMeta?.slug ?? null,
+        amount: {
+          value: split.amount,
+          currency: 'IRR' as const,
+        },
+        product: {
+          id: productId,
+          title: productMeta?.title ?? 'محصول',
+          slug: productMeta?.slug ?? null,
+        },
+      };
+      const actionUrl = this.notificationsService.buildActionUrl(
+        NotificationType.WALLET_CREDITED,
+        data,
+      );
+      const notificationId = await this.notificationsService.createNotification({
+        type: NotificationType.WALLET_CREDITED,
+        title: 'New notification',
+        body: 'You have a new notification.',
+        actionUrl,
+        entityType: productMeta?.slug ? 'PRODUCT' : null,
+        entitySlug: productMeta?.slug ?? null,
+        entityId: productId,
+        data,
+      });
+      await this.notificationsService.enqueueToUser(
+        notificationId,
+        split.supplierId,
+        `wallet_credit:order:${order.id}:${split.supplierId}:${productId}`,
+      );
+    }
+  }
+
+  private async notifyOrderPaid(order: FinanceOrder & { items: { productId: bigint }[] }) {
+    if ((order.orderKind as OrderKind) !== OrderKind.PRODUCT) {
+      return;
+    }
+    if ((order.status as OrderStatus) !== OrderStatus.PAID) {
+      return;
+    }
+    const items = order.items ?? [];
+    const buyer = await this.prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { name: true, firstName: true, lastName: true, username: true, avatarUrl: true },
+    });
+    const actorName = this.resolveBuyerDisplayName(buyer);
+    const productIds = items.map((item) => item.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, title: true, slug: true },
+    });
+    const productMap = new Map(
+      products.map((product) => [
+        product.id.toString(),
+        { title: product.title, slug: product.slug },
+      ]),
+    );
+    for (const item of items) {
+      const productId = item.productId.toString();
+      const contributors = await this.productsService.resolveContributors(
+        productId,
+      );
+      if (contributors.supplierCount === 0) {
+        continue;
+      }
+      const productMeta = productMap.get(productId);
+      const productTitle = productMeta?.title ?? 'محصول';
+      const productSlug = productMeta?.slug ?? null;
+      const actor = {
+        id: order.userId,
+        fullName: actorName,
+        username: buyer?.username ?? null,
+        avatarUrl: buyer?.avatarUrl ?? null,
+      };
+      const product = {
+        id: productId,
+        title: productTitle,
+        slug: productSlug,
+      };
+      for (const supplierId of contributors.supplierIds) {
+        if (!supplierId) {
+          continue;
+        }
+        const data = {
+          orderId: order.id,
+          actorId: order.userId,
+          actorName,
+          actorUsername: buyer?.username ?? null,
+          actorAvatarUrl: buyer?.avatarUrl ?? null,
+          productId,
+          productTitle,
+          productSlug,
+          actor,
+          product,
+        };
+        const actionUrl = this.notificationsService.buildActionUrl(
+          NotificationType.PURCHASED_YOUR_PRODUCT,
+          data,
+        );
+        const notificationId = await this.notificationsService.createNotification({
+          type: NotificationType.PURCHASED_YOUR_PRODUCT,
+          title: 'New notification',
+          body: 'You have a new notification.',
+          actionUrl,
+          entityType: productSlug ? 'PRODUCT' : null,
+          entitySlug: productSlug ?? null,
+          entityId: productId,
+          data,
+        });
+        await this.notificationsService.enqueueToUser(
+          notificationId,
+          supplierId,
+          `purchase:${order.id}:${supplierId}:${productId}`,
+        );
+      }
+    }
+  }
+
+  private async notifyWalletCreditFromPayment(
+    payment: FinancePayment | null,
+  ): Promise<void> {
+    if (!payment) {
+      return;
+    }
+    const purpose = payment.purpose as PaymentPurpose | null;
+    const refType = payment.referenceType as PaymentReferenceType | null;
+    const isWalletTopup =
+      purpose === PaymentPurpose.WALLET_TOPUP ||
+      (!purpose && refType === PaymentReferenceType.WALLET_CHARGE);
+    if (!isWalletTopup) {
+      return;
+    }
+    if ((payment.status as PaymentStatus) !== PaymentStatus.SUCCESS) {
+      return;
+    }
+    const walletTx = await this.prisma.financeWalletTransaction.findFirst({
+      where: {
+        referenceId: payment.id,
+        userId: payment.userId,
+        type: WalletTransactionType.CREDIT,
+        status: WalletTransactionStatus.SUCCESS,
+      },
+      select: { id: true },
+    });
+    if (!walletTx) {
+      return;
+    }
+    const data = {
+      amount: {
+        value: payment.amount,
+        currency: 'IRR',
+      },
+    };
+    const actionUrl = this.notificationsService.buildActionUrl(
+      NotificationType.WALLET_CREDITED,
+      data,
+    );
+    const notificationId = await this.notificationsService.createNotification({
+      type: NotificationType.WALLET_CREDITED,
+      title: 'New notification',
+      body: 'You have a new notification.',
+      actionUrl,
+      data,
+    });
+    await this.notificationsService.enqueueToUser(
+      notificationId,
+      payment.userId,
+      `wallet_credit:${walletTx.id}:${payment.userId}`,
+    );
   }
 }

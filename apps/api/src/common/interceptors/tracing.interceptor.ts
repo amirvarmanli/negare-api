@@ -73,10 +73,16 @@ export class TracingInterceptor implements NestInterceptor {
             const status = finalStatus ?? response.statusCode;
             const baseLog = `traceId=${txId} userId=${userId} method=${method} url=${originalUrl} status=${status} durationMs=${durationMs}`;
             if (capturedError) {
-              this.logger.error(
-                baseLog,
-                capturedError instanceof Error ? capturedError.stack : undefined,
-              );
+              if (status === 401 || status === 403) {
+                this.logger.debug(baseLog);
+              } else {
+                this.logger.error(
+                  baseLog,
+                  capturedError instanceof Error
+                    ? capturedError.stack
+                    : undefined,
+                );
+              }
             } else {
               this.logger.log(baseLog);
             }

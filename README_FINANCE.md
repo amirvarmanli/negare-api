@@ -42,7 +42,10 @@
 4. Zibal calls public `GET /payments/zibal/callback?trackId=...` (no auth); backend verifies with Zibal.
 5. Callback responds with a 302 redirect to `${FRONTEND_BASE_URL}/payment/result?status=success|failed&orderId=...&trackId=...`.
    - If `Accept: application/json` is sent, it returns JSON instead of redirect.
-6. On success, order is marked PAID, entitlements are granted, and revenue splits (70/30) are recorded.
+6. On success, order is marked PAID, entitlements are granted, and revenue splits are recorded with supplier/platform percentages (default 70/30).
+   - Per line item: `supplierShare = floor(lineTotal * supplierPercent / 100)`, `platformShare = lineTotal - supplierShare`
+   - Idempotent: retries do not create duplicate splits or wallet credits.
+   - If the product owner is the platform user, the split is skipped and 100% is credited to the platform wallet.
 7. Payment result UI fetches purchase-result via `GET /orders/:id/purchase-result` (auth required).
 8. Client can also call `GET /me/purchases` to list owned items with download URLs.
 
@@ -97,6 +100,14 @@
 3. Call `GET /me/purchases` and confirm items include `downloads[]` and `purchasedAt`.
 4. Open a `downloads[].url` in the browser and confirm file streams (token valid).
 5. Wait for token expiry and confirm download returns 401.
+6. Revenue split sanity:
+   - pay an order for amount X
+   - supplier wallet increases by floor(X*0.7)
+   - platform wallet increases by X - supplierShare
+   - retries do not double-credit
+7. Platform-owned product:
+   - if platform owns the product, platform wallet increases by X (100%)
+   - supplier wallet not credited
 
 ### Example Postman test steps
 1. Set `productId` and `accessToken` in the Finance collection.
@@ -171,6 +182,10 @@
   - `ZIBAL_MERCHANT="zibal"` uses Zibal's test merchant flow in development.
 - Set `FRONTEND_BASE_URL` to control callback redirects (default: `http://localhost:3000`).
 - Optional: set `API_BASE_URL` (or `API_PUBLIC_BASE_URL`) to the backend base URL used in download links.
+- Revenue split env vars:
+  - `PLATFORM_WALLET_USER_ID` (UUID of the platform wallet owner)
+  - `PLATFORM_COMMISSION_PERCENT` (default `30`)
+  - `SUPPLIER_REVENUE_PERCENT` (default `70`, must sum to 100 with platform percent)
 - Run Prisma migrations:
   - Dev (fresh DB): `npx prisma migrate dev --schema prisma/schema.prisma`
   - Prod (existing data): map models with `@@map`/`@@schema` as shipped and use `npx prisma migrate deploy`

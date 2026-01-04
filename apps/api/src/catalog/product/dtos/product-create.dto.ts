@@ -104,8 +104,8 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: 'کدهای رنگ HEX به صورت #RRGGBB',
-    example: ['#101010', '#FFD000'],
+    description: 'کدهای رنگ HEX به صورت #RRGGBB (یا مقدار ویژه OTHER)',
+    example: ['#101010', '#FFD000', 'OTHER'],
   })
   @IsOptional()
   @IsArray()

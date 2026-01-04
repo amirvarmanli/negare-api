@@ -4,6 +4,8 @@ import { ProductService, toBigIntList, parseGraphicFormatList } from './product.
 import { productInclude, ProductWithRelations } from './product.mapper';
 import { ProductFindQueryDto } from './dtos/product-query.dto';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { NotificationsService } from '@app/notifications/notifications.service';
+import { StorageService } from '@app/catalog/storage/storage.service';
 
 const now = new Date();
 const baseProduct: ProductWithRelations = {
@@ -37,6 +39,19 @@ const baseProduct: ProductWithRelations = {
   publishedAt: null,
 };
 
+const notificationsService = {
+  buildActionUrl: jest.fn(),
+  createNotification: jest.fn(),
+  enqueueToFollowers: jest.fn(),
+} as unknown as NotificationsService;
+
+const storageService = {
+  saveUploadedFile: jest.fn(),
+  getDownloadStream: jest.fn(),
+  getDownloadUrl: jest.fn(),
+  deleteFile: jest.fn(),
+} as unknown as StorageService;
+
 const cloneProduct = (
   overrides?: Partial<ProductWithRelations>,
 ): ProductWithRelations =>
@@ -53,7 +68,11 @@ const createFindAllService = (options?: { topicResult?: { id: bigint } | null })
     like: { findMany: likeFindManyMock },
     bookmark: { findMany: bookmarkFindManyMock },
   } as unknown as PrismaService;
-  return { service: new ProductService(prisma), findManyMock, topicFindUniqueMock };
+  return {
+    service: new ProductService(prisma, notificationsService, storageService),
+    findManyMock,
+    topicFindUniqueMock,
+  };
 };
 
 const createFindAllWithReactions = (options?: {
@@ -95,7 +114,7 @@ const createFindAllWithReactions = (options?: {
   } as unknown as PrismaService;
 
   return {
-    service: new ProductService(prisma),
+    service: new ProductService(prisma, notificationsService, storageService),
     findManyMock,
     likeFindManyMock,
     bookmarkFindManyMock,
@@ -210,7 +229,7 @@ const createStatefulReactionService = () => {
   } as unknown as PrismaService;
 
   return {
-    service: new ProductService(prisma),
+    service: new ProductService(prisma, notificationsService, storageService),
     likedSet,
     bookmarkedSet,
   };
@@ -249,7 +268,7 @@ const createSearchService = (options?: {
     bookmark: { findMany: bookmarkFindManyMock },
   } as unknown as PrismaService;
   return {
-    service: new ProductService(prisma),
+    service: new ProductService(prisma, notificationsService, storageService),
     queryRawMock,
     productFindManyMock,
     likeFindManyMock,
@@ -288,7 +307,11 @@ const createShortCodeService = (options?: {
     like: { findMany: likeFindManyMock },
     bookmark: { findMany: bookmarkFindManyMock },
   } as unknown as PrismaService;
-  return { service: new ProductService(prisma), findUniqueMock, product };
+  return {
+    service: new ProductService(prisma, notificationsService, storageService),
+    findUniqueMock,
+    product,
+  };
 };
 
 describe('ProductService helpers', () => {
@@ -642,7 +665,7 @@ describe('ProductService reactions', () => {
         Promise.all(ops),
       ),
     } as unknown as PrismaService;
-    const service = new ProductService(prisma);
+    const service = new ProductService(prisma, notificationsService, storageService);
 
     const result = await service.listLikedByUser('user-id', { page: 1, limit: 10 });
 
@@ -673,7 +696,7 @@ describe('ProductService reactions', () => {
         Promise.all(ops),
       ),
     } as unknown as PrismaService;
-    const service = new ProductService(prisma);
+    const service = new ProductService(prisma, notificationsService, storageService);
 
     const result = await service.listBookmarkedByUser('user-id', { page: 1, limit: 10 });
 
@@ -721,7 +744,7 @@ describe('ProductService reactions', () => {
       like: { findMany: likeFindManyMock },
       bookmark: { findMany: bookmarkFindManyMock },
     } as unknown as PrismaService;
-    const service = new ProductService(prisma);
+    const service = new ProductService(prisma, notificationsService, storageService);
 
     const result = await service.findByIdOrSlug('1', 'viewer-id');
 

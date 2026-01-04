@@ -10,11 +10,13 @@ import { BlogModule } from '@app/blog/blog.module';
 import { NewsletterModule } from '@app/newsletter/newsletter.module';
 import { FinanceModule } from '@app/finance/finance.module';
 import { OrderRequestsModule } from '@app/order-requests/order-requests.module';
+import { AuthzModule } from '@app/common/authz/authz.module';
 
 @Module({
   imports: [
     AppConfigModule,
     PrismaModule,
+    AuthzModule,
     NotificationsModule,
     HealthModule,
     CoreModule,

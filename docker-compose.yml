@@ -6,18 +6,7 @@ services:
     ports:
       - '4000:4000'
     env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      PORT: ${PORT:-4000}
-      GLOBAL_PREFIX: ${GLOBAL_PREFIX:-api}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/negare_db}
-      DB_HOST: ${DB_HOST:-db}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      UPLOAD_TMP_DIR: ${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
+      - ${ENV_FILE:-.env.docker}
     volumes:
       - upload-tmp:${UPLOAD_TMP_DIR:-/tmp/negare-uploads}
     depends_on:
@@ -26,7 +15,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl", "--fail", "http://localhost:${PORT:-4000}/${GLOBAL_PREFIX:-api}/health"]
+      test: ["CMD-SHELL", "curl --fail http://localhost:$${PORT:-4000}/$${GLOBAL_PREFIX:-api}/health"]
       interval: 10s
       timeout: 5s
       retries: 6

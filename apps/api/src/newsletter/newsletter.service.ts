@@ -24,6 +24,18 @@ import {
   NewsletterAdminIssuesQueryDto,
 } from '@app/newsletter/dto/newsletter-issues-query.dto';
 import {
+  AdminNewsletterSortBy,
+  AdminNewsletterSortOrder,
+  AdminNewslettersListQueryDto,
+} from '@app/newsletter/dto/admin-newsletters-list-query.dto';
+import {
+  NewsletterAdminListItemDto,
+  NewsletterAdminListResponseDto,
+} from '@app/newsletter/dto/admin-newsletters-list-item.dto';
+import { NewsletterAdminDetailDto } from '@app/newsletter/dto/admin-newsletter-detail.dto';
+import { AdminUpdateNewsletterDto } from '@app/newsletter/dto/admin-update-newsletter.dto';
+import { AdminRejectDto } from '@app/newsletter/dto/admin-reject.dto';
+import {
   NewsletterIssueDto,
   NewsletterIssueListResponseDto,
 } from '@app/newsletter/dto/newsletter-issue.dto';
@@ -113,7 +125,7 @@ export class NewsletterService {
     const now = new Date();
     const where: Prisma.NewsletterIssueWhereInput = {
       deletedAt: null,
-      status: PublicationStatus.PUBLISHED,
+      status: { in: this.publicStatusSet() },
       category: query.categorySlug
         ? { is: { slug: query.categorySlug, isActive: true } }
         : undefined,
@@ -176,7 +188,7 @@ export class NewsletterService {
       where: {
         slug,
         deletedAt: null,
-        status: PublicationStatus.PUBLISHED,
+        status: { in: this.publicStatusSet() },
         OR: [
           { publishedAt: { lte: now } },
           { publishedAt: null },
@@ -325,6 +337,7 @@ export class NewsletterService {
           authorId,
           isFeatured: dto.isFeatured ?? false,
           isPinned: dto.isPinned ?? false,
+          pinnedAt: dto.isPinned ? new Date() : null,
         },
         include: {
           category: true,
@@ -386,8 +399,8 @@ export class NewsletterService {
     if (dto.publishedAt !== undefined) {
       data.publishedAt = dto.publishedAt;
     } else if (
-      newStatus === PublicationStatus.PUBLISHED &&
-      existing.status !== PublicationStatus.PUBLISHED &&
+      this.isPublishedStatus(newStatus) &&
+      !this.isPublishedStatus(existing.status) &&
       !existing.publishedAt
     ) {
       data.publishedAt = new Date();
@@ -490,6 +503,290 @@ export class NewsletterService {
     };
   }
 
+  async adminListAllIssues(
+    query: AdminNewslettersListQueryDto,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminListResponseDto> {
+    this.assertAdmin(currentUser);
+    const { page, limit, skip } = this.resolveAdminPagination(
+      query.page,
+      query.limit,
+    );
+
+    const where: Prisma.NewsletterIssueWhereInput = {
+      deletedAt: null,
+      status: query.status,
+      authorId: query.authorId,
+    };
+
+    if (query.from || query.to) {
+      where.createdAt = {
+        gte: query.from ? new Date(query.from) : undefined,
+        lte: query.to ? new Date(query.to) : undefined,
+      };
+    }
+
+    this.applyAdminSearchFilters(where, query.q);
+
+    const sortBy = query.sort ?? AdminNewsletterSortBy.createdAt;
+    const sortOrder = query.order ?? AdminNewsletterSortOrder.desc;
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.newsletterIssue.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          category: true,
+          author: { select: AUTHOR_SUMMARY_SELECT },
+          _count: { select: { comments: true } },
+        },
+      }),
+      this.prisma.newsletterIssue.count({ where }),
+    ]);
+
+    return {
+      items: items.map((issue) => this.toAdminListItemDto(issue)),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async adminGetIssue(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    this.assertAdmin(currentUser);
+    const issue = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+    if (!issue) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+    return this.toAdminDetailDto(issue);
+  }
+
+  async adminUpdateIssue(
+    id: string,
+    dto: AdminUpdateNewsletterDto,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        slug: true,
+        status: true,
+        publishedAt: true,
+        archivedAt: true,
+        rejectReason: true,
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    const data: Prisma.NewsletterIssueUpdateInput = {};
+
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.content !== undefined) data.content = dto.content;
+    if (dto.excerpt !== undefined) data.excerpt = dto.excerpt;
+    if (dto.browserTitle !== undefined) data.browserTitle = dto.browserTitle;
+    if (dto.coverImageUrl !== undefined)
+      data.coverImageUrl = dto.coverImageUrl;
+    if (dto.fileUrl !== undefined) data.fileUrl = dto.fileUrl;
+    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.publishedAt !== undefined) data.publishedAt = dto.publishedAt;
+
+    if (dto.slug) {
+      data.slug = await this.ensureUniqueIssueSlug(
+        createSlug(dto.slug),
+        existing.id,
+      );
+    }
+
+    if (dto.status !== undefined) {
+      data.reviewedAt = new Date();
+      data.reviewedByAdminId = admin.id;
+      if (dto.status === PublicationStatus.ARCHIVED) {
+        data.archivedAt = new Date();
+      } else if (existing.archivedAt) {
+        data.archivedAt = null;
+      }
+      if (dto.status !== PublicationStatus.REJECTED) {
+        data.rejectReason = null;
+      }
+    }
+
+    const newStatus = dto.status ?? existing.status;
+    if (dto.publishedAt !== undefined) {
+      data.publishedAt = dto.publishedAt;
+    } else if (
+      this.isPublishedStatus(newStatus) &&
+      !this.isPublishedStatus(existing.status) &&
+      !existing.publishedAt
+    ) {
+      data.publishedAt = new Date();
+    }
+
+    const issue = await this.prisma.newsletterIssue.update({
+      where: { id },
+      data,
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    return this.toAdminDetailDto(issue);
+  }
+
+  async adminApproveIssue(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, publishedAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    const issue = await this.prisma.newsletterIssue.update({
+      where: { id },
+      data: {
+        status: PublicationStatus.APPROVED,
+        reviewedAt: new Date(),
+        reviewedByAdminId: admin.id,
+        rejectReason: null,
+        archivedAt: null,
+        publishedAt: existing.publishedAt ?? new Date(),
+      },
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    return this.toAdminDetailDto(issue);
+  }
+
+  async adminRejectIssue(
+    id: string,
+    dto: AdminRejectDto,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    const issue = await this.prisma.newsletterIssue.update({
+      where: { id },
+      data: {
+        status: PublicationStatus.REJECTED,
+        reviewedAt: new Date(),
+        reviewedByAdminId: admin.id,
+        rejectReason: dto.reason ?? null,
+        archivedAt: null,
+      },
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    return this.toAdminDetailDto(issue);
+  }
+
+  async adminArchiveIssue(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    const issue = await this.prisma.newsletterIssue.update({
+      where: { id },
+      data: {
+        status: PublicationStatus.ARCHIVED,
+        archivedAt: new Date(),
+        reviewedAt: new Date(),
+        reviewedByAdminId: admin.id,
+        rejectReason: null,
+      },
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    return this.toAdminDetailDto(issue);
+  }
+
+  async adminUnarchiveIssue(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, publishedAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    const status = existing.publishedAt
+      ? PublicationStatus.APPROVED
+      : PublicationStatus.PENDING;
+
+    const issue = await this.prisma.newsletterIssue.update({
+      where: { id },
+      data: {
+        status,
+        archivedAt: null,
+        reviewedAt: new Date(),
+        reviewedByAdminId: admin.id,
+        rejectReason: null,
+      },
+      include: {
+        category: true,
+        author: { select: AUTHOR_SUMMARY_SELECT },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    return this.toAdminDetailDto(issue);
+  }
+
   private async fetchAdminIssue(
     where: Prisma.NewsletterIssueWhereInput,
     currentUser: CurrentUserPayload,
@@ -522,22 +819,72 @@ export class NewsletterService {
   async updateIssuePinStatus(
     id: string,
     dto: UpdateNewsletterPinStatusDto,
+    currentUser: CurrentUserPayload,
   ): Promise<NewsletterIssueDto> {
-    const issue = await this.prisma.$transaction(async (tx) => {
-      if (dto.isPinned) {
-        await this.unpinOtherNewsletterIssues(tx, id);
-      }
+    const authenticated = this.assertAuthenticated(currentUser);
+    const issue = await this.prisma.$transaction(
+      async (tx) => {
+        const target = await tx.newsletterIssue.findFirst({
+          where: { id, deletedAt: null },
+          select: { id: true, isPinned: true },
+        });
+        if (!target) {
+          throw new NotFoundException('Newsletter issue not found');
+        }
 
-      return tx.newsletterIssue.update({
-        where: { id },
-        data: { isPinned: dto.isPinned },
-        include: {
-          category: true,
-          author: { select: AUTHOR_SUMMARY_SELECT },
-          _count: { select: { comments: true } },
-        },
-      });
-    });
+        if (dto.isPinned) {
+          const pinned = await tx.newsletterIssue.findFirst({
+            where: { isPinned: true, deletedAt: null },
+            select: { id: true },
+          });
+
+          if (pinned && pinned.id !== id) {
+            await tx.newsletterIssue.update({
+              where: { id: pinned.id },
+              data: {
+                isPinned: false,
+                pinnedAt: null,
+                pinnedByAdminId: null,
+              },
+            });
+          }
+
+          if (!target.isPinned) {
+            await tx.newsletterIssue.update({
+              where: { id },
+              data: {
+                isPinned: true,
+                pinnedAt: new Date(),
+                pinnedByAdminId: authenticated.id,
+              },
+            });
+          }
+        } else {
+          await tx.newsletterIssue.update({
+            where: { id },
+            data: {
+              isPinned: false,
+              pinnedAt: null,
+              pinnedByAdminId: null,
+            },
+          });
+        }
+
+        return tx.newsletterIssue.findFirst({
+          where: { id, deletedAt: null },
+          include: {
+            category: true,
+            author: { select: AUTHOR_SUMMARY_SELECT },
+            _count: { select: { comments: true } },
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    if (!issue) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
 
     return this.toIssueDto(issue);
   }
@@ -701,7 +1048,7 @@ export class NewsletterService {
     const issueCount = await this.prisma.newsletterIssue.count({
       where: {
         categoryId: id,
-        status: PublicationStatus.PUBLISHED,
+        status: { in: this.publicStatusSet() },
         deletedAt: null,
       },
     });
@@ -743,7 +1090,7 @@ export class NewsletterService {
     if (provided !== undefined) {
       return provided;
     }
-    if (status === PublicationStatus.PUBLISHED) {
+    if (this.isPublishedStatus(status)) {
       return new Date();
     }
     return null;
@@ -824,6 +1171,129 @@ export class NewsletterService {
 
   private resolveOwnerId(user: CurrentUserPayload): string {
     return user.id;
+  }
+
+  private assertAdmin(
+    user?: CurrentUserPayload | undefined,
+  ): CurrentUserPayload {
+    const authenticated = this.assertAuthenticated(user);
+    if (!this.isAdmin(authenticated)) {
+      throw new ForbiddenException('Admin access required');
+    }
+    return authenticated;
+  }
+
+  private resolveAdminPagination(
+    page?: number,
+    limit?: number,
+  ): { page: number; limit: number; skip: number } {
+    const safePage = page && page > 0 ? page : 1;
+    const rawLimit = limit && limit > 0 ? limit : 20;
+    const safeLimit = Math.min(rawLimit, 100);
+    const skip = (safePage - 1) * safeLimit;
+    return { page: safePage, limit: safeLimit, skip };
+  }
+
+  private applyAdminSearchFilters(
+    where: Prisma.NewsletterIssueWhereInput,
+    query?: string,
+  ): void {
+    if (!query) {
+      return;
+    }
+    const search = query.trim();
+    if (!search) {
+      return;
+    }
+
+    const clause: Prisma.NewsletterIssueWhereInput = {
+      OR: [
+        { title: { contains: search, mode: 'insensitive' } },
+        { slug: { contains: search, mode: 'insensitive' } },
+        {
+          author: {
+            is: {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { username: { contains: search, mode: 'insensitive' } },
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    this.addAndClause(where, clause);
+  }
+
+  private toAdminListItemDto(
+    issue: NewsletterIssueWithRelations,
+  ): NewsletterAdminListItemDto {
+    return {
+      id: issue.id,
+      title: issue.title,
+      slug: issue.slug,
+      status: issue.status,
+      publishedAt: issue.publishedAt,
+      archivedAt: issue.archivedAt ?? null,
+      reviewedAt: issue.reviewedAt ?? null,
+      reviewedByAdminId: issue.reviewedByAdminId ?? null,
+      rejectReason: issue.rejectReason ?? null,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+      author: {
+        id: issue.author.id,
+        name: issue.author.name,
+        avatarUrl: issue.author.avatarUrl,
+      },
+      category: this.toCategoryDto(issue.category, 0),
+    };
+  }
+
+  private toAdminDetailDto(
+    issue: NewsletterIssueWithRelations,
+  ): NewsletterAdminDetailDto {
+    return {
+      id: issue.id,
+      title: issue.title,
+      slug: issue.slug,
+      browserTitle: issue.browserTitle ?? null,
+      excerpt: issue.excerpt ?? null,
+      content: issue.content,
+      coverImageUrl: issue.coverImageUrl ?? null,
+      fileUrl: issue.fileUrl ?? null,
+      status: issue.status,
+      publishedAt: issue.publishedAt,
+      archivedAt: issue.archivedAt ?? null,
+      reviewedAt: issue.reviewedAt ?? null,
+      reviewedByAdminId: issue.reviewedByAdminId ?? null,
+      rejectReason: issue.rejectReason ?? null,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+      isFeatured: issue.isFeatured,
+      isPinned: issue.isPinned,
+      viewCount: issue.viewCount,
+      commentCount: issue._count?.comments ?? 0,
+      category: this.toCategoryDto(issue.category, 0),
+      author: {
+        id: issue.author.id,
+        name: issue.author.name,
+        avatarUrl: issue.author.avatarUrl,
+      },
+    };
+  }
+
+  private publicStatusSet(): PublicationStatus[] {
+    return [PublicationStatus.PUBLISHED, PublicationStatus.APPROVED];
+  }
+
+  private isPublishedStatus(status: PublicationStatus): boolean {
+    return (
+      status === PublicationStatus.PUBLISHED ||
+      status === PublicationStatus.APPROVED
+    );
   }
 
   private toIssueDto(issue: NewsletterIssueWithRelations): NewsletterIssueDto {
@@ -918,7 +1388,7 @@ export class NewsletterService {
         _count: { _all: true },
         where: {
           deletedAt: null,
-          status: PublicationStatus.PUBLISHED,
+          status: { in: this.publicStatusSet() },
         },
       }),
     ]);
@@ -939,7 +1409,7 @@ export class NewsletterService {
     excludeId?: string,
   ): Promise<void> {
     await tx.newsletterIssue.updateMany({
-      data: { isPinned: false },
+      data: { isPinned: false, pinnedAt: null, pinnedByAdminId: null },
       where: {
         isPinned: true,
         NOT: excludeId ? { id: excludeId } : undefined,

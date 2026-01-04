@@ -4,9 +4,24 @@ import { ProfileModule } from '@app/core/users/profile/profile.module';
 import { RolesModule } from '@app/core/roles/roles.module';
 import { UsersModule } from '@app/core/users/users.module';
 import { UploadModule } from '@app/core/upload/upload.module';
+import { AdminRbacModule } from '@app/core/rbac/admin-rbac.module';
 
 @Module({
-  imports: [AuthModule, ProfileModule, RolesModule, UsersModule, UploadModule],
-  exports: [AuthModule, ProfileModule, RolesModule, UsersModule, UploadModule],
+  imports: [
+    AuthModule,
+    ProfileModule,
+    RolesModule,
+    UsersModule,
+    UploadModule,
+    AdminRbacModule,
+  ],
+  exports: [
+    AuthModule,
+    ProfileModule,
+    RolesModule,
+    UsersModule,
+    UploadModule,
+    AdminRbacModule,
+  ],
 })
 export class CoreModule {}

@@ -40,12 +40,18 @@ export class CategoriesService {
     const parentId = toBigIntNullable(dto.parentId);
     const name = normalizeFaText(dto.name);
     const slug = await this.ensureUniqueSlug(dto.slug ?? dto.name);
+    const maxSortOrder = await this.prisma.category.aggregate({
+      where: { parentId: parentId ?? null },
+      _max: { sortOrder: true },
+    });
+    const nextSortOrder = (maxSortOrder._max.sortOrder ?? -10) + 10;
     const created = await this.prisma.category.create({
       data: {
         name,
         slug,
         parentId: parentId ?? null,
         coverUrl: dto.coverUrl ?? null,
+        sortOrder: nextSortOrder,
       },
     });
     return CategoryMapper.toDto(created);
@@ -152,7 +158,7 @@ export class CategoriesService {
     const where: Prisma.CategoryWhereInput = ands.length ? { AND: ands } : {};
     const rows = await this.prisma.category.findMany({
       where,
-      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
+      orderBy: [{ parentId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
       take: limit,
     });
 
@@ -163,7 +169,7 @@ export class CategoriesService {
   async tree(rootIdStr?: string): Promise<CategoryTreeNodeDto[]> {
     // همه را یکجا می‌کشیم (برای N <= چند هزار OK). اگر دیتاست بزرگ شد، باید lazy-load یا CTE بیاوری.
     const rows = await this.prisma.category.findMany({
-      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
+      orderBy: [{ parentId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
     });
     const nodes: CategoryTreeNodeDto[] = rows.map((r: CategoryEntity) =>
       CategoryMapper.toTreeNode(r, []),
@@ -239,6 +245,52 @@ export class CategoriesService {
       });
 
       await trx.category.delete({ where: { id } });
+    });
+  }
+
+  /* ---------------- Reorder (siblings) ---------------- */
+  async reorder(
+    parentIdValue: string | null | undefined,
+    orderedIds: string[],
+  ): Promise<void> {
+    const targetParentId = parentIdValue
+      ? toBigIntNullable(parentIdValue)
+      : null;
+    if (parentIdValue && targetParentId === null) {
+      throw new BadRequestException('Invalid parent id');
+    }
+
+    const ids = orderedIds.map((id) => {
+      if (!/^\d+$/u.test(id)) {
+        throw new BadRequestException(`Invalid category id: ${id}`);
+      }
+      return BigInt(id);
+    });
+
+    const rows = await this.prisma.category.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, parentId: true },
+    });
+    if (rows.length !== ids.length) {
+      throw new BadRequestException('One or more categories were not found');
+    }
+
+    const allMatchParent = rows.every((row) =>
+      targetParentId === null
+        ? row.parentId === null
+        : row.parentId === targetParentId,
+    );
+    if (!allMatchParent) {
+      throw new BadRequestException('Categories do not share the same parent');
+    }
+
+    await this.prisma.$transaction(async (trx: PrismaTxClient) => {
+      for (let index = 0; index < ids.length; index += 1) {
+        await trx.category.update({
+          where: { id: ids[index] },
+          data: { sortOrder: index * 10 },
+        });
+      }
     });
   }
 

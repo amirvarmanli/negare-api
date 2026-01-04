@@ -174,6 +174,7 @@ Core `.env` knobs (see `.env.example`):
 ### Starting and stopping
 
 - `docker compose up -d --build` compiles the Nest app, brings up Postgres, Redis, and the API, and runs `prisma generate` + `prisma migrate deploy` before the server listens.
+- The compose file loads environment variables from `.env.docker` by default; set `ENV_FILE=.env` if you want to reuse a custom `.env`.
 - The stack exposes `http://localhost:4000/${GLOBAL_PREFIX:-api}` (API) and `http://localhost:8080` (Adminer when you run `docker compose --profile tools up -d adminer`).
 - Use `docker compose down -v` to stop the stack and wipe the persisted Postgres data/temporary uploads.
 - The dev override (`docker-compose.override.yml`) mounts the repository, pins a dedicated `api-node-modules` volume for Windows hosts, and switches the command to `npm run start:dev`, so `docker compose up -d` already runs Nest in watch mode.

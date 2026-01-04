@@ -15,6 +15,8 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { RoleName } from '@prisma/client';
 import {
   CurrentUser,
@@ -33,9 +35,10 @@ export class RevenueController {
   constructor(private readonly revenueService: RevenueService) {}
 
   @Post('admin/revenue/subscription-pools/compute')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiBearerAuth()
   @Roles(RoleName.admin)
+  @Permissions('admin.finance:manage')
   @ApiOperation({ summary: 'Compute subscription revenue pool for a period.' })
   @ApiOkResponse({ type: SubscriptionPoolComputeResponseDto })
   async computePool(
@@ -65,9 +68,10 @@ export class RevenueController {
   }
 
   @Post('admin/revenue/subscription-pools/:id/finalize')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiBearerAuth()
   @Roles(RoleName.admin)
+  @Permissions('admin.finance:manage')
   @ApiOperation({ summary: 'Finalize a subscription revenue pool.' })
   @ApiOkResponse({ type: SubscriptionPoolComputeResponseDto })
   async finalizePool(
@@ -85,9 +89,10 @@ export class RevenueController {
   }
 
   @Get('supplier/revenue/subscription-earnings')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiBearerAuth()
   @Roles(RoleName.supplier)
+  @Permissions('supplier.orders:read')
   @ApiOperation({ summary: 'List subscription earnings for supplier.' })
   @ApiOkResponse({ type: [SupplierEarningDto] })
   async listSupplierEarnings(

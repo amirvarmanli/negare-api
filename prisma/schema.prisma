@@ -16,8 +16,11 @@ model User {
   email                       String?                              @unique @db.Citext
   phone                       String?                              @unique @db.VarChar(32)
   name                        String?                              @db.VarChar(255)
+  firstName                   String?                              @db.VarChar(120)
+  lastName                    String?                              @db.VarChar(120)
   bio                         String?
   city                        String?                              @db.VarChar(255)
+  cityId                      String?                              @db.Uuid
   avatarUrl                   String?                              @db.VarChar(255)
   passwordHash                String?                              @db.VarChar(255)
   isEmailVerified             Boolean                              @default(false)
@@ -26,6 +29,7 @@ model User {
   passwordChangedAt           DateTime?                            @db.Timestamptz(6)
   lastLoginAt                 DateTime?                            @db.Timestamptz(6)
   deletedAt                   DateTime?                            @db.Timestamptz(6)
+  role                        RoleName                             @default(user)
   downloads                   ProductDownload[]
   productViews                ProductView[]
   bookmarks                   Bookmark[]
@@ -57,12 +61,22 @@ model User {
   financeDownloadLogs         FinanceDownloadLog[]                 @relation("FinanceDownloadLog_user")
   financeSubscriptions        FinanceUserSubscription[]            @relation("FinanceUserSubscription_user")
   financeSubscriptionPurchases FinanceSubscriptionPurchase[]
+  subscriptionsV2             Subscription[]
+  subscriptionDownloadLogs    SubscriptionDownloadLog[]
+  subscriptionDownloadLogsAsSupplier SubscriptionDownloadLog[]     @relation("SubscriptionDownloadLog_supplier")
+  subscriptionDiscountUsages  SubscriptionDiscountUsage[]
+  subscriptionSettlements     SubscriptionSettlement[]
+  subscriptionSettlementSuppliers SubscriptionSettlementSupplier[]
   financeSubscriptionEarnings FinanceSubscriptionSupplierEarning[] @relation("FinanceSubscriptionSupplierEarning_supplier")
   financeUserDiscounts        FinanceUserDiscount[]
   financeCouponRedemptions    FinanceCouponRedemption[]
   financeSupplierPayouts      FinanceSupplierPayout[]
   financeCart                 FinanceCart?                         @relation("FinanceCart_user")
   financeDonations            FinanceDonation[]                    @relation("FinanceDonation_user")
+  userPermissions             UserPermission[]
+  notificationsCreated        Notification[]                       @relation("NotificationCreatedBy")
+  userNotifications           UserNotification[]
+  cityRef                     City?                                @relation(fields: [cityId], references: [id])
 
   @@index([status])
   @@index([createdAt], map: "users_created_at_idx")
@@ -147,6 +161,84 @@ model UserRole {
 
   @@unique([userId, roleId])
   @@map("user_roles")
+  @@schema("core")
+}
+
+model City {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(255)
+  province  String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  users     User[]
+
+  @@index([name])
+  @@map("cities")
+  @@schema("core")
+}
+
+model Permission {
+  id             String           @id @default(uuid()) @db.Uuid
+  key            String           @unique @db.VarChar(255)
+  title          String           @db.VarChar(255)
+  group          String           @db.VarChar(255)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+  @@schema("core")
+}
+
+model UserPermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  userId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@map("user_permissions")
+  @@schema("core")
+}
+
+model Notification {
+  id          String             @id @default(uuid()) @db.Uuid
+  type        NotificationType
+  title       String             @db.VarChar(255)
+  body        String
+  actionUrl   String?            @db.VarChar(500)
+  entityType  String?            @db.VarChar(50)
+  entitySlug  String?            @db.VarChar(255)
+  entityId    String?            @db.VarChar(255)
+  href        String?            @db.VarChar(500)
+  data        Json?
+  createdAt   DateTime           @default(now()) @db.Timestamptz(6)
+  createdById String?            @db.Uuid
+  createdBy   User?              @relation("NotificationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  users       UserNotification[]
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
+  @@schema("core")
+}
+
+model UserNotification {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @db.Uuid
+  notificationId String              @db.Uuid
+  status         NotificationStatus  @default(UNREAD)
+  readAt         DateTime?           @db.Timestamptz(6)
+  deletedAt      DateTime?           @db.Timestamptz(6)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
+  deliveredAt    DateTime?           @db.Timestamptz(6)
+  dedupeKey      String?             @db.VarChar(200)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification   Notification        @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, status, createdAt], map: "user_notifications_user_status_created_idx")
+  @@index([userId, createdAt], map: "user_notifications_user_created_idx")
+  @@map("user_notifications")
   @@schema("core")
 }
 
@@ -276,6 +368,7 @@ model Product {
   pricingType                PricingType
   price                      Decimal?                    @db.Decimal(12, 2)
   status                     ProductStatus               @default(DRAFT)
+  pinnedAt                   DateTime?                   @db.Timestamptz(6)
   publishedAt                DateTime?                   @db.Timestamptz(6)
   viewsCount                 Int                         @default(0)
   downloadsCount             Int                         @default(0)
@@ -299,12 +392,17 @@ model Product {
   financeOrderItems          FinanceOrderItem[]          @relation("FinanceOrderItem_product")
   financeEntitlements        FinanceEntitlement[]        @relation("FinanceEntitlement_product")
   financeDownloadLogs        FinanceDownloadLog[]        @relation("FinanceDownloadLog_product")
+  subscriptionDownloadLogs  SubscriptionDownloadLog[]
   financeOrderRevenueSplits  FinanceOrderRevenueSplit[]  @relation("FinanceOrderRevenueSplit_product")
   financeProductDiscounts    FinanceProductDiscount[]
   financeCartItems           FinanceCartItem[]           @relation("FinanceCartItem_product")
 
   @@index([status, pricingType], map: "products_status_pricing_idx")
+  @@index([pinnedAt, createdAt], map: "products_pinned_at_created_at_idx")
   @@index([createdAt], map: "products_created_at_idx")
+  @@index([updatedAt], map: "products_updated_at_idx")
+  @@index([price], map: "products_price_idx")
+  @@index([title], map: "products_title_idx")
   @@map("products")
   @@schema("catalog")
 }
@@ -345,6 +443,7 @@ model Category {
   slug         String            @unique @db.VarChar(200)
   parentId     BigInt?           @map("parent_id")
   coverUrl     String?           @db.VarChar(255)
+  sortOrder    Int               @default(0) @map("sort_order")
   parent       Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children     Category[]        @relation("CategoryHierarchy")
   productLinks ProductCategory[]
@@ -530,8 +629,14 @@ model BlogPost {
   previewCoverUrl String?           @map("preview_cover_url") @db.VarChar(1024)
   isFeatured      Boolean           @default(false) @map("is_featured")
   isPinned        Boolean           @default(false) @map("is_pinned")
+  pinnedAt        DateTime?         @map("pinned_at") @db.Timestamptz(6)
+  pinnedByAdminId String?           @map("pinned_by_admin_id") @db.Uuid
   viewCount       Int               @default(0) @map("view_count")
   status          PublicationStatus @default(DRAFT)
+  reviewedByAdminId String?         @map("reviewed_by_admin_id") @db.Uuid
+  reviewedAt      DateTime?         @map("reviewed_at") @db.Timestamptz(6)
+  rejectReason    String?           @map("reject_reason") @db.VarChar(500)
+  archivedAt      DateTime?         @map("archived_at") @db.Timestamptz(6)
   publishedAt     DateTime?         @map("published_at") @db.Timestamptz(6)
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -544,7 +649,10 @@ model BlogPost {
   sections        BlogPostSection[]
 
   @@index([status, publishedAt], map: "blog_posts_status_pub_idx")
+  @@index([status], map: "blog_posts_status_idx")
   @@index([categoryId], map: "blog_posts_category_idx")
+  @@index([authorId], map: "blog_posts_author_idx")
+  @@index([createdAt], map: "blog_posts_created_at_idx")
   @@map("blog_posts")
   @@schema("catalog")
 }
@@ -621,8 +729,14 @@ model NewsletterIssue {
   fileUrl       String?             @map("file_url") @db.VarChar(1024)
   isFeatured    Boolean             @default(false) @map("is_featured")
   isPinned      Boolean             @default(false) @map("is_pinned")
+  pinnedAt      DateTime?           @map("pinned_at") @db.Timestamptz(6)
+  pinnedByAdminId String?           @map("pinned_by_admin_id") @db.Uuid
   viewCount     Int                 @default(0) @map("view_count")
   status        PublicationStatus   @default(DRAFT)
+  reviewedByAdminId String?         @map("reviewed_by_admin_id") @db.Uuid
+  reviewedAt    DateTime?           @map("reviewed_at") @db.Timestamptz(6)
+  rejectReason  String?             @map("reject_reason") @db.VarChar(500)
+  archivedAt    DateTime?           @map("archived_at") @db.Timestamptz(6)
   publishedAt   DateTime?           @map("published_at") @db.Timestamptz(6)
   createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -635,7 +749,10 @@ model NewsletterIssue {
   sections      NewsletterSection[]
 
   @@index([status, publishedAt], map: "newsletter_issue_status_pub_idx")
+  @@index([status], map: "newsletter_issues_status_idx")
   @@index([categoryId], map: "newsletter_issue_category_idx")
+  @@index([authorId], map: "newsletter_issues_author_idx")
+  @@index([createdAt], map: "newsletter_issues_created_at_idx")
   @@map("newsletter_issues")
   @@schema("catalog")
 }
@@ -791,6 +908,35 @@ enum SessionRevokeReason {
   @@schema("core")
 }
 
+enum NotificationType {
+  ADMIN_BROADCAST
+  FOLLOWED_YOU
+  PURCHASED_YOUR_PRODUCT
+  WALLET_CREDITED
+  NEW_PRODUCT_FROM_FOLLOWED
+
+  @@map("notification_type_enum")
+  @@schema("core")
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+
+  @@map("notification_status_enum")
+  @@schema("core")
+}
+
+enum NotificationTargetGroup {
+  ALL_USERS
+  SUPPLIERS_ONLY
+  USERS_ONLY
+
+  @@map("notification_target_group_enum")
+  @@schema("core")
+}
+
 enum AuditAction {
   OTP_REQUEST
   OTP_VERIFY_SUCCESS
@@ -829,6 +975,9 @@ enum ProductStatus {
 
 enum PublicationStatus {
   DRAFT
+  PENDING
+  APPROVED
+  REJECTED
   PUBLISHED
   ARCHIVED
 
@@ -1172,6 +1321,7 @@ model FinanceOrder {
   items                      FinanceOrderItem[]         @relation("FinanceOrder_items")
   payments                   FinancePayment[]           @relation("FinanceOrder_payments")
   revenueSplits              FinanceOrderRevenueSplit[] @relation("FinanceOrder_revenue_splits")
+  subscriptionDiscountUsage SubscriptionDiscountUsage?
   couponRedemptions          FinanceCouponRedemption[]
   user                       User                       @relation("FinanceOrder_user", fields: [userId], references: [id])
 
@@ -1453,6 +1603,131 @@ model FinanceSubscriptionPurchase {
   @@index([planId], map: "subscription_purchases_plan_id_idx")
   @@index([paymentId], map: "subscription_purchases_payment_id_idx")
   @@map("subscription_purchases")
+  @@schema("finance")
+}
+
+model SubscriptionPlan {
+  id                                         String   @id @default(uuid()) @db.Uuid
+  title                                      String   @db.VarChar(255)
+  price                                      Int
+  durationDays                               Int      @map("duration_days")
+  dailySubscriptionDownloadLimit             Int      @map("daily_subscription_download_limit")
+  dailyFreeDownloadLimitWithSubscription     Int      @map("daily_free_download_limit_with_subscription")
+  description                                String?  @db.VarChar(2000)
+  isActive                                   Boolean  @default(true) @map("is_active")
+  discountPercent                            Int?     @map("discount_percent")
+  discountQuota                              Int?     @map("discount_quota")
+  createdAt                                  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subscriptions                              Subscription[]
+  settlements                                SubscriptionSettlement[]
+
+  @@index([isActive])
+  @@map("subscription_plans_v2")
+  @@schema("finance")
+}
+
+model Subscription {
+  id                                     String                   @id @default(uuid()) @db.Uuid
+  userId                                 String                   @map("user_id") @db.Uuid
+  planId                                 String                   @map("plan_id") @db.Uuid
+  planTitle                              String                   @map("plan_title") @db.VarChar(255)
+  price                                  Int
+  durationDays                           Int                      @map("duration_days")
+  dailySubscriptionDownloadLimit         Int                      @map("daily_subscription_download_limit")
+  dailyFreeDownloadLimitWithSubscription Int                      @map("daily_free_download_limit_with_subscription")
+  discountPercent                        Int?                     @map("discount_percent")
+  discountRemaining                      Int                      @map("discount_remaining")
+  startAt                                DateTime                 @map("start_at") @db.Timestamptz(6)
+  endAt                                  DateTime                 @map("end_at") @db.Timestamptz(6)
+  status                                 FinanceSubscriptionStatus
+  createdAt                              DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                              DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  plan                                   SubscriptionPlan         @relation(fields: [planId], references: [id])
+  user                                   User                     @relation(fields: [userId], references: [id])
+  downloadLogs                           SubscriptionDownloadLog[]
+  discountUsages                         SubscriptionDiscountUsage[]
+  settlement                             SubscriptionSettlement?
+
+  @@index([userId, status])
+  @@index([endAt, status])
+  @@map("user_subscriptions_v2")
+  @@schema("finance")
+}
+
+model SubscriptionDownloadLog {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  productId      BigInt        @map("product_id")
+  supplierId     String        @map("supplier_id") @db.Uuid
+  downloadType   String        @map("download_type") @db.VarChar(20)
+  subscriptionId String?       @map("subscription_id") @db.Uuid
+  dateKey        String        @map("date_key") @db.VarChar(10)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  user           User          @relation(fields: [userId], references: [id])
+  supplier       User          @relation("SubscriptionDownloadLog_supplier", fields: [supplierId], references: [id])
+  product        Product       @relation(fields: [productId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([userId, dateKey, downloadType])
+  @@index([subscriptionId, createdAt])
+  @@index([supplierId, createdAt])
+  @@map("subscription_download_logs")
+  @@schema("finance")
+}
+
+model SubscriptionDiscountUsage {
+  id              String       @id @default(uuid()) @db.Uuid
+  subscriptionId  String       @map("subscription_id") @db.Uuid
+  orderId         String       @map("order_id") @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  discountPercent Int          @map("discount_percent")
+  discountAmount  Int          @map("discount_amount")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  consumedAt      DateTime?    @map("consumed_at") @db.Timestamptz(6)
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  order           FinanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@unique([orderId])
+  @@index([subscriptionId])
+  @@map("subscription_discount_usages")
+  @@schema("finance")
+}
+
+model SubscriptionSettlement {
+  id             String                           @id @default(uuid()) @db.Uuid
+  subscriptionId String                           @unique @map("subscription_id") @db.Uuid
+  userId         String                           @map("user_id") @db.Uuid
+  planId         String                           @map("plan_id") @db.Uuid
+  price          Int
+  totalDownloads Int                              @map("total_downloads")
+  platformAmount Int                              @map("platform_amount")
+  supplierAmount Int                              @map("supplier_amount")
+  createdAt      DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  subscription   Subscription                     @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  plan           SubscriptionPlan                 @relation(fields: [planId], references: [id])
+  user           User                             @relation(fields: [userId], references: [id])
+  suppliers      SubscriptionSettlementSupplier[]
+
+  @@index([userId, createdAt])
+  @@map("subscription_settlements")
+  @@schema("finance")
+}
+
+model SubscriptionSettlementSupplier {
+  id            String                  @id @default(uuid()) @db.Uuid
+  settlementId  String                  @map("settlement_id") @db.Uuid
+  supplierId    String                  @map("supplier_id") @db.Uuid
+  downloadCount Int                     @map("download_count")
+  amount        Int
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  settlement    SubscriptionSettlement  @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  supplier      User                    @relation(fields: [supplierId], references: [id])
+
+  @@unique([settlementId, supplierId])
+  @@index([supplierId])
+  @@map("subscription_settlement_suppliers")
   @@schema("finance")
 }
 

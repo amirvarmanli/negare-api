@@ -11,6 +11,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,16 +20,21 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { CreateRoleDto } from '@app/core/roles/dto/create-role.dto';
 import { FindRolesQueryDto } from '@app/core/roles/dto/find-roles-query.dto';
 import { RoleNameParamDto } from '@app/core/roles/dto/role-name-param.dto';
 import { UpdateRoleDto } from '@app/core/roles/dto/update-role.dto';
 import { RolesService } from '@app/core/roles/roles.service';
 import { RoleName } from '@prisma/client';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('Roles')
 @ApiBearerAuth('bearer')
 @Controller('core/roles')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('admin.users:manage')
 /**
  * Provides CRUD-style role management guarded by role-based access control.
  */

@@ -6,6 +6,7 @@ export class CategoryDto {
   @ApiProperty() slug!: string;
   @ApiPropertyOptional() parentId?: string | null;
   @ApiPropertyOptional() coverUrl?: string | null;
+  @ApiProperty() sortOrder!: number;
 }
 
 export class CategoryTreeNodeDto extends CategoryDto {

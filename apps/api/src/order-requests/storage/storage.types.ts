@@ -1,3 +1,5 @@
+/// <reference types="multer" />
+
 import { OrderFileKind } from '@prisma/client';
 
 export interface OrderRequestFileSaveArgs {

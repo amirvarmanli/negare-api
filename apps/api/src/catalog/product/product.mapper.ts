@@ -6,6 +6,7 @@ import {
   ProductCategoryDto,
   ProductDetailDto,
   ProductFileDto,
+  ProductListItemDto,
   ProductTagDto,
   ProductTopicDto,
 } from '@app/catalog/product/dtos/product-response.dto';
@@ -68,6 +69,50 @@ function toStringOrUndefined(v: unknown): string | undefined {
   return undefined;
 }
 
+function mapCategories(
+  p: ProductWithRelations,
+): ProductCategoryDto[] {
+  return (p.categoryLinks ?? []).map((pc: ProductCategoryLinkEntity) => ({
+    id: String(pc.category.id),
+    name: pc.category.name,
+    slug: pc.category.slug,
+    parentId: pc.category.parentId ? String(pc.category.parentId) : undefined,
+    coverUrl: pc.category.coverUrl ?? undefined,
+  }));
+}
+
+function mapTags(p: ProductWithRelations): ProductTagDto[] {
+  return (p.tagLinks ?? []).map((pt: ProductTagLinkEntity) => ({
+    id: String(pt.tag.id),
+    name: pt.tag.name,
+    slug: pt.tag.slug,
+  }));
+}
+
+function mapTopics(p: ProductWithRelations): ProductTopicDto[] {
+  return (p.topics ?? []).map((link: ProductTopicLinkEntity) => {
+    const topicId = String(link.topicId);
+    return {
+      topicId,
+      id: topicId,
+      name: link.topic.name,
+      slug: link.topic.slug,
+      coverUrl: link.topic.coverUrl ?? undefined,
+      order: link.order,
+    };
+  });
+}
+
+function stripOwnerFields(brief: ProductBriefDto): ProductBriefDto {
+  return {
+    ...brief,
+    creatorId: null,
+    creatorName: 'بدون نام',
+    creatorUsername: null,
+    creatorAvatarUrl: null,
+  };
+}
+
 export class ProductMapper {
   /** تبدیل مدل کامل به خروجی خلاصه برای لیست‌ها */
   static toBrief(p: ProductWithRelations): ProductBriefDto {
@@ -121,6 +166,21 @@ export class ProductMapper {
     };
   }
 
+  static toListItem(
+    p: ProductWithRelations,
+    options?: { includeOwner?: boolean; includeRelations?: boolean },
+  ): ProductListItemDto {
+    const includeOwner = options?.includeOwner !== false;
+    const includeRelations = options?.includeRelations !== false;
+    const brief = includeOwner ? this.toBrief(p) : stripOwnerFields(this.toBrief(p));
+    return {
+      ...brief,
+      categories: includeRelations ? mapCategories(p) : undefined,
+      tags: includeRelations ? mapTags(p) : undefined,
+      topics: includeRelations ? mapTopics(p) : undefined,
+    };
+  }
+
   /** تبدیل مدل کامل به خروجی جزئیات */
   static toDetail(p: ProductWithRelations): ProductDetailDto {
     const brief = this.toBrief(p);
@@ -132,23 +192,9 @@ export class ProductMapper {
       order: a.sortOrder,
     }));
 
-    const categories: ProductCategoryDto[] = (p.categoryLinks ?? []).map(
-      (pc: ProductCategoryLinkEntity) => ({
-        id: String(pc.category.id),
-        name: pc.category.name,
-        slug: pc.category.slug,
-        parentId: pc.category.parentId
-          ? String(pc.category.parentId)
-          : undefined,
-        coverUrl: pc.category.coverUrl ?? undefined,
-      }),
-    );
+    const categories = mapCategories(p);
 
-    const tags: ProductTagDto[] = (p.tagLinks ?? []).map((pt: ProductTagLinkEntity) => ({
-      id: String(pt.tag.id),
-      name: pt.tag.name,
-      slug: pt.tag.slug,
-    }));
+    const tags = mapTags(p);
 
     const authors: ProductAuthorDto[] = (p.supplierLinks ?? []).map(
       (ps: ProductSupplierLinkEntity) => ({
@@ -169,17 +215,7 @@ export class ProductMapper {
           }
         : undefined;
 
-    const topics: ProductTopicDto[] = (p.topics ?? []).map((link: ProductTopicLinkEntity) => {
-      const topicId = String(link.topicId);
-      return {
-        topicId,
-        id: topicId,
-        name: link.topic.name,
-        slug: link.topic.slug,
-        coverUrl: link.topic.coverUrl ?? undefined,
-        order: link.order,
-      };
-    });
+    const topics = mapTopics(p);
 
     const file: ProductFileDto | undefined = p.file
       ? {
@@ -201,6 +237,7 @@ export class ProductMapper {
     return {
       ...brief,
       description: p.description ?? undefined,
+      pinnedAt: p.pinnedAt ? p.pinnedAt.toISOString() : null,
       fileId: p.file?.fileUuid ?? undefined,
       assets,
       categories,

@@ -137,8 +137,19 @@ export class ProductBriefDto {
   @ApiPropertyOptional() updatedAt?: string;
 }
 
+export class ProductListItemDto extends ProductBriefDto {
+  @ApiPropertyOptional({ type: [ProductCategoryDto] })
+  categories?: ProductCategoryDto[];
+  @ApiPropertyOptional({ type: [ProductTagDto] })
+  tags?: ProductTagDto[];
+  @ApiPropertyOptional({ type: [ProductTopicDto] })
+  topics?: ProductTopicDto[];
+}
+
 export class ProductDetailDto extends ProductBriefDto {
   @ApiPropertyOptional() description?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  pinnedAt?: string | null;
   @ApiPropertyOptional({
     description: 'UUID of the uploaded file linked to this product',
   })
@@ -164,6 +175,14 @@ export class ProductListResultDto {
 
 export class ProductPaginatedResultDto {
   @ApiProperty({ type: [ProductBriefDto] }) items!: ProductBriefDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
+  @ApiProperty() hasNext!: boolean;
+}
+
+export class ProductManagementPaginatedResultDto {
+  @ApiProperty({ type: [ProductListItemDto] }) items!: ProductListItemDto[];
   @ApiProperty() total!: number;
   @ApiProperty() page!: number;
   @ApiProperty() limit!: number;

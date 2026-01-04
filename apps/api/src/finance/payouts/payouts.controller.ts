@@ -7,6 +7,8 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { RoleName } from '@prisma/client';
 import { PayoutsService } from '@app/finance/payouts/payouts.service';
 import {
@@ -19,8 +21,9 @@ import {
 @ApiTags('Finance / Payouts')
 @ApiBearerAuth()
 @Controller('admin/payouts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Roles(RoleName.admin)
+@Permissions('admin.finance:manage')
 export class PayoutsController {
   constructor(private readonly payoutsService: PayoutsService) {}
 

@@ -11,6 +11,7 @@ import {
   ProductStatus,
   RoleName,
   UserStatus,
+  NotificationType,
 } from '@prisma/client';
 
 import { PrismaService } from '@app/prisma/prisma.service';
@@ -38,6 +39,7 @@ import {
 import { ProductListResultDto } from '@app/catalog/product/dtos/product-response.dto';
 import { ProductService } from '@app/catalog/product/product.service';
 import { FollowedArtistsListDto } from '@app/catalog/artist/dtos/artist-following.dto';
+import { NotificationsService } from '@app/notifications/notifications.service';
 import {
   ArtistListQueryDto,
   type ArtistSortMode,
@@ -83,6 +85,7 @@ export class ArtistService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly productService: ProductService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────
@@ -287,7 +290,17 @@ export class ArtistService {
             status: { in: PUBLIC_PRODUCT_STATUSES },
             supplierLinks: { some: { userId: artist.id } },
           },
+          // IMPORTANT:
+          // pinnedAt is a bump ACTION.
+          // It must ALWAYS be sorted DESC with NULLS LAST,
+          // otherwise bumped products will fall to the bottom.
           orderBy: [
+            {
+              pinnedAt: {
+                sort: 'desc',
+                nulls: 'last',
+              },
+            },
             { downloadsCount: 'desc' },
             { likesCount: 'desc' },
             { createdAt: 'desc' },
@@ -446,13 +459,28 @@ export class ArtistService {
     this.ensureNotSelfFollow(artistId, followerId);
     await this.ensureArtistUser(artistId);
 
-    await this.prisma.artistFollow.upsert({
-      where: { followerId_artistId: { followerId, artistId } },
-      create: { artistId, followerId },
-      update: {},
-    });
+    let created = false;
+    try {
+      await this.prisma.artistFollow.create({
+        data: { artistId, followerId },
+      });
+      created = true;
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        created = false;
+      } else {
+        throw error;
+      }
+    }
 
     const followersCount = await this.countFollowers(artistId);
+
+    if (created) {
+      await this.notifyFollowed(artistId, followerId);
+    }
 
     return { followed: true, followersCount };
   }
@@ -471,6 +499,54 @@ export class ArtistService {
     const followersCount = await this.countFollowers(artistId);
 
     return { followed: false, followersCount };
+  }
+
+  private async notifyFollowed(
+    artistId: string,
+    followerId: string,
+  ): Promise<void> {
+    const follower = await this.prisma.user.findUnique({
+      where: { id: followerId },
+      select: { name: true, firstName: true, lastName: true, username: true, avatarUrl: true },
+    });
+    const combinedName = `${follower?.firstName ?? ''} ${follower?.lastName ?? ''}`.trim();
+    const actorName =
+      follower?.name?.trim() ||
+      combinedName ||
+      follower?.username ||
+      'کاربر';
+    const actor = {
+      id: followerId,
+      fullName: actorName,
+      username: follower?.username ?? null,
+      avatarUrl: follower?.avatarUrl ?? null,
+    };
+    const data = {
+      actorId: followerId,
+      actorName,
+      actorUsername: follower?.username ?? null,
+      actorAvatarUrl: follower?.avatarUrl ?? null,
+      actor,
+    };
+    const actionUrl = this.notificationsService.buildActionUrl(
+      NotificationType.FOLLOWED_YOU,
+      data,
+    );
+    const notificationId = await this.notificationsService.createNotification({
+      type: NotificationType.FOLLOWED_YOU,
+      title: 'New notification',
+      body: 'You have a new notification.',
+      actionUrl,
+      entityType: 'USER',
+      entityId: followerId,
+      entitySlug: follower?.username ?? null,
+      data,
+    });
+    await this.notificationsService.enqueueToUser(
+      notificationId,
+      artistId,
+      `follow:${followerId}->${artistId}`,
+    );
   }
 
   // ───────────────────────────────────────────────────────────────

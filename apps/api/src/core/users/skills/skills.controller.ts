@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,8 +29,11 @@ import {
   CurrentUserPayload,
 } from '@app/common/decorators/current-user.decorator';
 import { Roles } from '@app/common/decorators/roles.decorator';
+import { Permissions } from '@app/common/decorators/permissions.decorator';
+import { PermissionsGuard } from '@app/common/guards/permissions.guard';
 import { Public } from '@app/common/decorators/public.decorator';
 import { RoleName } from '@prisma/client';
+import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('Skills')
 @Controller('users/skills')
@@ -42,7 +46,9 @@ export class SkillsController {
 
   @Post()
   @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({ summary: '[Admin] ایجاد مهارت جدید' })
   @ApiResponse({ status: 201, type: SkillDto })
   create(@Body() dto: SkillCreateDto): Promise<SkillDto> {
@@ -51,7 +57,9 @@ export class SkillsController {
 
   @Patch(':id')
   @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({ summary: '[Admin] ویرایش مهارت' })
   @ApiResponse({ status: 200, type: SkillDto })
   update(
@@ -63,7 +71,9 @@ export class SkillsController {
 
   @Delete(':id')
   @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({ summary: '[Admin] حذف مهارت' })
   @ApiResponse({ status: 204 })
   async remove(@Param('id') id: string): Promise<void> {
@@ -72,7 +82,9 @@ export class SkillsController {
 
   @Get()
   @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({ summary: '[Admin] لیست همه مهارت‌ها (با فیلتر)' })
   @ApiResponse({ status: 200, type: SkillListResultDto })
   findAll(@Query() query: SkillQueryDto): Promise<SkillListResultDto> {
@@ -164,7 +176,9 @@ export class SkillsController {
 
   @Patch('by-id/:userId')
   @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({ summary: '[Admin] تنظیم مهارت‌های کاربر بر اساس userId' })
   @ApiResponse({ status: 200, type: SkillListResultDto })
   updateUserSkillsById(
@@ -179,7 +193,9 @@ export class SkillsController {
 
   @Patch('by-username/:username')
   @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Roles(RoleName.admin)
+  @Permissions('admin.users:manage')
   @ApiOperation({ summary: '[Admin] تنظیم مهارت‌های کاربر بر اساس نام کاربری' })
   @ApiResponse({ status: 200, type: SkillListResultDto })
   updateUserSkillsByUsername(
