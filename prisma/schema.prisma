@@ -59,6 +59,7 @@ model User {
   financeEntitlements         FinanceEntitlement[]                 @relation("FinanceEntitlement_user")
   financeDownloadUsage        FinanceDownloadUsageDaily[]          @relation("FinanceDownloadUsageDaily_user")
   financeDownloadLogs         FinanceDownloadLog[]                 @relation("FinanceDownloadLog_user")
+  downloadEvents              DownloadEvent[]                      @relation("DownloadEvent_user")
   financeSubscriptions        FinanceUserSubscription[]            @relation("FinanceUserSubscription_user")
   financeSubscriptionPurchases FinanceSubscriptionPurchase[]
   subscriptionsV2             Subscription[]
@@ -69,7 +70,8 @@ model User {
   subscriptionSettlementSuppliers SubscriptionSettlementSupplier[]
   financeSubscriptionEarnings FinanceSubscriptionSupplierEarning[] @relation("FinanceSubscriptionSupplierEarning_supplier")
   financeUserDiscounts        FinanceUserDiscount[]
-  financeCouponRedemptions    FinanceCouponRedemption[]
+  discountCouponRedemptions  DiscountCouponRedemption[]
+  checkoutSessions            CheckoutSession[]
   financeSupplierPayouts      FinanceSupplierPayout[]
   financeCart                 FinanceCart?                         @relation("FinanceCart_user")
   financeDonations            FinanceDonation[]                    @relation("FinanceDonation_user")
@@ -309,7 +311,7 @@ model Skill {
   id          String      @id @default(uuid()) @db.Uuid
   createdAt   DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt   DateTime    @updatedAt @db.Timestamptz(6)
-  key         String      @unique @db.VarChar(64)
+  key         String      @unique @db.VarChar(191)
   nameFa      String      @db.VarChar(255)
   nameEn      String?     @db.VarChar(255)
   description String?     @db.VarChar(1000)
@@ -356,13 +358,13 @@ model Product {
   id                         BigInt                      @id @default(autoincrement())
   slug                       String                      @unique @db.VarChar(200)
   title                      String                      @db.VarChar(255)
-  description                String?                     @db.VarChar(1400)
+  description                String?                     @db.Text
   coverUrl                   String?                     @db.VarChar(255)
   graphicFormats             GraphicFormat[]             @default([])
   colors                     String[]                    @default([])
   shortLink                  String?                     @unique @db.VarChar(80)
   seoTitle                   String?                     @db.VarChar(250)
-  seoDescription             String?                     @db.VarChar(1400)
+  seoDescription             String?                     @db.Text
   seoKeywords                String[]                    @default([])
   searchTextNormalized       String?                     @map("search_text_normalized") @db.Text
   pricingType                PricingType
@@ -392,6 +394,7 @@ model Product {
   financeOrderItems          FinanceOrderItem[]          @relation("FinanceOrderItem_product")
   financeEntitlements        FinanceEntitlement[]        @relation("FinanceEntitlement_product")
   financeDownloadLogs        FinanceDownloadLog[]        @relation("FinanceDownloadLog_product")
+  downloadEvents             DownloadEvent[]             @relation("DownloadEvent_product")
   subscriptionDownloadLogs  SubscriptionDownloadLog[]
   financeOrderRevenueSplits  FinanceOrderRevenueSplit[]  @relation("FinanceOrderRevenueSplit_product")
   financeProductDiscounts    FinanceProductDiscount[]
@@ -910,10 +913,12 @@ enum SessionRevokeReason {
 
 enum NotificationType {
   ADMIN_BROADCAST
+  PLATFORM_DISCOUNT_APPLIED
   FOLLOWED_YOU
   PURCHASED_YOUR_PRODUCT
   WALLET_CREDITED
   NEW_PRODUCT_FROM_FOLLOWED
+  WALLET_TRANSACTION_RECORDED
 
   @@map("notification_type_enum")
   @@schema("core")
@@ -1053,6 +1058,14 @@ enum FinanceDiscountType {
   @@schema("finance")
 }
 
+enum CouponValueType {
+  PERCENT
+  AMOUNT
+
+  @@map("coupon_value_type_enum")
+  @@schema("finance")
+}
+
 enum FinanceDiscountValueType {
   FIXED
   PERCENT
@@ -1076,6 +1089,15 @@ enum FinancePaymentStatus {
   CANCELED
 
   @@map("finance_payment_status_enum")
+  @@schema("finance")
+}
+
+enum FinancePaymentFulfillmentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+
+  @@map("finance_payment_fulfillment_status_enum")
   @@schema("finance")
 }
 
@@ -1134,6 +1156,15 @@ enum PaymentStatus {
   @@schema("public")
 }
 
+enum OrderRequestPaymentFulfillmentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+
+  @@map("order_request_payment_fulfillment_status_enum")
+  @@schema("public")
+}
+
 enum OrderRequestPaymentPurpose {
   PHOTO_RESTORE
 
@@ -1152,9 +1183,12 @@ enum FinanceWalletTransactionType {
 enum FinanceWalletTransactionReason {
   TOPUP
   ORDER_PAYMENT
+  PLATFORM_DISCOUNT
   REFUND
   ADJUSTMENT
   WITHDRAWAL
+  DONATION
+  PHOTO_RESTORE
 
   @@map("finance_wallet_transaction_reason_enum")
   @@schema("finance")
@@ -1306,11 +1340,17 @@ model FinanceCartItem {
 model FinanceOrder {
   id                         String                     @id @default(uuid()) @db.Uuid
   userId                     String                     @map("user_id") @db.Uuid
+  requestId                  String?                    @map("request_id") @db.VarChar(255)
   status                     FinanceOrderStatus
   orderKind                  FinanceOrderKind           @map("order_kind")
   subtotal                   Int
   discountType               FinanceDiscountType        @map("discount_type")
   discountValue              Int                        @map("discount_value")
+  discountAmount             Int                        @map("discount_amount")
+  discountSource             String                     @map("discount_source") @db.VarChar(32)
+  couponCode                 String?                    @map("coupon_code") @db.VarChar(64)
+  discountReason             String?                    @map("discount_reason") @db.Text
+  discountMetadata           Json?                      @map("discount_metadata") @db.JsonB
   total                      Int
   currency                   String                     @db.VarChar(8)
   subscriptionPlanId         String?                    @map("subscription_plan_id") @db.Uuid
@@ -1322,11 +1362,30 @@ model FinanceOrder {
   payments                   FinancePayment[]           @relation("FinanceOrder_payments")
   revenueSplits              FinanceOrderRevenueSplit[] @relation("FinanceOrder_revenue_splits")
   subscriptionDiscountUsage SubscriptionDiscountUsage?
-  couponRedemptions          FinanceCouponRedemption[]
+  discountCouponRedemptions DiscountCouponRedemption[]
+  checkoutSessions          CheckoutSession[]
   user                       User                       @relation("FinanceOrder_user", fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@map("orders")
+  @@schema("finance")
+}
+
+model CheckoutSession {
+  id         String     @id @default(uuid()) @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  requestId  String     @map("request_id") @db.VarChar(255)
+  orderId    String     @map("order_id") @db.Uuid
+  paymentId  String     @map("payment_id") @db.Uuid
+  response   Json       @db.JsonB
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order      FinanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  payment    FinancePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, requestId])
+  @@map("checkout_sessions")
   @@schema("finance")
 }
 
@@ -1364,38 +1423,42 @@ model FinanceUserDiscount {
   @@schema("finance")
 }
 
-model FinanceCoupon {
-  id              String                    @id @default(uuid()) @db.Uuid
-  code            String                    @unique @db.VarChar(64)
-  type            FinanceDiscountValueType
-  value           Int
-  maxUsage        Int?                      @map("max_usage")
-  maxUsagePerUser Int?                      @map("max_usage_per_user")
-  expiresAt       DateTime?                 @map("expires_at") @db.Timestamptz(6)
-  isActive        Boolean                   @default(true) @map("is_active")
-  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  redemptions     FinanceCouponRedemption[]
+model DiscountCoupon {
+  id         String               @id @default(uuid()) @db.Uuid
+  title      String               @db.VarChar(255)
+  code       String               @unique @db.VarChar(64)
+  valueType  CouponValueType      @map("value_type")
+  value      Int
+  maxUsage   Int?                 @map("max_usage")
+  usedCount  Int                  @default(0) @map("used_count")
+  note       String?
+  isActive   Boolean              @default(true) @map("is_active")
+  expiresAt  DateTime?            @map("expires_at")
+  deletedAt  DateTime?            @map("deleted_at")
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+  redemptions DiscountCouponRedemption[]
 
   @@index([code, isActive])
-  @@map("coupons")
+  @@map("discount_coupons")
   @@schema("finance")
 }
 
-model FinanceCouponRedemption {
+model DiscountCouponRedemption {
   id        String        @id @default(uuid()) @db.Uuid
   couponId  String        @map("coupon_id") @db.Uuid
   userId    String        @map("user_id") @db.Uuid
-  orderId   String        @map("order_id") @db.Uuid
-  amount    Int
-  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  coupon    FinanceCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  order     FinanceOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  user      User          @relation(fields: [userId], references: [id])
+  orderId   String?       @map("order_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at")
 
-  @@unique([couponId, orderId])
-  @@index([couponId, userId])
-  @@map("coupon_redemptions")
+  coupon    DiscountCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id])
+  order     FinanceOrder?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, userId, orderId])
+  @@index([couponId])
+  @@index([userId])
+  @@map("discount_coupon_redemptions")
   @@schema("finance")
 }
 
@@ -1426,6 +1489,8 @@ model FinancePayment {
   referenceId   String?             @map("reference_id") @db.VarChar(128)
   provider   FinancePaymentProvider
   status     FinancePaymentStatus
+  fulfillmentStatus FinancePaymentFulfillmentStatus @default(PENDING) @map("fulfillment_status")
+  fulfillmentError String?          @map("fulfillment_error") @db.VarChar(1000)
   amount     Int
   currency   String                 @db.VarChar(8)
   trackId    String?                @unique @map("track_id") @db.VarChar(128)
@@ -1436,14 +1501,17 @@ model FinancePayment {
   updatedAt  DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
   verifiedAt DateTime?              @map("verified_at") @db.Timestamptz(6)
   paidAt     DateTime?              @map("paid_at") @db.Timestamptz(6)
+  fulfilledAt DateTime?             @map("fulfilled_at") @db.Timestamptz(6)
   meta       Json?
   order      FinanceOrder?          @relation("FinanceOrder_payments", fields: [orderId], references: [id])
   subscriptionPurchases FinanceSubscriptionPurchase[]
   user       User                   @relation("FinancePayment_user", fields: [userId], references: [id])
+  checkoutSessions CheckoutSession[]
 
   @@index([userId, createdAt])
   @@index([orderId], map: "payments_order_id_idx")
   @@index([status], map: "payments_status_idx")
+  @@index([status, fulfillmentStatus], map: "payments_status_fulfillment_idx")
   @@index([referenceType, referenceId], map: "payments_reference_idx")
   @@map("payments")
   @@schema("finance")
@@ -1538,6 +1606,25 @@ model FinanceDownloadLog {
   @@schema("finance")
 }
 
+model DownloadEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  productId  BigInt   @map("product_id")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  isFree     Boolean  @map("is_free")
+  ip         String?  @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(255)
+  requestId  String?  @map("request_id") @db.VarChar(128)
+  user       User     @relation("DownloadEvent_user", fields: [userId], references: [id])
+  product    Product  @relation("DownloadEvent_product", fields: [productId], references: [id])
+
+  @@index([userId, occurredAt])
+  @@index([userId, isFree, occurredAt])
+  @@index([productId, occurredAt])
+  @@map("download_events")
+  @@schema("finance")
+}
+
 model FinanceSubscriptionPlan {
   id             String                      @id @default(uuid()) @db.Uuid
   code           FinanceSubscriptionPlanCode @unique
@@ -1585,22 +1672,25 @@ model FinanceUserSubscription {
 }
 
 model FinanceSubscriptionPurchase {
-  id             String                           @id @default(uuid()) @db.Uuid
-  userId         String                           @map("user_id") @db.Uuid
-  planId         String                           @map("plan_id") @db.Uuid
-  status         FinanceSubscriptionPurchaseStatus @default(PENDING)
-  amount         Int
-  currency       String                           @db.VarChar(8)
-  durationMonths Int                              @default(1) @map("duration_months")
-  createdAt      DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
-  paidAt         DateTime?                        @map("paid_at") @db.Timestamptz(6)
-  paymentId      String?                          @map("payment_id") @db.Uuid
-  user           User                             @relation(fields: [userId], references: [id])
-  plan           FinanceSubscriptionPlan          @relation(fields: [planId], references: [id])
-  payment        FinancePayment?                  @relation(fields: [paymentId], references: [id])
+  id                  String                           @id @default(uuid()) @db.Uuid
+  userId              String                           @map("user_id") @db.Uuid
+  planId              String?                          @map("plan_id") @db.Uuid
+  subscriptionPlanId  String?                          @map("subscription_plan_id") @db.Uuid
+  status              FinanceSubscriptionPurchaseStatus @default(PENDING)
+  amount              Int
+  currency            String                           @db.VarChar(8)
+  durationMonths      Int                              @default(1) @map("duration_months")
+  createdAt           DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  paidAt              DateTime?                        @map("paid_at") @db.Timestamptz(6)
+  paymentId           String?                          @map("payment_id") @db.Uuid
+  user                User                             @relation(fields: [userId], references: [id])
+  plan                FinanceSubscriptionPlan?         @relation(fields: [planId], references: [id])
+  subscriptionPlan    SubscriptionPlan?                @relation("SubscriptionPurchasePlan", fields: [subscriptionPlanId], references: [id])
+  payment             FinancePayment?                  @relation(fields: [paymentId], references: [id])
 
   @@index([userId, createdAt], map: "subscription_purchases_user_id_created_at_idx")
   @@index([planId], map: "subscription_purchases_plan_id_idx")
+  @@index([subscriptionPlanId], map: "subscription_purchases_subscription_plan_id_idx")
   @@index([paymentId], map: "subscription_purchases_payment_id_idx")
   @@map("subscription_purchases")
   @@schema("finance")
@@ -1621,6 +1711,7 @@ model SubscriptionPlan {
   updatedAt                                  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   subscriptions                              Subscription[]
   settlements                                SubscriptionSettlement[]
+  subscriptionPurchases                      FinanceSubscriptionPurchase[] @relation("SubscriptionPurchasePlan")
 
   @@index([isActive])
   @@map("subscription_plans_v2")
@@ -1838,6 +1929,8 @@ model Payment {
   purpose        OrderRequestPaymentPurpose @default(PHOTO_RESTORE)
   amountToman    Int           @map("amount_toman")
   status         PaymentStatus @default(PENDING)
+  fulfillmentStatus OrderRequestPaymentFulfillmentStatus @default(PENDING) @map("fulfillment_status")
+  fulfillmentError String?     @map("fulfillment_error") @db.VarChar(1000)
   trackId        String?       @unique @map("track_id") @db.VarChar(64)
   transactionId  String?       @map("transaction_id") @db.VarChar(128)
   redirectUrl    String?       @map("redirect_url") @db.VarChar(512)
@@ -1848,8 +1941,10 @@ model Payment {
   rawVerify      Json?         @map("raw_verify")
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  fulfilledAt    DateTime?     @map("fulfilled_at") @db.Timestamptz(6)
 
   @@index([trackId], map: "order_request_payments_track_idx")
+  @@index([status, fulfillmentStatus], map: "order_request_payments_fulfillment_idx")
   @@map("order_request_payments")
   @@schema("public")
 }

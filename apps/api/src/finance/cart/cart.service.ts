@@ -70,7 +70,11 @@ export interface CartSnapshot {
   discountType: FinanceDiscountType;
   discountValue: number;
   total: number;
+  discountPercent: number;
   couponId?: string;
+  discountSource: string;
+  couponCode?: string | null;
+  discountReason: string;
 }
 
 @Injectable()
@@ -212,7 +216,7 @@ export class CartService {
 
       const lineItems = this.buildLineItems(cart);
       const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-      const resolution = await this.discountsService.resolveDiscount(tx, {
+      const quote = await this.discountsService.calculateDiscountQuote(tx, {
         userId,
         orderKind: OrderKind.PRODUCT,
         items: lineItems.map((item) => ({
@@ -224,7 +228,7 @@ export class CartService {
         })),
         couponCode: couponCode?.trim() || undefined,
       });
-      const total = Math.max(0, subtotal - resolution.discountValue);
+      const total = Math.max(0, subtotal - quote.discountValue);
 
       await this.ensureNotPurchasedForItems(
         tx,
@@ -250,8 +254,12 @@ export class CartService {
           status: OrderStatus.PENDING_PAYMENT as FinanceOrderStatus,
           orderKind: OrderKind.PRODUCT as FinanceOrderKind,
           subtotal,
-          discountType: resolution.discountType as FinanceDiscountType,
-          discountValue: resolution.discountValue,
+          discountType: quote.discountType as FinanceDiscountType,
+          discountValue: quote.discountValue,
+          discountAmount: quote.discountValue,
+          discountSource: quote.appliedDiscountSource,
+          couponCode: quote.appliedDiscountCode ?? null,
+          discountReason: quote.appliedDiscountReason,
           total,
           currency: 'TOMAN',
           subscriptionPlanId: null,
@@ -262,22 +270,6 @@ export class CartService {
           ),
         },
       });
-
-      if (
-        resolution.source === 'SUBSCRIPTION' &&
-        resolution.subscriptionId &&
-        resolution.subscriptionPercent
-      ) {
-        await tx.subscriptionDiscountUsage.create({
-          data: {
-            subscriptionId: resolution.subscriptionId,
-            orderId: order.id,
-            userId,
-            discountPercent: resolution.subscriptionPercent,
-            discountAmount: resolution.discountValue,
-          },
-        });
-      }
 
       const itemsData = lineItems.map((item) => ({
         orderId: order.id,
@@ -290,14 +282,11 @@ export class CartService {
 
       await tx.financeOrderItem.createMany({ data: itemsData });
 
-      if (resolution.couponId && resolution.discountValue > 0) {
-        await tx.financeCouponRedemption.create({
-          data: {
-            couponId: resolution.couponId,
-            userId,
-            orderId: order.id,
-            amount: resolution.discountValue,
-          },
+      if (quote.couponId && quote.discountValue > 0) {
+        await this.discountsService.commitCouponRedemption(tx, {
+          couponId: quote.couponId,
+          userId,
+          orderId: order.id,
         });
       }
 
@@ -457,7 +446,7 @@ export class CartService {
 
     const lineItems = this.buildLineItems(cart);
     const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const resolution = await this.discountsService.resolveDiscount(
+    const quote = await this.discountsService.calculateDiscountQuote(
       this.prisma,
       {
         userId,
@@ -477,8 +466,8 @@ export class CartService {
       items: lineItems,
       totals: {
         subtotal,
-        discount: resolution.discountValue,
-        total: Math.max(0, subtotal - resolution.discountValue),
+        discount: quote.discountValue,
+        total: Math.max(0, subtotal - quote.discountValue),
       },
     };
   }
@@ -495,7 +484,7 @@ export class CartService {
 
     const lineItems = this.buildLineItems(cart);
     const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const resolution = await this.discountsService.resolveDiscount(tx, {
+    const quote = await this.discountsService.calculateDiscountQuote(tx, {
       userId,
       orderKind: OrderKind.PRODUCT,
       items: lineItems.map((item) => ({
@@ -512,10 +501,14 @@ export class CartService {
       cart,
       lineItems,
       subtotal,
-      discountType: resolution.discountType as FinanceDiscountType,
-      discountValue: resolution.discountValue,
-      total: Math.max(0, subtotal - resolution.discountValue),
-      couponId: resolution.couponId,
+      discountType: quote.discountType as FinanceDiscountType,
+      discountValue: quote.discountValue,
+      total: Math.max(0, subtotal - quote.discountValue),
+      discountPercent: quote.appliedDiscountPercent,
+      couponId: quote.couponId,
+      discountSource: quote.appliedDiscountSource,
+      couponCode: quote.appliedDiscountCode ?? null,
+      discountReason: quote.appliedDiscountReason,
     };
   }
 }

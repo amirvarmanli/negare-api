@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 import {
-  WalletTransactionReason,
   WalletTransactionStatus,
   WalletTransactionType,
 } from '@app/finance/common/finance.enums';
@@ -29,9 +28,6 @@ export class WalletTransactionItemDto {
   @ApiProperty({ enum: WalletTransactionType })
   type!: WalletTransactionType;
 
-  @ApiProperty({ enum: WalletTransactionReason })
-  reason!: WalletTransactionReason;
-
   @ApiProperty({ enum: WalletTransactionStatus })
   status!: WalletTransactionStatus;
 
@@ -46,6 +42,9 @@ export class WalletTransactionItemDto {
 
   @ApiProperty({ example: 'Wallet topup via Zibal', nullable: true })
   description!: string | null;
+
+  @ApiProperty({ example: 'شارژ کیف پول' })
+  displayReason!: string;
 
   @ApiProperty({ example: '2025-01-01T12:00:00.000Z' })
   createdAt!: string;

@@ -13,6 +13,7 @@ import { DonationsModule } from '@app/finance/donations/donations.module';
 import { OrderRequestsModule } from '@app/order-requests/order-requests.module';
 import { ProductsModule } from '@app/finance/products/products.module';
 import { NotificationsModule } from '@app/notifications/notifications.module';
+import { DiscountsModule } from '@app/finance/discounts/discounts.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from '@app/notifications/notifications.module';
     OrderRequestsModule,
     ProductsModule,
     NotificationsModule,
+    DiscountsModule,
   ],
   controllers: [PaymentsController],
   providers: [

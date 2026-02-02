@@ -7,4 +7,5 @@ export enum SubscriptionStatus {
 export enum SubscriptionDownloadType {
   FREE = 'FREE',
   SUBSCRIPTION = 'SUBSCRIPTION',
+  PURCHASED = 'PURCHASED',
 }

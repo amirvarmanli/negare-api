@@ -22,6 +22,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let message = 'Internal server error';
     let code = 'INTERNAL_SERVER_ERROR';
     let stack: string | undefined;
+    let meta: unknown;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -31,20 +32,47 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = res;
       } else if (res && typeof res === 'object') {
         const responseObject = res as Record<string, unknown>;
-        message =
-          (responseObject.message as string) ??
-          (Array.isArray(responseObject.message)
-            ? (responseObject.message.join(', ') as string)
-            : message);
-        code =
-          (responseObject['code'] as string) ??
-          (responseObject['error'] as string) ??
-          code;
+        const errorObj = responseObject.error;
+
+        if (errorObj && typeof errorObj === 'object') {
+          const errorRecord = errorObj as Record<string, unknown>;
+          if (typeof errorRecord.message === 'string') {
+            message = errorRecord.message;
+          }
+          if (typeof errorRecord.code === 'string') {
+            code = errorRecord.code;
+          }
+          if ('meta' in errorRecord) {
+            meta = errorRecord.meta;
+          }
+        }
+
+        if (Array.isArray(responseObject.message)) {
+          message = responseObject.message.join(', ');
+        } else if (typeof responseObject.message === 'string') {
+          message = responseObject.message;
+        }
+
+        if (typeof responseObject.code === 'string') {
+          code = responseObject.code;
+        } else if (typeof responseObject.error === 'string') {
+          code = responseObject.error;
+        }
+        if ('meta' in responseObject) {
+          meta = responseObject.meta;
+        }
       } else {
         message = exception.message;
       }
 
       stack = exception.stack;
+
+      if (code === 'INTERNAL_SERVER_ERROR') {
+        const statusCodeName = HttpStatus[status];
+        if (typeof statusCodeName === 'string') {
+          code = statusCodeName;
+        }
+      }
     } else if (exception instanceof Error) {
       message = exception.message;
       stack = exception.stack;
@@ -68,6 +96,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       error: {
         code,
         message,
+        ...(meta !== undefined ? { meta } : {}),
       },
       traceId,
     });

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { ProductsService } from '@app/finance/products/products.service';
+import { EntitlementsService } from '@app/finance/entitlements/entitlements.service';
 import { UserSubscriptionsService } from '@app/finance/subscription-system/user-subscriptions.service';
 import { StorageService } from '@app/catalog/storage/storage.service';
 import { ProductPricingType } from '@app/finance/common/finance.enums';
@@ -20,6 +21,7 @@ export class SubscriptionDownloadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly productsService: ProductsService,
+    private readonly entitlementsService: EntitlementsService,
     private readonly subscriptionsService: UserSubscriptionsService,
     private readonly storage: StorageService,
   ) {}
@@ -30,6 +32,13 @@ export class SubscriptionDownloadsService {
   ): Promise<SubscriptionDownloadDecisionDto> {
     const product = await this.productsService.findProductOrThrow(productId);
     const storageKey = await this.productsService.getProductStorageKey(productId);
+    const hasEntitlement = await this.entitlementsService.hasPurchased(
+      userId,
+      productId,
+    );
+    if (hasEntitlement) {
+      return this.buildPurchaseDecision(storageKey);
+    }
     const subscription = await this.subscriptionsService.getActiveSubscription(userId);
 
     if (product.pricingType === ProductPricingType.PAID) {
@@ -142,5 +151,18 @@ export class SubscriptionDownloadsService {
     }
 
     return supplierId;
+  }
+
+  private buildPurchaseDecision(
+    storageKey: string | null,
+  ): SubscriptionDownloadDecisionDto {
+    return {
+      allowed: true,
+      downloadType: SubscriptionDownloadType.PURCHASED,
+      reason: 'PURCHASED',
+      subscriptionId: null,
+      signedUrl: storageKey ? this.storage.getDownloadUrl(storageKey) : null,
+      storageKey,
+    };
   }
 }

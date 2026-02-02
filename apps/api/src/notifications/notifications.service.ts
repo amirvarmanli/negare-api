@@ -18,6 +18,7 @@ import type {
   DeliverToFollowersJob,
   DeliverToGroupJob,
   DeliverToUserJob,
+  DeliverToUserJobMetadata,
 } from '@app/notifications/notifications.jobs';
 import { NotificationsMapper } from '@app/notifications/notifications.mapper';
 import { buildPaginationMeta } from '@app/common/dto/pagination.dto';
@@ -261,8 +262,14 @@ export class NotificationsService {
     notificationId: string,
     userId: string,
     dedupeKey?: string | null,
+    metadata?: DeliverToUserJobMetadata | null,
   ): Promise<void> {
-    const payload: DeliverToUserJob = { notificationId, userId, dedupeKey };
+    const payload: DeliverToUserJob = {
+      notificationId,
+      userId,
+      dedupeKey,
+      metadata,
+    };
     await this.queue.add(NOTIFICATIONS_JOB_DELIVER_TO_USER, payload);
   }
 

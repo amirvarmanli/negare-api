@@ -13,6 +13,17 @@
   ```  
   or `npx prisma migrate deploy` in CI/CD. Regenerate the Prisma client (`npm run prisma:gen`) before compiling NestJS.
 - **Running locally**: ensure `DATABASE_URL` is set, then `npm run start:dev` (or `npm run start` after building). Swagger auto-docs show everything at `http://localhost:4000/api/docs`.
+
+## Finance subscriptions (v2)
+- Purchase flow uses `POST /subscriptions/purchase` with a `planId` from `GET /subscriptions/plans`
+  (backed by `finance.subscription_plans_v2`).
+- Production requires `finance.subscription_purchases.subscription_plan_id`; apply migration
+  `20260202000000_subscription_purchase_plan_fk_hotfix` via `npx prisma migrate deploy`.
+- After DB changes, regenerate Prisma (`npx prisma generate`).
+### How to run Prisma Studio
+- `npm run prisma:studio`
+- `npm run dev:studio` (binds Studio to port 5555)
+- URL: `http://localhost:5555`
 - **Key endpoints**:
   - Blog public: `GET /api/blog/posts`, `GET /api/blog/posts/:slug`, `GET /api/blog/posts/:slug/comments`, `GET /api/blog/categories`, `GET /api/blog/categories/all`
   - Blog admin: `POST|PATCH|DELETE /api/admin/blog/posts`, `POST /api/blog/posts/:id/comments`, `PATCH /api/admin/blog/comments/:id`, category CRUD under `/api/admin/blog/categories`, and pin management via `POST /api/admin/blog/posts/:id/pin`
@@ -88,6 +99,24 @@
 - Backfill existing slugs with `npm run backfill:fa-slugs`.
 - Postman collection `postman/negare-fa-slug.postman_collection.json` exercises CRUD + slug flows (with assertions for 200/201/301/404).
 - New e2e tests at `apps/api/test/catalog/slug.e2e-spec.ts` cover encoded Persian slugs and redirect semantics.
+
+## OTP Setup
+
+- **Endpoints**: `POST /api/auth/otp/request`, `POST /api/auth/otp/verify`, `POST /api/auth/otp/resend` (optional).
+- **Identifier formats**: SMS accepts `09xxxxxxxxx` or `+989xxxxxxxxx` and normalizes to E.164; email is lowercased.
+- **Purpose mapping**: `login`, `register`, `reset_password` are accepted and mapped internally to `login`, `signup`, `reset`.
+- **Provider env vars (SMS via Kavenegar)**:
+  - `KAVENEGAR_API_KEY` (required)
+  - `KAVENEGAR_TEMPLATE` (optional, defaults to `sendSMS`)
+- **Provider env vars (Email via SMTP)**:
+  - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (required)
+  - `MAIL_FROM` (optional, defaults to a local no-reply)
+- **OTP config**:
+  - `OTP_REQUEST_WINDOW`, `OTP_REQUEST_MAX`, `OTP_VERIFY_WINDOW`, `OTP_VERIFY_MAX`
+  - `OTP_DEV_MODE=true` logs OTP codes only when `NODE_ENV` is not `production`
+- **Errors**: provider misconfig returns `503 OTP_PROVIDER_NOT_CONFIGURED`; delivery errors return `502 OTP_DELIVERY_FAILED`; cooldown returns `429 OTP_COOLDOWN` with remaining seconds.
+- **Testing**: import `postman/negare-auth-otp.postman_collection.json`, set `{{baseUrl}}`, `{{identifier}}`, `{{channel}}`, `{{purpose}}`, and run request/verify/resend in order.
+- **Manual checklist**: request OTP (expect `ok: true`), hit cooldown (expect `429 OTP_COOLDOWN`), verify with wrong code (`400 OTP_INVALID_CODE`), verify after expiry (`410 OTP_EXPIRED`), and simulate provider failure (`502 OTP_DELIVERY_FAILED`).
 
 ## Hardened Auth & Token Platform
 
@@ -177,7 +206,12 @@ Core `.env` knobs (see `.env.example`):
 - The compose file loads environment variables from `.env.docker` by default; set `ENV_FILE=.env` if you want to reuse a custom `.env`.
 - The stack exposes `http://localhost:4000/${GLOBAL_PREFIX:-api}` (API) and `http://localhost:8080` (Adminer when you run `docker compose --profile tools up -d adminer`).
 - Use `docker compose down -v` to stop the stack and wipe the persisted Postgres data/temporary uploads.
-- The dev override (`docker-compose.override.yml`) mounts the repository, pins a dedicated `api-node-modules` volume for Windows hosts, and switches the command to `npm run start:dev`, so `docker compose up -d` already runs Nest in watch mode.
+- The dev override (`docker-compose.override.yml`) mounts the repository, pins a dedicated `api-node-modules` volume for Windows hosts, uses the Dockerfile `dev` stage (full deps), and switches the command to `npm run start:dev`, so `docker compose up -d` already runs Nest in watch mode.
+
+### Prisma Studio (Docker)
+- `docker compose up -d` now also launches `prisma-studio` on port 5555 using the same build/output assets as the API (dev-only).
+- Visit `http://localhost:5555` to open Studio while the stack runs.
+- Stop the Studio service separately via `docker compose stop prisma-studio` (or `docker compose down`) when you only need the API.
 
 ### Prisma, pgcrypto, and schemas
 
@@ -290,3 +324,9 @@ curl -s -X POST "${BASE_URL}/upload/abort?uploadId=${UPLOAD_ID}"
   - `auth:rbl:<jti>` – refresh blacklist managed by `TokenService`.
 
 Together these changes bring the NestJS API in line with Next.js 15 SSR + CSR expectations while maintaining secure, single-use refresh tokens.
+
+## Description Validation
+- The description payload stores rich-text HTML while the backend measures plain text after stripping tags, decoding entities like &nbsp;, and normalizing whitespace; only 1,400 visible characters are allowed.
+- Violations return DESCRIPTION_TOO_LONG with meta.max = 1400 and the stripped ctual length so the UI can relay the same detail.
+- Frontend counters should reproduce the same stripping/whitespace rules so the UI limit matches the API expectation.
+

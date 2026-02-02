@@ -1,22 +1,13 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import {
-  ApiBearerAuth,
-  ApiOkResponse,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
-import {
-  CurrentUser,
-  CurrentUserPayload,
-} from '@app/common/decorators/current-user.decorator';
+import { CurrentUser, CurrentUserPayload } from '@app/common/decorators/current-user.decorator';
 import { requireUserId } from '@app/catalog/utils/current-user.util';
 import { WalletService } from '@app/finance/wallet/wallet.service';
 import { PaymentsService } from '@app/finance/payments/payments.service';
 import {
   PaymentReferenceType,
-  WalletTransactionReason,
   WalletTransactionStatus,
   WalletTransactionType,
 } from '@app/finance/common/finance.enums';
@@ -32,18 +23,15 @@ import {
   WalletTransactionsQueryDto,
   WalletTransactionsResponseDto,
 } from '@app/finance/wallet/dto/wallet-transactions.dto';
-import {
-  WalletPayDto,
-  WalletPayResponseDto,
-} from '@app/finance/wallet/dto/wallet-pay.dto';
+import { WalletPayDto, WalletPayResponseDto } from '@app/finance/wallet/dto/wallet-pay.dto';
+import { walletReasonDisplay } from '@app/finance/wallet/wallet-reason.mapper';
+import type { FinanceWalletTransactionReason } from '@prisma/client';
 
 @ApiTags('Wallet')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('wallet')
 export class WalletController {
-  private readonly productSaleDescription = 'فروش محصول';
-
   constructor(
     private readonly walletService: WalletService,
     private readonly paymentsService: PaymentsService,
@@ -78,10 +66,10 @@ export class WalletController {
       items: result.items.map((transaction) => ({
         id: transaction.id,
         type: transaction.type as WalletTransactionType,
-        reason:
-          transaction.description === this.productSaleDescription
-            ? ('فروش محصول' as WalletTransactionReason)
-            : (transaction.reason as WalletTransactionReason),
+        displayReason: walletReasonDisplay(
+          transaction.reason as FinanceWalletTransactionReason,
+          transaction.description ?? null,
+        ),
         status: transaction.status as WalletTransactionStatus,
         amount: transaction.amount,
         balanceAfter: transaction.balanceAfter ?? null,

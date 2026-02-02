@@ -64,13 +64,14 @@ export class OtpRateLimitService {
     // per-identifier
     {
       const idKey = this.key('req', 'id', identifier, channel, purpose);
-      const { count } = await this.bump(idKey, win);
+      const { count, ttl } = await this.bump(idKey, win);
       if (count > maxId) {
         throw new HttpException(
           {
-            code: 'TooManyRequests',
+            code: 'OTP_RATE_LIMIT',
             message:
-              'تعداد درخواست‌های ارسال کد بیش از حد مجاز است. لطفاً بعداً دوباره تلاش کنید.',
+              `تعداد درخواست‌های ارسال کد بیش از حد مجاز است. لطفاً ${ttl}s بعداً دوباره تلاش کنید.`,
+            meta: { remainingSeconds: ttl },
           },
           HttpStatus.TOO_MANY_REQUESTS,
         );
@@ -80,13 +81,14 @@ export class OtpRateLimitService {
     // per-ip (اختیاری)
     if (ip) {
       const ipKey = this.key('req', 'ip', ip, channel, purpose);
-      const { count } = await this.bump(ipKey, win);
+      const { count, ttl } = await this.bump(ipKey, win);
       if (count > maxIp) {
         throw new HttpException(
           {
-            code: 'TooManyRequests',
+            code: 'OTP_RATE_LIMIT',
             message:
-              'تعداد درخواست‌های این IP بیش از حد مجاز است. لطفاً بعداً دوباره تلاش کنید.',
+              `تعداد درخواست‌های این IP بیش از حد مجاز است. لطفاً ${ttl}s بعداً دوباره تلاش کنید.`,
+            meta: { remainingSeconds: ttl },
           },
           HttpStatus.TOO_MANY_REQUESTS,
         );
@@ -112,13 +114,14 @@ export class OtpRateLimitService {
     // per-identifier
     {
       const idKey = this.key('ver', 'id', identifier, channel, purpose);
-      const { count } = await this.bump(idKey, win);
+      const { count, ttl } = await this.bump(idKey, win);
       if (count > maxId) {
         throw new HttpException(
           {
-            code: 'TooManyRequests',
+            code: 'OTP_RATE_LIMIT',
             message:
-              'تعداد تلاش‌های تأیید کد بیش از حد مجاز است. لطفاً بعداً دوباره تلاش کنید.',
+              `تعداد تلاش‌های تأیید کد بیش از حد مجاز است. لطفاً ${ttl}s بعداً دوباره تلاش کنید.`,
+            meta: { remainingSeconds: ttl },
           },
           HttpStatus.TOO_MANY_REQUESTS,
         );
@@ -128,13 +131,14 @@ export class OtpRateLimitService {
     // per-ip (اختیاری)
     if (ip) {
       const ipKey = this.key('ver', 'ip', ip, channel, purpose);
-      const { count } = await this.bump(ipKey, win);
+      const { count, ttl } = await this.bump(ipKey, win);
       if (count > maxIp) {
         throw new HttpException(
           {
-            code: 'TooManyRequests',
+            code: 'OTP_RATE_LIMIT',
             message:
-              'تعداد تلاش‌های تأیید کد از این IP بیش از حد مجاز است. لطفاً بعداً دوباره تلاش کنید.',
+              `تعداد تلاش‌های تأیید کد از این IP بیش از حد مجاز است. لطفاً ${ttl}s بعداً دوباره تلاش کنید.`,
+            meta: { remainingSeconds: ttl },
           },
           HttpStatus.TOO_MANY_REQUESTS,
         );

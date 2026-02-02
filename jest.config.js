@@ -27,6 +27,7 @@ const config = {
         '^@app/(.*)$': '<rootDir>/apps/api/src/$1',
         '^@test/(.*)$': '<rootDir>/apps/api/test/$1',
         '^@/(.*)$': '<rootDir>/$1',
+        '^string-strip-html$': '<rootDir>/apps/api/src/common/utils/mock-strip-html.ts',
     },
     collectCoverageFrom: [
         '<rootDir>/apps/api/src/**/*.(t|j)s',

@@ -17,6 +17,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { MaxPlainTextLength } from '@app/common/validators/max-plain-text-length.decorator';
 import { GraphicFormat, PricingType, ProductStatus } from '@prisma/client';
 import {
   ProductAssetInputDto,
@@ -52,7 +53,10 @@ export class UpdateProductDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(0, 1400)
+  @MaxPlainTextLength(1400, {
+    message: 'متن توضیحات نباید بیشتر از ۱۴۰۰ کاراکتر باشد.',
+    errorCode: 'DESCRIPTION_TOO_LONG',
+  })
   @Transform(toTrimmedString)
   description?: string;
 

@@ -1,0 +1,114 @@
+{
+  "info": {
+    "name": "Negare Auth OTP",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "OTP Request",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{identifier}}\",\n  \"channel\": \"{{channel}}\",\n  \"purpose\": \"{{purpose}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/otp/request",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "otp",
+            "request"
+          ]
+        }
+      }
+    },
+    {
+      "name": "OTP Verify",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{identifier}}\",\n  \"channel\": \"{{channel}}\",\n  \"purpose\": \"{{purpose}}\",\n  \"code\": \"{{otpCode}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/otp/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "otp",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "OTP Resend",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{identifier}}\",\n  \"channel\": \"{{channel}}\",\n  \"purpose\": \"{{purpose}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/otp/resend",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "otp",
+            "resend"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "identifier",
+      "value": "09123456789"
+    },
+    {
+      "key": "otpCode",
+      "value": "123456"
+    },
+    {
+      "key": "purpose",
+      "value": "login"
+    },
+    {
+      "key": "channel",
+      "value": "sms"
+    }
+  ]
+}

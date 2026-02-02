@@ -1,5 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentStatus, PaymentProvider } from '@app/finance/common/finance.enums';
+import {
+  PaymentFulfillmentStatus,
+  PaymentProvider,
+  PaymentStatus,
+} from '@app/finance/common/finance.enums';
 
 export class PaymentResponseDto {
   @ApiProperty({ example: 'payment-uuid' })
@@ -10,6 +14,9 @@ export class PaymentResponseDto {
 
   @ApiProperty({ enum: PaymentStatus })
   status!: PaymentStatus;
+
+  @ApiProperty({ enum: PaymentFulfillmentStatus })
+  fulfillmentStatus!: PaymentFulfillmentStatus;
 
   @ApiProperty({ example: 250000 })
   amount!: number;

@@ -1,3 +1,5 @@
+import { CouponValueType as PrismaCouponValueType } from '@prisma/client';
+
 export enum ProductPricingType {
   FREE = 'FREE',
   PAID = 'PAID',
@@ -26,10 +28,8 @@ export enum DiscountType {
   COUPON = 'COUPON',
 }
 
-export enum DiscountValueType {
-  FIXED = 'FIXED',
-  PERCENT = 'PERCENT',
-}
+export const CouponValueType = PrismaCouponValueType;
+export type CouponValueType = PrismaCouponValueType;
 
 export enum PaymentProvider {
   MOCK = 'MOCK',
@@ -41,6 +41,17 @@ export enum PaymentStatus {
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
   CANCELED = 'CANCELED',
+}
+
+export enum PaymentSource {
+  WALLET = 'WALLET',
+  GATEWAY = 'GATEWAY',
+}
+
+export enum PaymentFulfillmentStatus {
+  PENDING = 'PENDING',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
 }
 
 export enum PaymentPurpose {
@@ -70,9 +81,12 @@ export enum WalletTransactionType {
 export enum WalletTransactionReason {
   TOPUP = 'TOPUP',
   ORDER_PAYMENT = 'ORDER_PAYMENT',
+  PLATFORM_DISCOUNT = 'PLATFORM_DISCOUNT',
   REFUND = 'REFUND',
   ADJUSTMENT = 'ADJUSTMENT',
   WITHDRAWAL = 'WITHDRAWAL',
+  DONATION = 'DONATION',
+  PHOTO_RESTORE = 'PHOTO_RESTORE',
 }
 
 export enum WalletTransactionStatus {

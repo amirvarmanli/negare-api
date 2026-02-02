@@ -17,6 +17,7 @@ import { PasswordController } from '@app/core/auth/password/password.controller'
 // Services
 import { OtpService } from '@app/core/auth/otp/otp.service';
 import { OtpRateLimitService } from '@app/core/auth/otp/otp-rate-limit.service';
+import { OtpDeliveryProvider } from '@app/core/auth/otp/otp-delivery.provider';
 import { PasswordService } from '@app/core/auth/password/password.service';
 import { RefreshService } from '@app/core/auth/refresh.service';
 import { SessionService } from '@app/core/auth/session/session.service';
@@ -34,6 +35,7 @@ import { UserLookupProvider } from '@app/core/auth/otp/user-lookup.provider';
     UserLookupProvider, // ← اضافه
 
     OtpService,
+    OtpDeliveryProvider,
     PasswordService,
     RefreshService,
     RefreshRateLimitService,

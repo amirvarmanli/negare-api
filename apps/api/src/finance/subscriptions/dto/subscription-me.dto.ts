@@ -1,18 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { SubscriptionPlanCode, SubscriptionStatus } from '@app/finance/common/finance.enums';
+import { SubscriptionStatus } from '@app/finance/common/finance.enums';
 
 export class SubscriptionMeDto {
   @ApiPropertyOptional({ example: 'subscription-uuid' })
   id?: string;
 
-  @ApiPropertyOptional({ enum: SubscriptionPlanCode })
-  planCode?: SubscriptionPlanCode;
+  @ApiPropertyOptional({ example: 'plan-uuid' })
+  planId?: string;
 
-  @ApiPropertyOptional({ example: 2 })
-  dailySubLimit?: number;
+  @ApiPropertyOptional({ example: 'Starter' })
+  planTitle?: string;
 
-  @ApiPropertyOptional({ example: 15 })
-  dailyFreeLimit?: number;
+  @ApiPropertyOptional({ example: 150000 })
+  price?: number;
+
+  @ApiPropertyOptional({ example: 30 })
+  durationDays?: number;
+
+  @ApiPropertyOptional({ example: 5 })
+  dailySubscriptionDownloadLimit?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  dailyFreeDownloadLimitWithSubscription?: number;
 
   @ApiPropertyOptional({ enum: SubscriptionStatus })
   status?: SubscriptionStatus;

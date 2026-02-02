@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
 import { DiscountsService } from '@app/finance/discounts/discounts.service';
-import { DiscountsAdminService } from '@app/finance/discounts/discounts-admin.service';
-import { DiscountsController } from '@app/finance/discounts/discounts.controller';
-import { SubscriptionSystemModule } from '@app/finance/subscription-system/subscription-system.module';
+import { DiscountCouponsAdminService } from '@app/finance/discounts/discount-coupons-admin.service';
+import { DiscountCouponsController } from '@app/finance/discounts/discount-coupons.controller';
 
 @Module({
-  imports: [SubscriptionSystemModule],
-  controllers: [DiscountsController],
-  providers: [DiscountsService, DiscountsAdminService],
+  controllers: [DiscountCouponsController],
+  providers: [DiscountsService, DiscountCouponsAdminService],
   exports: [DiscountsService],
 })
 export class DiscountsModule {}

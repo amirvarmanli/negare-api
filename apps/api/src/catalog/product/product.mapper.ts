@@ -173,8 +173,22 @@ export class ProductMapper {
     const includeOwner = options?.includeOwner !== false;
     const includeRelations = options?.includeRelations !== false;
     const brief = includeOwner ? this.toBrief(p) : stripOwnerFields(this.toBrief(p));
+    const status = p.status as ProductStatus;
+    const isPublished = status === ProductStatus.PUBLISHED;
+    const isDraft = status === ProductStatus.DRAFT;
+    const isPendingApproval = isDraft;
+    const statusLabel =
+      status === ProductStatus.PUBLISHED
+        ? 'approved'
+        : status === ProductStatus.DRAFT
+          ? 'pending_approval'
+          : 'archived';
     return {
       ...brief,
+      isPublished,
+      isDraft,
+      isPendingApproval,
+      statusLabel,
       categories: includeRelations ? mapCategories(p) : undefined,
       tags: includeRelations ? mapTags(p) : undefined,
       topics: includeRelations ? mapTopics(p) : undefined,

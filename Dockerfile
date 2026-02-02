@@ -10,6 +10,11 @@ FROM deps AS builder
 COPY . .
 RUN npm run build
 
+FROM deps AS dev
+WORKDIR /app
+ENV NODE_ENV=development
+COPY . .
+
 FROM base AS prod-deps
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline

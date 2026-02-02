@@ -1,9 +1,18 @@
 import { NotificationTargetGroup } from '@prisma/client';
 
+export interface DeliverToUserJobMetadata {
+  traceId?: string;
+  walletTxId?: string;
+  walletUserId?: string;
+  reason?: string;
+  amount?: number;
+}
+
 export interface DeliverToUserJob {
   notificationId: string;
   userId: string;
   dedupeKey?: string | null;
+  metadata?: DeliverToUserJobMetadata | null;
 }
 
 export interface DeliverToGroupJob {

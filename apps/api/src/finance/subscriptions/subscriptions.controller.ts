@@ -13,11 +13,10 @@ import {
 import { requireUserId } from '@app/catalog/utils/current-user.util';
 import { SubscriptionsService } from '@app/finance/subscriptions/subscriptions.service';
 import { SubscriptionPlanDto } from '@app/finance/subscriptions/dto/subscription-plan.dto';
-import { PurchaseSubscriptionDto } from '@app/finance/subscriptions/dto/purchase-subscription.dto';
+import { LegacyPurchaseSubscriptionDto } from '@app/finance/subscriptions/dto/purchase-subscription.dto';
 import { OrderResponseDto } from '@app/finance/orders/dto/order-response.dto';
 import { SubscriptionMeDto } from '@app/finance/subscriptions/dto/subscription-me.dto';
-import type { FinanceSubscriptionPlan, FinanceOrder } from '@prisma/client';
-import { SubscriptionPlanCode } from '@app/finance/common/finance.enums';
+import type { SubscriptionPlan, FinanceOrder } from '@prisma/client';
 
 @ApiTags('Finance / Subscription')
 @Controller('subscription')
@@ -52,9 +51,13 @@ export class SubscriptionsController {
     );
     return {
       id: subscription.id,
-      planCode: plan.code as SubscriptionPlanCode,
-      dailySubLimit: plan.dailySubLimit,
-      dailyFreeLimit: plan.dailyFreeLimit,
+      planId: plan.id,
+      planTitle: plan.title,
+      price: plan.price,
+      durationDays: plan.durationDays,
+      dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+      dailyFreeDownloadLimitWithSubscription:
+        plan.dailyFreeDownloadLimitWithSubscription,
       status: subscription.status as SubscriptionMeDto['status'],
       startAt: subscription.startAt.toISOString(),
       endAt: subscription.endAt.toISOString(),
@@ -67,7 +70,7 @@ export class SubscriptionsController {
   @ApiOperation({ summary: 'Create a subscription order.' })
   @ApiOkResponse({ type: OrderResponseDto })
   async purchase(
-    @Body() dto: PurchaseSubscriptionDto,
+    @Body() dto: LegacyPurchaseSubscriptionDto,
     @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<OrderResponseDto> {
     const userId = requireUserId(user);
@@ -78,13 +81,21 @@ export class SubscriptionsController {
     return this.toOrderResponse(order);
   }
 
-  private toPlanDto(plan: FinanceSubscriptionPlan): SubscriptionPlanDto {
+  private toPlanDto(plan: SubscriptionPlan): SubscriptionPlanDto {
     return {
       id: plan.id,
-      code: plan.code as SubscriptionPlanCode,
-      dailySubLimit: plan.dailySubLimit,
-      dailyFreeLimit: plan.dailyFreeLimit,
+      title: plan.title,
+      price: plan.price,
+      durationDays: plan.durationDays,
+      dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+      dailyFreeDownloadLimitWithSubscription:
+        plan.dailyFreeDownloadLimitWithSubscription,
+      description: plan.description ?? null,
       isActive: plan.isActive,
+      discountPercent: plan.discountPercent ?? null,
+      discountQuota: plan.discountQuota ?? null,
+      createdAt: plan.createdAt.toISOString(),
+      updatedAt: plan.updatedAt.toISOString(),
     };
   }
 

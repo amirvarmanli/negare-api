@@ -15,7 +15,9 @@ import {
   OrderStatus,
   PaymentPurpose,
   PaymentProvider,
+  PaymentFulfillmentStatus,
   PaymentReferenceType,
+  PaymentSource,
   PaymentStatus,
   RevenueBeneficiaryType,
   WalletTransactionReason,
@@ -45,6 +47,10 @@ import { CartService, type CartSnapshot } from '@app/finance/cart/cart.service';
 import { DonationsService } from '@app/finance/donations/donations.service';
 import { ProductsService } from '@app/finance/products/products.service';
 import { NotificationsService } from '@app/notifications/notifications.service';
+import {
+  DONATION_MAX_AMOUNT,
+  DONATION_MIN_AMOUNT,
+} from '@app/finance/donations/donations.constants';
 import type { PaymentVerifyDto } from '@app/finance/payments/dto/payment-verify.dto';
 import type { PaymentInitResponseDto } from '@app/finance/payments/dto/payment-init.dto';
 import type { PaymentStartDto, PaymentStartResponseDto } from '@app/finance/payments/dto/payment-start.dto';
@@ -57,8 +63,10 @@ import {
   FinanceOrderStatus,
   FinancePayment,
   FinancePaymentProvider,
+  FinancePaymentPurpose,
   FinancePaymentReferenceType,
   FinancePaymentStatus,
+  FinancePaymentFulfillmentStatus,
   FinanceSubscriptionPurchase,
   FinanceSubscriptionPurchaseStatus,
   FinanceWalletStatus,
@@ -69,6 +77,10 @@ import {
 import type { AllConfig } from '@app/config/config.module';
 import { requestTraceStorage } from '@app/common/tracing/request-trace';
 import { toBigInt } from '@app/finance/common/prisma.utils';
+import {
+  PaymentResultIntent,
+  PaymentResultNextAction,
+} from '@app/finance/payments/dto/payment-result.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -394,49 +406,55 @@ export class PaymentsService {
   async getPaymentResult(
     userId: string,
     paymentId: string,
-  ): Promise<{
-    purpose: PaymentPurpose;
-    status: PaymentStatus;
-    amountToman: number;
-    messageFa: string;
-    orderId?: string | null;
-    canAccessDownloads?: boolean;
-    walletBalanceToman?: number;
-    topupAmountToman?: number;
-  }> {
-    const payment = await this.getPaymentForUserById(userId, paymentId);
-    const purpose = payment.purpose as PaymentPurpose;
-    const status = payment.status as PaymentStatus;
-    const messageFa = this.buildPaymentMessageFa(purpose, status);
+  ): Promise<import('@app/finance/payments/dto/payment-result.dto').PaymentResultDto> {
+    const payment = await this.getPaymentById(userId, paymentId);
+    return this.buildPaymentResult(userId, payment);
+  }
 
-    if (purpose === PaymentPurpose.WALLET_TOPUP) {
-      const wallet = await this.walletService.getWallet(userId);
-      return {
-        purpose,
-        status,
-        amountToman: payment.amount,
-        messageFa,
-        walletBalanceToman: wallet.balance,
-        topupAmountToman: payment.amount,
-      };
+  async getPaymentById(userId: string, paymentId: string): Promise<FinancePayment> {
+    return this.getPaymentForUserById(userId, paymentId);
+  }
+
+  async getPaymentByTrackId(
+    userId: string,
+    trackId: string,
+  ): Promise<FinancePayment> {
+    const payment = await this.prisma.financePayment.findUnique({
+      where: { trackId },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found.');
     }
-
-    let canAccessDownloads = false;
-    if (payment.orderId) {
-      const order = await this.prisma.financeOrder.findUnique({
-        where: { id: payment.orderId },
-      });
-      canAccessDownloads = (order?.status as OrderStatus) === OrderStatus.PAID;
+    if (payment.userId !== userId) {
+      throw new ForbiddenException('Access denied.');
     }
+    return payment;
+  }
 
-    return {
-      purpose,
-      status,
-      amountToman: payment.amount,
-      messageFa,
-      orderId: payment.orderId ?? null,
-      canAccessDownloads,
-    };
+  async getPaymentByReference(
+    userId: string,
+    referenceType: PaymentReferenceType,
+    referenceId: string,
+  ): Promise<FinancePayment> {
+    const payment = await this.prisma.financePayment.findFirst({
+      where: {
+        userId,
+        referenceType: referenceType as FinancePaymentReferenceType,
+        referenceId,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found.');
+    }
+    return payment;
+  }
+
+  async getPaymentResultFromPayment(
+    userId: string,
+    payment: FinancePayment,
+  ): Promise<import('@app/finance/payments/dto/payment-result.dto').PaymentResultDto> {
+    return this.buildPaymentResult(userId, payment);
   }
 
   async payWithWalletForReference(
@@ -477,6 +495,33 @@ export class PaymentsService {
             snapshot.cart.id,
             CartStatus.CHECKED_OUT,
           );
+          const now = new Date();
+          await tx.financePayment.create({
+            data: {
+              orderId: order.id,
+              userId,
+              purpose: PaymentPurpose.ORDER as FinancePaymentPurpose,
+              referenceType: PaymentReferenceType.CART as FinancePaymentReferenceType,
+              referenceId: order.id,
+              provider: PaymentProvider.MOCK as FinancePaymentProvider,
+              status: PaymentStatus.SUCCESS as FinancePaymentStatus,
+              fulfillmentStatus:
+                PaymentFulfillmentStatus.SUCCESS as FinancePaymentFulfillmentStatus,
+              fulfillmentError: null,
+              amount: snapshot.total,
+              currency: 'TOMAN',
+              trackId: null,
+              authority: null,
+              refId: null,
+              verifiedAt: now,
+              paidAt: now,
+              fulfilledAt: now,
+              meta: {
+                method: 'WALLET',
+                walletTransactionId: debitResult.transactionId,
+              },
+            },
+          });
           return {
             receiptId: order.id,
             paidAmount: snapshot.total,
@@ -498,18 +543,32 @@ export class PaymentsService {
           idempotencyKey: `subscription:${purchase.id}`,
           description: `Subscription payment ${purchase.id}`,
         });
-
-        await tx.financeSubscriptionPurchase.update({
-          where: { id: purchase.id },
+        const now = new Date();
+        const payment = await tx.financePayment.create({
           data: {
-            status: FinanceSubscriptionPurchaseStatus.PAID,
-            paidAt: new Date(),
+            orderId: null,
+            userId,
+            purpose: PaymentPurpose.ORDER as FinancePaymentPurpose,
+            referenceType:
+              PaymentReferenceType.SUBSCRIPTION as FinancePaymentReferenceType,
+            referenceId: purchase.id,
+            provider: PaymentProvider.MOCK as FinancePaymentProvider,
+            status: PaymentStatus.SUCCESS as FinancePaymentStatus,
+            amount: purchase.amount,
+            currency: 'TOMAN',
+            trackId: null,
+            authority: null,
+            refId: null,
+            verifiedAt: now,
+            paidAt: now,
+            meta: {
+              method: 'WALLET',
+              walletTransactionId: debitResult.transactionId,
+              subscriptionPurchaseId: purchase.id,
+            },
           },
         });
-        await this.subscriptionsService.activateSubscriptionFromPurchase(
-          tx,
-          purchase,
-        );
+        await this.fulfillPaymentSafely(tx, payment);
 
         return {
           receiptId: purchase.id,
@@ -528,6 +587,121 @@ export class PaymentsService {
       paidAmount: result.paidAmount,
       newBalance: result.newBalance,
     };
+  }
+
+  async payDonationWithWallet(
+    userId: string,
+    amount: number,
+    idempotencyKey: string,
+  ): Promise<{
+    donationId: string;
+    payment: FinancePayment;
+    newBalance: number;
+  }> {
+    if (!Number.isFinite(amount)) {
+      throw new BadRequestException('Amount must be a valid number.');
+    }
+    if (amount < DONATION_MIN_AMOUNT || amount > DONATION_MAX_AMOUNT) {
+      throw new BadRequestException(
+        `Amount must be between ${DONATION_MIN_AMOUNT} and ${DONATION_MAX_AMOUNT} TOMAN.`,
+      );
+    }
+    const normalizedKey = idempotencyKey.trim();
+    if (!normalizedKey) {
+      throw new BadRequestException('idempotencyKey is required.');
+    }
+    const walletKey = `donation:${normalizedKey}`;
+
+    return this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const wallet = await this.walletService.getOrCreateWalletInTransaction(
+          tx,
+          userId,
+        );
+        const existingTx = await tx.financeWalletTransaction.findFirst({
+          where: { walletId: wallet.id, idempotencyKey: walletKey },
+        });
+        if (existingTx) {
+          if (existingTx.status === WalletTransactionStatus.SUCCESS) {
+            if (!existingTx.referenceId) {
+              throw new BadRequestException(
+                'Donation payment already processed but reference is missing.',
+              );
+            }
+            const existingPayment = await tx.financePayment.findUnique({
+              where: { id: existingTx.referenceId },
+            });
+            if (!existingPayment) {
+              throw new NotFoundException('Payment not found.');
+            }
+            if (!existingPayment.referenceId) {
+              throw new BadRequestException(
+                'Donation payment reference is missing.',
+              );
+            }
+            return {
+              donationId: existingPayment.referenceId,
+              payment: existingPayment,
+              newBalance: wallet.balance,
+            };
+          }
+          throw new BadRequestException('Donation payment is already in progress.');
+        }
+
+        const donation = await tx.financeDonation.create({
+          data: {
+            userId,
+            amount,
+            status: DonationStatus.PENDING as FinanceDonationStatus,
+            gatewayTrackId: null,
+            referenceId: null,
+          },
+        });
+
+        const payment = await tx.financePayment.create({
+          data: {
+            orderId: null,
+            userId,
+            purpose: PaymentPurpose.DONATION as FinancePaymentPurpose,
+            referenceType:
+              PaymentReferenceType.DONATION as FinancePaymentReferenceType,
+            referenceId: donation.id,
+            provider: PaymentProvider.MOCK as FinancePaymentProvider,
+            status: PaymentStatus.SUCCESS as FinancePaymentStatus,
+            amount,
+            currency: 'TOMAN',
+            trackId: null,
+            authority: null,
+            refId: null,
+            verifiedAt: new Date(),
+            paidAt: new Date(),
+            meta: { method: 'WALLET', donationId: donation.id },
+          },
+        });
+
+        const debitResult = await this.applyWalletDebit(tx, {
+          userId,
+          amount,
+          reason: WalletTransactionReason.DONATION,
+          referenceId: payment.id,
+          idempotencyKey: walletKey,
+          description: 'Donation payment',
+        });
+
+        await this.fulfillPaymentSafely(tx, payment);
+
+        const refreshed = await tx.financePayment.findUniqueOrThrow({
+          where: { id: payment.id },
+        });
+
+        return {
+          donationId: donation.id,
+          payment: refreshed,
+          newBalance: debitResult.newBalance,
+        };
+      },
+      { timeout: 20000 },
+    );
   }
 
   async initOrderPayment(
@@ -565,6 +739,7 @@ export class PaymentsService {
         orderId: order.id,
         userId,
         purpose: PaymentPurpose.ORDER,
+        referenceType: PaymentReferenceType.CART as FinancePaymentReferenceType,
         referenceId: order.id,
         provider: PaymentProvider.ZIBAL as FinancePaymentProvider,
         status: PaymentStatus.PENDING as FinancePaymentStatus,
@@ -662,7 +837,7 @@ export class PaymentsService {
           },
         });
 
-        await this.fulfillPayment(tx, updatedPayment);
+        await this.fulfillPaymentSafely(tx, updatedPayment);
         return updatedPayment;
       },
       { timeout: 20000 },
@@ -671,7 +846,7 @@ export class PaymentsService {
       where: { id: updatedPayment.id },
     });
     await this.notifyOrderEvents(refreshed?.orderId ?? updatedPayment.orderId);
-    return updatedPayment;
+    return refreshed ?? updatedPayment;
   }
 
   async handleZibalCallback(
@@ -705,7 +880,28 @@ export class PaymentsService {
       this.logger.log(
         `traceId=${traceId} Zibal callback: trackId=${trackId} orderId=${orderId ?? 'n/a'} status=already_verified`,
       );
+      if (
+        (payment.fulfillmentStatus as PaymentFulfillmentStatus | null) !==
+        PaymentFulfillmentStatus.SUCCESS
+      ) {
+        const retried = await this.prisma.$transaction(
+          async (tx: Prisma.TransactionClient) => {
+            const refreshed = await tx.financePayment.findUniqueOrThrow({
+              where: { id: payment.id },
+            });
+            await this.fulfillPaymentSafely(tx, refreshed);
+            return tx.financePayment.findUniqueOrThrow({
+              where: { id: payment.id },
+            });
+          },
+          { timeout: 20000 },
+        );
+        await this.notifyOrderEvents(retried.orderId ?? payment.orderId);
+        await this.notifyWalletCreditFromPayment(retried);
+        return retried;
+      }
       await this.notifyOrderEvents(payment.orderId);
+      await this.notifyWalletCreditFromPayment(payment);
       return payment;
     }
 
@@ -802,7 +998,7 @@ export class PaymentsService {
           where: { id: payment.id },
         });
 
-        await this.fulfillPayment(tx, updatedPayment);
+        await this.fulfillPaymentSafely(tx, updatedPayment);
         return updatedPayment;
       },
       { timeout: 20000 },
@@ -819,83 +1015,157 @@ export class PaymentsService {
       refreshed?.orderId ?? updatedPayment.orderId ?? payment.orderId,
     );
     await this.notifyWalletCreditFromPayment(refreshed ?? updatedPayment);
-    return updatedPayment;
+    return refreshed ?? updatedPayment;
+  }
+
+  async retryFulfillment(paymentId: string): Promise<FinancePayment> {
+    const payment = await this.prisma.financePayment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found.');
+    }
+    if ((payment.status as PaymentStatus) !== PaymentStatus.SUCCESS) {
+      throw new BadRequestException('Payment is not successful yet.');
+    }
+
+    const retried = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const refreshed = await tx.financePayment.findUniqueOrThrow({
+          where: { id: paymentId },
+        });
+        await this.fulfillPaymentSafely(tx, refreshed);
+        return tx.financePayment.findUniqueOrThrow({
+          where: { id: paymentId },
+        });
+      },
+      { timeout: 20000 },
+    );
+
+    await this.notifyOrderEvents(retried.orderId ?? payment.orderId);
+    await this.notifyWalletCreditFromPayment(retried);
+    return retried;
   }
 
   async payOrderWithWallet(
     userId: string,
     orderId: string,
-  ): Promise<FinanceOrder> {
-    const paidOrder = await this.prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-      const order = await tx.financeOrder.findUnique({
-        where: { id: orderId },
+  ): Promise<FinancePayment> {
+    const traceId = requestTraceStorage.getStore()?.traceId ?? 'unknown';
+    const context = `checkoutTraceId=${traceId} userId=${userId} orderId=${orderId}`;
+    this.logger.log(`${context} action=wallet-checkout-start`);
+
+    try {
+      const result = await this.prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const order = await tx.financeOrder.findUnique({
+            where: { id: orderId },
+          });
+
+          if (!order) {
+            throw new NotFoundException('Order not found.');
+          }
+          if (order.userId !== userId) {
+            throw new ForbiddenException('Access denied.');
+          }
+          this.logger.log(
+            `${context} action=order-resolved status=${order.status} total=${order.total}`,
+          );
+          await this.ensureOrderNotExpired(tx, order);
+          if ((order.status as OrderStatus) === OrderStatus.PAID) {
+            const existingPayment = await tx.financePayment.findFirst({
+              where: {
+                orderId: order.id,
+                status: PaymentStatus.SUCCESS as FinancePaymentStatus,
+              },
+              orderBy: { createdAt: 'desc' },
+            });
+            if (existingPayment) {
+              const normalized = await this.ensurePaymentReference(
+                tx,
+                existingPayment,
+              );
+              this.logger.log(
+                `${context} action=wallet-checkout-skip reason=already-paid paymentId=${normalized.id}`,
+              );
+              return { order, payment: normalized };
+            }
+          }
+          if ((order.status as OrderStatus) !== OrderStatus.PENDING_PAYMENT) {
+            throw new BadRequestException('Order is not payable.');
+          }
+
+          this.logger.log(
+            `${context} action=wallet-debit-attempt amount=${order.total}`,
+          );
+          const debitResult = await this.applyWalletDebit(tx, {
+            userId,
+            amount: order.total,
+            reason: WalletTransactionReason.ORDER_PAYMENT,
+            referenceId: order.id,
+            idempotencyKey: `order:${order.id}`,
+            description: `Order payment ${order.id}`,
+          });
+          this.logger.log(
+            `${context} action=wallet-debit-success walletTxId=${debitResult.transactionId} newBalance=${debitResult.newBalance} alreadyProcessed=${debitResult.alreadyProcessed}`,
+          );
+
+          const now = new Date();
+          const payment = await tx.financePayment.create({
+            data: {
+              orderId: order.id,
+              userId,
+              purpose: PaymentPurpose.ORDER as FinancePaymentPurpose,
+              referenceType: PaymentReferenceType.CART as FinancePaymentReferenceType,
+              referenceId: order.id,
+              provider: PaymentProvider.MOCK as FinancePaymentProvider,
+              status: PaymentStatus.SUCCESS as FinancePaymentStatus,
+              amount: order.total,
+              currency: 'TOMAN',
+              trackId: null,
+              authority: null,
+              refId: null,
+              verifiedAt: now,
+              paidAt: now,
+              meta: {
+                method: 'WALLET',
+                walletTransactionId: debitResult.transactionId,
+                checkoutTraceId: traceId,
+              },
+            },
+          });
+          this.logger.log(
+            `${context} action=payment-created paymentId=${payment.id}`,
+          );
+
+          this.logger.log(
+            `${context} action=fulfillment-start paymentId=${payment.id}`,
+          );
+          await this.fulfillPaymentSafely(tx, payment);
+          this.logger.log(
+            `${context} action=fulfillment-complete paymentId=${payment.id}`,
+          );
+
+          return { order, payment };
+        },
+        { timeout: 20000 },
+      );
+
+      this.logger.log(
+        `${context} action=wallet-checkout-committed paymentId=${result.payment.id}`,
+      );
+      await this.notifyOrderEvents(result.payment.orderId ?? orderId);
+      const refreshed = await this.prisma.financePayment.findUnique({
+        where: { id: result.payment.id },
       });
-
-      if (!order) {
-        throw new NotFoundException('Order not found.');
-      }
-      if (order.userId !== userId) {
-        throw new ForbiddenException('Access denied.');
-      }
-      await this.ensureOrderNotExpired(tx, order);
-      if ((order.status as OrderStatus) === OrderStatus.PAID) {
-        return order;
-      }
-      if ((order.status as OrderStatus) !== OrderStatus.PENDING_PAYMENT) {
-        throw new BadRequestException('Order is not payable.');
-      }
-      const debitResult = await this.applyWalletDebit(tx, {
-        userId,
-        amount: order.total,
-        reason: WalletTransactionReason.ORDER_PAYMENT,
-        referenceId: order.id,
-        idempotencyKey: `order:${order.id}`,
-        description: `Order payment ${order.id}`,
-      });
-      if (debitResult.alreadyProcessed) {
-        const refreshedOrder = await tx.financeOrder.findUniqueOrThrow({
-          where: { id: order.id },
-        });
-        if ((refreshedOrder.status as OrderStatus) === OrderStatus.PAID) {
-          return refreshedOrder;
-        }
-      }
-
-      const paidOrder = await tx.financeOrder.update({
-        where: { id: order.id },
-        data: { status: OrderStatus.PAID as FinanceOrderStatus, paidAt: new Date() },
-      });
-
-      const items = await tx.financeOrderItem.findMany({
-        where: { orderId: order.id },
-      });
-
-      if ((paidOrder.orderKind as OrderKind) === OrderKind.PRODUCT) {
-        await this.entitlementsService.grantPurchaseEntitlements(
-          tx,
-          paidOrder.userId,
-          paidOrder.id,
-          items,
-          paidOrder.paidAt ?? new Date(),
-        );
-        await this.applyOrderRevenueSplitAndCredits(tx, paidOrder, items);
-        await this.applySubscriptionDiscountUsage(tx, paidOrder.id);
-      }
-
-      if ((paidOrder.orderKind as OrderKind) === OrderKind.SUBSCRIPTION) {
-        await this.subscriptionsService.activateSubscriptionFromOrder(
-          tx,
-          paidOrder,
-        );
-      }
-
-      return paidOrder;
-    },
-      { timeout: 20000 },
-    );
-    await this.notifyOrderEvents(paidOrder.id);
-    return paidOrder;
+      return refreshed ?? result.payment;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown';
+      this.logger.error(
+        `${context} action=wallet-checkout-rolled-back error=${message}`,
+      );
+      throw error;
+    }
   }
 
   private getZibalCallbackUrl(): string {
@@ -1015,6 +1285,183 @@ export class PaymentsService {
       return 'پرداخت لغو شد.';
     }
     return 'در انتظار تایید پرداخت.';
+  }
+
+  private normalizePaymentStatus(status: PaymentStatus): PaymentStatus {
+    if (status === PaymentStatus.CANCELED) {
+      return PaymentStatus.FAILED;
+    }
+    return status;
+  }
+
+  private resolvePaymentSource(payment: FinancePayment): PaymentSource {
+    const meta = this.getMetaObject(payment.meta);
+    if (meta.method === 'WALLET') {
+      return PaymentSource.WALLET;
+    }
+    if ((payment.provider as PaymentProvider) === PaymentProvider.MOCK) {
+      return PaymentSource.GATEWAY;
+    }
+    return PaymentSource.GATEWAY;
+  }
+
+  private resolvePaymentIntent(
+    purpose: PaymentPurpose,
+    referenceType: PaymentReferenceType,
+  ): PaymentResultIntent {
+    if (purpose === PaymentPurpose.DONATION) {
+      return PaymentResultIntent.DONATION;
+    }
+    if (referenceType === PaymentReferenceType.DONATION) {
+      return PaymentResultIntent.DONATION;
+    }
+    if (referenceType === PaymentReferenceType.SUBSCRIPTION) {
+      return PaymentResultIntent.SUBSCRIPTION;
+    }
+    return PaymentResultIntent.PRODUCT;
+  }
+
+  private resolveNextAction(
+    intent: PaymentResultIntent,
+    status: PaymentStatus,
+    fulfillmentStatus: PaymentFulfillmentStatus,
+    retryable: boolean,
+  ): PaymentResultNextAction {
+    if (status === PaymentStatus.PENDING) {
+      return PaymentResultNextAction.WAIT;
+    }
+    if (status === PaymentStatus.FAILED) {
+      return PaymentResultNextAction.RETRY;
+    }
+    if (fulfillmentStatus === PaymentFulfillmentStatus.PENDING) {
+      return PaymentResultNextAction.WAIT;
+    }
+    if (fulfillmentStatus === PaymentFulfillmentStatus.FAILED) {
+      return retryable
+        ? PaymentResultNextAction.RETRY
+        : PaymentResultNextAction.CONTACT_SUPPORT;
+    }
+    if (intent === PaymentResultIntent.SUBSCRIPTION) {
+      return PaymentResultNextAction.GO_TO_SUBSCRIPTION;
+    }
+    if (intent === PaymentResultIntent.PHOTO_RESTORE) {
+      return PaymentResultNextAction.GO_TO_PHOTO_RESTORE;
+    }
+    if (intent === PaymentResultIntent.DONATION) {
+      return PaymentResultNextAction.CONTACT_SUPPORT;
+    }
+    return PaymentResultNextAction.GO_TO_ORDER;
+  }
+
+  private async ensurePaymentReference(
+    tx: Prisma.TransactionClient | PrismaService,
+    payment: FinancePayment,
+  ): Promise<FinancePayment> {
+    const refType = payment.referenceType as PaymentReferenceType | null;
+    const refId = payment.referenceId;
+    if (refType && refId) {
+      return payment;
+    }
+    if (payment.orderId) {
+      return tx.financePayment.update({
+        where: { id: payment.id },
+        data: {
+          referenceType:
+            PaymentReferenceType.CART as FinancePaymentReferenceType,
+          referenceId: payment.orderId,
+        },
+      });
+    }
+    throw new BadRequestException(
+      'Payment referenceType/referenceId is required.',
+    );
+  }
+
+  private async buildPaymentResult(
+    userId: string,
+    paymentInput: FinancePayment,
+  ): Promise<import('@app/finance/payments/dto/payment-result.dto').PaymentResultDto> {
+    const payment = await this.ensurePaymentReference(this.prisma, paymentInput);
+    const purpose = payment.purpose as PaymentPurpose;
+    const normalizedStatus = this.normalizePaymentStatus(
+      payment.status as PaymentStatus,
+    );
+    const fulfillmentStatus =
+      (payment.fulfillmentStatus as PaymentFulfillmentStatus | null) ??
+      PaymentFulfillmentStatus.PENDING;
+    const source = this.resolvePaymentSource(payment);
+    const referenceType =
+      (payment.referenceType as PaymentReferenceType) ??
+      PaymentReferenceType.CART;
+    const referenceId = payment.referenceId;
+    if (!referenceId) {
+      throw new BadRequestException(
+        'Payment referenceType/referenceId is required.',
+      );
+    }
+    const intent = this.resolvePaymentIntent(purpose, referenceType);
+    const retryable =
+      normalizedStatus === PaymentStatus.SUCCESS &&
+      fulfillmentStatus === PaymentFulfillmentStatus.FAILED;
+
+    let messageFa = this.buildPaymentMessageFa(purpose, normalizedStatus);
+    if (
+      normalizedStatus === PaymentStatus.SUCCESS &&
+      fulfillmentStatus !== PaymentFulfillmentStatus.SUCCESS
+    ) {
+      messageFa = 'پرداخت با موفقیت انجام شد اما تکمیل سفارش در حال بررسی است.';
+    }
+
+    let orderId: string | null = payment.orderId ?? null;
+    let canAccessDownloads = false;
+    if (orderId) {
+      const order = await this.prisma.financeOrder.findUnique({
+        where: { id: orderId },
+      });
+      canAccessDownloads = (order?.status as OrderStatus) === OrderStatus.PAID;
+    }
+
+    const result: import('@app/finance/payments/dto/payment-result.dto').PaymentResultDto =
+      {
+        paymentId: payment.id,
+        status: normalizedStatus,
+        source,
+        provider: payment.provider as PaymentProvider,
+        amount: payment.amount,
+        currency: payment.currency,
+        purpose,
+        referenceType,
+        referenceId,
+        intent,
+        fulfillmentStatus,
+        fulfilledAt: payment.fulfilledAt
+          ? payment.fulfilledAt.toISOString()
+          : null,
+        verifiedAt: payment.verifiedAt
+          ? payment.verifiedAt.toISOString()
+          : null,
+        paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
+        failureReason: payment.failureReason ?? null,
+        fulfillmentError: payment.fulfillmentError ?? null,
+        retryable,
+        recommendedNextAction: this.resolveNextAction(
+          intent,
+          normalizedStatus,
+          fulfillmentStatus,
+          retryable,
+        ),
+        messageFa,
+        orderId,
+        canAccessDownloads,
+      };
+
+    if (purpose === PaymentPurpose.WALLET_TOPUP) {
+      const wallet = await this.walletService.getWallet(userId);
+      result.walletBalanceToman = wallet.balance;
+      result.topupAmountToman = payment.amount;
+    }
+
+    return result;
   }
 
   private async markDonationSuccess(
@@ -1196,6 +1643,10 @@ export class PaymentsService {
         subtotal: snapshot.subtotal,
         discountType: snapshot.discountType,
         discountValue: snapshot.discountValue,
+        discountAmount: snapshot.discountValue,
+        discountSource: snapshot.discountSource,
+        couponCode: snapshot.couponCode ?? null,
+        discountReason: snapshot.discountReason,
         total: snapshot.total,
         currency: 'TOMAN',
         subscriptionPlanId: null,
@@ -1216,12 +1667,11 @@ export class PaymentsService {
     });
 
     if (snapshot.couponId && snapshot.discountValue > 0) {
-      await tx.financeCouponRedemption.create({
+      await tx.discountCouponRedemption.create({
         data: {
           couponId: snapshot.couponId,
           userId,
           orderId: order.id,
-          amount: snapshot.discountValue,
         },
       });
     }
@@ -1260,6 +1710,11 @@ export class PaymentsService {
       }>;
     },
   ): Promise<FinanceOrder> {
+    const discountSource =
+      cartMeta.couponId && cartMeta.discountValue > 0 ? 'COUPON' : 'NONE';
+    const discountReason = cartMeta.couponId
+      ? 'Coupon applied'
+      : 'No discount applied';
     const order = await tx.financeOrder.create({
       data: {
         userId,
@@ -1268,6 +1723,10 @@ export class PaymentsService {
         subtotal: cartMeta.totals.subtotal,
         discountType: cartMeta.discountType,
         discountValue: cartMeta.discountValue,
+        discountAmount: cartMeta.discountValue,
+        discountSource,
+        couponCode: null,
+        discountReason,
         total: cartMeta.totals.total,
         currency: 'TOMAN',
         subscriptionPlanId: null,
@@ -1288,12 +1747,11 @@ export class PaymentsService {
     });
 
     if (cartMeta.couponId && cartMeta.discountValue > 0) {
-      await tx.financeCouponRedemption.create({
+      await tx.discountCouponRedemption.create({
         data: {
           couponId: cartMeta.couponId,
           userId,
           orderId: order.id,
-          amount: cartMeta.discountValue,
         },
       });
     }
@@ -1313,30 +1771,80 @@ export class PaymentsService {
     return order;
   }
 
+  private async fulfillPaymentSafely(
+    tx: Prisma.TransactionClient,
+    payment: FinancePayment,
+  ): Promise<void> {
+    if (
+      (payment.fulfillmentStatus as PaymentFulfillmentStatus | null) ===
+      PaymentFulfillmentStatus.SUCCESS
+    ) {
+      return;
+    }
+    if ((payment.status as PaymentStatus) !== PaymentStatus.SUCCESS) {
+      return;
+    }
+
+    try {
+      await this.fulfillPayment(tx, payment);
+      await tx.financePayment.update({
+        where: { id: payment.id },
+        data: {
+          fulfillmentStatus:
+            PaymentFulfillmentStatus.SUCCESS as FinancePaymentFulfillmentStatus,
+          fulfillmentError: null,
+          fulfilledAt: new Date(),
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await tx.financePayment.update({
+        where: { id: payment.id },
+        data: {
+          fulfillmentStatus:
+            PaymentFulfillmentStatus.FAILED as FinancePaymentFulfillmentStatus,
+          fulfillmentError: message,
+        },
+      });
+      const traceId = requestTraceStorage.getStore()?.traceId ?? 'unknown';
+      this.logger.error(
+        `traceId=${traceId} payment-fulfillment-failed paymentId=${payment.id} purpose=${payment.purpose ?? 'n/a'} refType=${payment.referenceType ?? 'n/a'} error=${message}`,
+      );
+    }
+  }
+
   private async fulfillPayment(
     tx: Prisma.TransactionClient,
     payment: FinancePayment,
   ): Promise<void> {
-    const refType = payment.referenceType as PaymentReferenceType | null;
-    const purpose = payment.purpose as PaymentPurpose | null;
+    const normalizedPayment = await this.ensurePaymentReference(tx, payment);
+    if (
+      (normalizedPayment.fulfillmentStatus as PaymentFulfillmentStatus | null) ===
+      PaymentFulfillmentStatus.SUCCESS
+    ) {
+      return;
+    }
+    const refType =
+      normalizedPayment.referenceType as PaymentReferenceType | null;
+    const purpose = normalizedPayment.purpose as PaymentPurpose | null;
     if (
       purpose === PaymentPurpose.WALLET_TOPUP ||
       (!purpose && refType === PaymentReferenceType.WALLET_CHARGE)
     ) {
-      await this.applyWalletTopup(tx, payment);
+      await this.applyWalletTopup(tx, normalizedPayment);
       return;
     }
 
-    if (payment.orderId) {
-      await this.fulfillOrderPayment(tx, payment);
+    if (normalizedPayment.orderId) {
+      await this.fulfillOrderPayment(tx, normalizedPayment);
       return;
     }
 
     if (refType === PaymentReferenceType.CART) {
-      if (payment.orderId) {
+      if (normalizedPayment.orderId) {
         return;
       }
-      const meta = this.getMetaObject(payment.meta);
+      const meta = this.getMetaObject(normalizedPayment.meta);
       const cartMeta = meta.cart as
         | {
             cartId: string;
@@ -1359,18 +1867,21 @@ export class PaymentsService {
       if (!cartMeta) {
         throw new BadRequestException('Cart snapshot is missing.');
       }
-      if (payment.referenceId && payment.referenceId !== cartMeta.cartId) {
+      if (
+        normalizedPayment.referenceId &&
+        normalizedPayment.referenceId !== cartMeta.cartId
+      ) {
         throw new BadRequestException('Cart reference does not match.');
       }
 
       const order = await this.createPaidOrderFromCartMeta(
         tx,
-        payment.userId,
+        normalizedPayment.userId,
         cartMeta,
       );
 
       await tx.financePayment.update({
-        where: { id: payment.id },
+        where: { id: normalizedPayment.id },
         data: { orderId: order.id },
       });
 
@@ -1383,9 +1894,9 @@ export class PaymentsService {
     }
 
     if (refType === PaymentReferenceType.SUBSCRIPTION) {
-      const meta = this.getMetaObject(payment.meta);
+      const meta = this.getMetaObject(normalizedPayment.meta);
       const purchaseId =
-        payment.referenceId ??
+        normalizedPayment.referenceId ??
         (typeof meta.subscriptionPurchaseId === 'string'
           ? meta.subscriptionPurchaseId
           : null);
@@ -1399,19 +1910,18 @@ export class PaymentsService {
         throw new NotFoundException('Subscription purchase not found.');
       }
       if (
-        (purchase.status as FinanceSubscriptionPurchaseStatus) ===
+        (purchase.status as FinanceSubscriptionPurchaseStatus) !==
         FinanceSubscriptionPurchaseStatus.PAID
       ) {
-        return;
+        await tx.financeSubscriptionPurchase.update({
+          where: { id: purchase.id },
+          data: {
+            status: FinanceSubscriptionPurchaseStatus.PAID,
+            paidAt: new Date(),
+            paymentId: normalizedPayment.id,
+          },
+        });
       }
-      await tx.financeSubscriptionPurchase.update({
-        where: { id: purchase.id },
-        data: {
-          status: FinanceSubscriptionPurchaseStatus.PAID,
-          paidAt: new Date(),
-          paymentId: payment.id,
-        },
-      });
       await this.subscriptionsService.activateSubscriptionFromPurchase(
         tx,
         purchase,
@@ -1422,7 +1932,7 @@ export class PaymentsService {
       refType === PaymentReferenceType.DONATION ||
       purpose === PaymentPurpose.DONATION
     ) {
-      await this.markDonationSuccess(tx, payment);
+      await this.markDonationSuccess(tx, normalizedPayment);
     }
   }
 
@@ -1509,6 +2019,7 @@ export class PaymentsService {
       idempotencyKey?: string | null;
       description?: string | null;
     },
+    allowNegative = false,
   ): Promise<{
     walletId: string;
     newBalance: number;
@@ -1581,12 +2092,15 @@ export class PaymentsService {
       throw new BadRequestException('Unable to create wallet transaction.');
     }
 
+    const walletFilter: Prisma.FinanceWalletWhereInput = {
+      id: wallet.id,
+      status: FinanceWalletStatus.ACTIVE,
+    };
+    if (!allowNegative) {
+      walletFilter.balance = { gte: input.amount };
+    }
     const updated = await tx.financeWallet.updateMany({
-      where: {
-        id: wallet.id,
-        balance: { gte: input.amount },
-        status: FinanceWalletStatus.ACTIVE,
-      },
+      where: walletFilter,
       data: { balance: { decrement: input.amount } },
     });
     if (updated.count === 0) {
@@ -1594,7 +2108,7 @@ export class PaymentsService {
         where: { id: transaction.id },
         data: { status: WalletTransactionStatus.FAILED },
       });
-      throw new BadRequestException('Insufficient wallet balance.');
+      throw new BadRequestException('موجودی کیف پول کافی نیست.');
     }
 
     const refreshedWallet = await tx.financeWallet.findUniqueOrThrow({
@@ -1754,6 +2268,43 @@ export class PaymentsService {
     }
   }
 
+  private async markOrderFailedIfPending(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    context: string,
+    failureReason: string,
+  ): Promise<void> {
+    const result = await tx.financeOrder.updateMany({
+      where: {
+        id: orderId,
+        status: OrderStatus.PENDING_PAYMENT as FinanceOrderStatus,
+      },
+      data: { status: OrderStatus.FAILED as FinanceOrderStatus },
+    });
+    if (result.count === 0) {
+      return;
+    }
+    this.logger.log(`${context} action=order-marked-failed reason=${failureReason}`);
+    const pendingPayments = await tx.financePayment.findMany({
+      where: {
+        orderId,
+        status: PaymentStatus.PENDING as FinancePaymentStatus,
+      },
+    });
+    for (const payment of pendingPayments) {
+      await tx.financePayment.update({
+        where: { id: payment.id },
+        data: {
+          status: PaymentStatus.FAILED as FinancePaymentStatus,
+          meta: {
+            ...this.getMetaObject(payment.meta),
+            failure: failureReason,
+          },
+        },
+      });
+    }
+  }
+
   private async fulfillOrderPayment(
     tx: Prisma.TransactionClient,
     payment: FinancePayment,
@@ -1768,7 +2319,13 @@ export class PaymentsService {
       throw new NotFoundException('Order not found.');
     }
 
-    if (this.isOrderExpired(order) && (order.status as OrderStatus) !== OrderStatus.PAID) {
+    const traceId = requestTraceStorage.getStore()?.traceId ?? 'unknown';
+    const context = `traceId=${traceId} checkoutTraceId=${traceId} userId=${order.userId} orderId=${order.id} paymentId=${payment.id}`;
+
+    if (
+      this.isOrderExpired(order) &&
+      (order.status as OrderStatus) !== OrderStatus.PAID
+    ) {
       await this.markOrderExpired(tx, order);
       const expiredMeta = this.getMetaObject(payment.meta);
       await tx.financePayment.update({
@@ -1783,21 +2340,54 @@ export class PaymentsService {
       });
       return;
     }
-    if ((order.status as OrderStatus) !== OrderStatus.PENDING_PAYMENT) {
+    const currentStatus = order.status as OrderStatus;
+    if (
+      currentStatus !== OrderStatus.PENDING_PAYMENT &&
+      currentStatus !== OrderStatus.PAID
+    ) {
+      this.logger.log(`${context} action=fulfill-order-skipped status=${order.status}`);
       return;
     }
 
-    const paidOrder = await tx.financeOrder.update({
-      where: { id: order.id },
-      data: {
-        status: OrderStatus.PAID as FinanceOrderStatus,
-        paidAt: new Date(),
-      },
-    });
+    this.logger.log(`${context} action=fulfill-order-start`);
+
+    let paidOrder = order;
+    if (currentStatus === OrderStatus.PENDING_PAYMENT) {
+      paidOrder = await tx.financeOrder.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.PAID as FinanceOrderStatus,
+          paidAt: new Date(),
+        },
+      });
+    } else if (!order.paidAt) {
+      paidOrder = await tx.financeOrder.update({
+        where: { id: order.id },
+        data: { paidAt: new Date() },
+      });
+    }
+
+    this.logger.log(
+      `${context} action=mark-paid-complete paidAt=${paidOrder.paidAt?.toISOString() ?? 'n/a'}`,
+    );
 
     const items = await tx.financeOrderItem.findMany({
       where: { orderId: order.id },
     });
+
+    const grossAmount = items.reduce((total, item) => total + item.lineTotal, 0);
+    const discountAmount =
+      paidOrder.discountAmount ?? paidOrder.discountValue ?? 0;
+    const discountSource = paidOrder.discountSource ?? 'NONE';
+    const payableAmount = paidOrder.total;
+    const { supplierPercent } = this.getRevenueSplitConfig();
+    const supplierShareGross = Math.floor(
+      (grossAmount * supplierPercent) / 100,
+    );
+    const platformShareGross = grossAmount - supplierShareGross;
+    this.logger.log(
+      `${context} revenue gross=${grossAmount} supplierShare=${supplierShareGross} platformShare=${platformShareGross} discountAmount=${discountAmount} payable=${payableAmount} source=${discountSource}`,
+    );
 
     if ((paidOrder.orderKind as OrderKind) === OrderKind.PRODUCT) {
       await this.entitlementsService.grantPurchaseEntitlements(
@@ -1806,6 +2396,12 @@ export class PaymentsService {
         paidOrder.id,
         items,
         paidOrder.paidAt ?? new Date(),
+      );
+      const uniqueProducts = new Set(
+        items.map((item) => item.productId.toString()),
+      ).size;
+      this.logger.log(
+        `${context} action=entitlements-granted lineItems=${items.length} uniqueProducts=${uniqueProducts}`,
       );
       await this.applyOrderRevenueSplitAndCredits(tx, paidOrder, items);
       await this.applySubscriptionDiscountUsage(tx, paidOrder.id);
@@ -1817,6 +2413,263 @@ export class PaymentsService {
         paidOrder,
       );
     }
+
+    await this.settlePlatformDiscount(
+      tx,
+      paidOrder,
+      payment,
+      items,
+      context,
+      grossAmount,
+      payableAmount ?? 0,
+      discountAmount,
+      discountSource,
+    );
+
+    await this.clearUserCart(tx, paidOrder, context);
+  }
+
+  private async settlePlatformDiscount(
+    tx: Prisma.TransactionClient,
+    order: FinanceOrder,
+    payment: FinancePayment,
+    items: FinanceOrderItem[],
+    context: string,
+    grossAmount: number,
+    payableAmount: number,
+    discountAmount: number,
+    discountSource: string,
+  ): Promise<void> {
+    if (discountAmount <= 0 || !this.isPlatformFundedDiscount(discountSource)) {
+      return;
+    }
+    const { platformUserId } = this.getRevenueSplitConfig();
+    const allowNegative = this.platformWalletAllowsNegative();
+    const traceId = requestTraceStorage.getStore()?.traceId ?? 'unknown';
+    try {
+      const debitResult = await this.applyWalletDebit(
+        tx,
+        {
+          userId: platformUserId,
+          amount: discountAmount,
+          reason: WalletTransactionReason.PLATFORM_DISCOUNT,
+          referenceId: order.id,
+          idempotencyKey: `order:${order.id}:platform-discount`,
+          description: 'Coupon discount funded by platform',
+        },
+        allowNegative,
+      );
+      if (debitResult.alreadyProcessed) {
+        this.logger.log(
+          `${context} action=platform-discount-skipped alreadyProcessed=true traceId=${traceId}`,
+        );
+        return;
+      }
+      const buyer = await tx.user.findUnique({
+        where: { id: order.userId },
+        select: {
+          id: true,
+          name: true,
+          firstName: true,
+          lastName: true,
+          username: true,
+          email: true,
+          phone: true,
+        },
+      });
+      await this.emitPlatformDiscountNotification({
+        tx,
+        context,
+        traceId,
+        order,
+        payment,
+        items,
+        discountAmount,
+        discountSource,
+        couponCode: order.couponCode,
+        grossAmount,
+        payableAmount,
+        user: buyer,
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        await this.markOrderFailedIfPending(
+          tx,
+          order.id,
+          context,
+          'platform_wallet_insufficient',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async emitPlatformDiscountNotification(params: {
+    tx: Prisma.TransactionClient;
+    context: string;
+    traceId: string;
+    order: FinanceOrder;
+    payment: FinancePayment;
+    items: FinanceOrderItem[];
+    discountAmount: number;
+    discountSource: string;
+    couponCode: string | null;
+    grossAmount: number;
+    payableAmount: number;
+    user:
+      | {
+          id: string;
+          name: string | null;
+          firstName: string | null;
+          lastName: string | null;
+          username: string | null;
+          email: string | null;
+          phone: string | null;
+        }
+      | null;
+  }): Promise<void> {
+    const {
+      tx,
+      context,
+      traceId,
+      order,
+      payment,
+      items,
+      discountAmount,
+      couponCode,
+      grossAmount,
+      payableAmount,
+      user,
+    } = params;
+    const timestamp = new Date().toISOString();
+    const grossValue = grossAmount ?? 0;
+    const payableValue = payableAmount ?? 0;
+    const discountLabel = discountAmount.toLocaleString('fa-IR');
+    const grossLabel = grossValue.toLocaleString('fa-IR');
+    const payableLabel = payableValue.toLocaleString('fa-IR');
+    const couponLabel = couponCode ?? 'بدون کد';
+    const userIdentifier = this.buildPlatformDiscountUserIdentifier(user);
+    const links = {
+      order: `/admin/orders/${order.id}`,
+      user: `/admin/users/${order.userId}`,
+      products: await this.buildPlatformDiscountProductLinks(tx, items),
+    };
+    const body = [
+      `مبلغ ${discountLabel} تومان بابت اعمال کد تخفیف «${couponLabel}» از کیف پول سایت کسر شد.`,
+      '',
+      `🔹 سفارش: #${order.id}`,
+      `🔹 کاربر: ${userIdentifier}`,
+      '',
+      `💰 مبلغ قبل از تخفیف: ${grossLabel} تومان`,
+      `💳 مبلغ پرداختی کاربر: ${payableLabel} تومان`,
+      '',
+      'این تخفیف توسط پلتفرم تأمین شده و سهم تأمین‌کننده بدون تغییر تسویه شده است.',
+    ].join('\n');
+    await this.notificationsService.createNotification({
+      type: NotificationType.PLATFORM_DISCOUNT_APPLIED,
+      title: 'کسر از کیف پول سایت بابت کد تخفیف',
+      body,
+      data: {
+        type: 'PLATFORM_DISCOUNT_APPLIED',
+        traceId,
+        timestamp,
+        orderId: order.id,
+        paymentId: payment.id,
+        userId: order.userId,
+        couponCode: couponCode ?? null,
+        discountAmount,
+        grossAmount: grossValue,
+        payableAmount: payableValue,
+        userContact: userIdentifier,
+        links,
+      },
+    });
+    this.logger.log(
+      `${context} action=platform-discount-notified type=PLATFORM_DISCOUNT_APPLIED traceId=${traceId} amount=${discountAmount}`,
+    );
+  }
+
+  private async clearUserCart(
+    tx: Prisma.TransactionClient,
+    order: FinanceOrder,
+    context: string,
+  ): Promise<void> {
+    const cart = await tx.financeCart.findFirst({
+      where: { userId: order.userId },
+    });
+    if (!cart) {
+      this.logger.log(
+        `${context} action=cart-cleared itemsCleared=0 reason=cart-not-found`,
+      );
+      return;
+    }
+    const itemsCount = await tx.financeCartItem.count({
+      where: { cartId: cart.id },
+    });
+    await this.cartService.clearCartInTransaction(
+      tx,
+      cart.id,
+      CartStatus.CHECKED_OUT,
+    );
+    this.logger.log(`${context} action=cart-cleared itemsCleared=${itemsCount}`);
+  }
+
+  private buildPlatformDiscountUserIdentifier(
+    user:
+      | {
+          id: string;
+          phone: string | null;
+          email: string | null;
+        }
+      | null,
+  ): string {
+    if (!user) {
+      return 'unknown';
+    }
+    const contact = user.phone ?? user.email ?? null;
+    return `${user.id}${contact ? ` (${contact})` : ''}`;
+  }
+
+  private async buildPlatformDiscountProductLinks(
+    tx: Prisma.TransactionClient,
+    items: FinanceOrderItem[],
+  ): Promise<
+    Array<{ productId: string; title: string; url: string }>
+  > {
+    const productIds = Array.from(
+      new Set(items.map((item) => item.productId.toString())),
+    );
+    if (productIds.length === 0) {
+      return [];
+    }
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds.map((id) => toBigInt(id)) } },
+      select: { id: true, title: true, slug: true },
+    });
+    const productMap = new Map(
+      products.map((product) => [
+        product.id.toString(),
+        { title: product.title, slug: product.slug },
+      ]),
+    );
+    return productIds.map((productId) => {
+      const record = productMap.get(productId);
+      const title = record?.title ?? 'محصول';
+      const slug = record?.slug;
+      const url = slug ? `/products/${slug}` : `/products/${productId}`;
+      return { productId, title, url };
+    });
+  }
+
+  private isPlatformFundedDiscount(
+    source: string | null | undefined,
+  ): boolean {
+    const normalized = (source ?? '').toUpperCase();
+    return normalized === 'COUPON' || normalized === 'CAMPAIGN';
+  }
+
+  private platformWalletAllowsNegative(): boolean {
+    return this.config.get<boolean>('PLATFORM_WALLET_ALLOW_NEGATIVE') ?? false;
   }
 
   private async applyOrderRevenueSplitAndCredits(

@@ -34,6 +34,11 @@ type ProductListOptions = {
   includeRelations: boolean;
 };
 
+const OWNER_VISIBLE_PRODUCT_STATUSES: ProductStatus[] = [
+  ProductStatus.DRAFT,
+  ProductStatus.PUBLISHED,
+];
+
 @Injectable()
 export class ProductManagementService {
   constructor(
@@ -148,6 +153,8 @@ export class ProductManagementService {
     }
     if (query.status) {
       ands.push({ status: query.status as ProductStatus });
+    } else if (scope.type === 'owner') {
+      ands.push({ status: { in: OWNER_VISIBLE_PRODUCT_STATUSES } });
     }
 
     if (scope.type === 'owner') {

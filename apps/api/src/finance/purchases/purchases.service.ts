@@ -7,9 +7,87 @@ import { buildApiBaseUrl } from '@app/finance/common/api-base-url.util';
 import { ConfigService } from '@nestjs/config';
 import type { AllConfig } from '@app/config/config.module';
 import type { PurchasesPageDto, PurchaseItemDto } from '@app/finance/purchases/dto/purchase.dto';
-import type { FinanceEntitlementSource } from '@prisma/client';
+import {
+  AdminOrdersQueryDto,
+  AdminPurchasePaymentStatus,
+} from '@app/finance/purchases/dto/admin-purchases-query.dto';
+import type { AdminOrdersListResponseDto } from '@app/finance/purchases/dto/admin-purchases-list.dto';
+import { Prisma, FinancePaymentStatus, type FinanceEntitlementSource } from '@prisma/client';
 
 const MAX_PAGE_SIZE = 100;
+const ADMIN_PURCHASES_MAX_LIMIT = 100;
+
+const ADMIN_ORDER_SELECT = {
+  id: true,
+  createdAt: true,
+  total: true,
+  user: {
+    select: {
+      id: true,
+      name: true,
+      firstName: true,
+      lastName: true,
+      username: true,
+      phone: true,
+      email: true,
+    },
+  },
+  items: {
+    select: {
+      product: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+    },
+  },
+  payments: {
+    take: 1,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      provider: true,
+      trackId: true,
+      refId: true,
+      status: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.FinanceOrderSelect;
+
+type AdminOrderRow = Prisma.FinanceOrderGetPayload<{
+  select: typeof ADMIN_ORDER_SELECT;
+}>;
+
+const ADMIN_PAYMENT_SUCCESS = new Set<FinancePaymentStatus>([
+  FinancePaymentStatus.SUCCESS,
+]);
+const ADMIN_PAYMENT_PENDING = new Set<FinancePaymentStatus>([
+  FinancePaymentStatus.PENDING,
+]);
+const ADMIN_PAYMENT_FAILED = new Set<FinancePaymentStatus>([
+  FinancePaymentStatus.FAILED,
+  FinancePaymentStatus.CANCELED,
+]);
+
+export function mapPaymentStatusToAdminStatus(
+  status?: FinancePaymentStatus | null,
+): AdminPurchasePaymentStatus {
+  if (!status) {
+    return AdminPurchasePaymentStatus.PENDING;
+  }
+  if (ADMIN_PAYMENT_SUCCESS.has(status)) {
+    return AdminPurchasePaymentStatus.SUCCESS;
+  }
+  if (ADMIN_PAYMENT_PENDING.has(status)) {
+    return AdminPurchasePaymentStatus.PENDING;
+  }
+  if (ADMIN_PAYMENT_FAILED.has(status)) {
+    return AdminPurchasePaymentStatus.FAILED;
+  }
+  return AdminPurchasePaymentStatus.PENDING;
+}
 
 @Injectable()
 export class PurchasesService {
@@ -18,6 +96,103 @@ export class PurchasesService {
     private readonly downloadTokens: DownloadTokensService,
     private readonly config: ConfigService<AllConfig>,
   ) {}
+
+  async listAdminPurchases(
+    query: AdminOrdersQueryDto,
+  ): Promise<AdminOrdersListResponseDto> {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit
+      ? Math.min(Math.max(1, query.limit), ADMIN_PURCHASES_MAX_LIMIT)
+      : 20;
+    const skip = (page - 1) * limit;
+
+    const filters: Prisma.FinanceOrderWhereInput[] = [];
+
+    if (query.from || query.to) {
+      filters.push({
+        createdAt: {
+          ...(query.from ? { gte: new Date(query.from) } : {}),
+          ...(query.to ? { lte: new Date(query.to) } : {}),
+        },
+      });
+    }
+
+    if (query.status) {
+      const paymentStatuses =
+        this.mapAdminStatusToPaymentStatuses(query.status);
+      if (query.status === AdminPurchasePaymentStatus.PENDING) {
+        filters.push({
+          OR: [
+            { payments: { none: {} } },
+            { payments: { some: { status: { in: paymentStatuses } } } },
+          ],
+        });
+      } else {
+        filters.push({
+          payments: { some: { status: { in: paymentStatuses } } },
+        });
+      }
+    }
+
+    if (query.q) {
+      const term = query.q;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        term,
+      );
+      filters.push({
+        OR: [
+          ...(isUuid ? [{ id: term }] : []),
+          {
+            user: {
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { firstName: { contains: term, mode: 'insensitive' } },
+                { lastName: { contains: term, mode: 'insensitive' } },
+                { phone: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+              ],
+            },
+          },
+          {
+            payments: {
+              some: { trackId: { contains: term, mode: 'insensitive' } },
+            },
+          },
+          {
+            payments: {
+              some: { refId: { contains: term, mode: 'insensitive' } },
+            },
+          },
+        ],
+      });
+    }
+
+    const where: Prisma.FinanceOrderWhereInput =
+      filters.length > 0 ? { AND: filters } : {};
+
+    const [rows, total] = await Promise.all([
+      this.prisma.financeOrder.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: ADMIN_ORDER_SELECT,
+      }),
+      this.prisma.financeOrder.count({ where }),
+    ]);
+
+    const items = rows.map((row) => this.mapAdminOrderRow(row));
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+      },
+    };
+  }
 
   async listForUser(
     userId: string,
@@ -215,5 +390,67 @@ export class PurchasesService {
       orderId,
       downloads,
     };
+  }
+
+  private mapAdminOrderRow(row: AdminOrderRow) {
+    const payment = row.payments?.[0];
+    const paymentStatus = mapPaymentStatusToAdminStatus(payment?.status);
+    const buyerName = this.resolveBuyerFullName(row.user);
+
+    return {
+      orderId: row.id,
+      createdAt: row.createdAt.toISOString(),
+      buyer: {
+        id: row.user.id,
+        fullName: buyerName,
+        phone: row.user.phone ?? null,
+        email: row.user.email ?? null,
+      },
+      products: row.items.map((item) => ({
+        id: toBigIntString(item.product.id),
+        title: item.product.title,
+      })),
+      amount: { total: row.total },
+      paymentStatus,
+      payment: payment
+        ? {
+            id: payment.id,
+            provider: payment.provider,
+            trackId: payment.trackId ?? null,
+            refId: payment.refId ?? null,
+          }
+        : undefined,
+    };
+  }
+
+  private resolveBuyerFullName(user: {
+    name: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    username: string | null;
+    email: string | null;
+    phone: string | null;
+  }): string {
+    const name = user.name?.trim();
+    if (name) {
+      return name;
+    }
+    const combined = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+    if (combined) {
+      return combined;
+    }
+    return (user.username ?? user.email ?? user.phone ?? 'User').toString();
+  }
+
+  private mapAdminStatusToPaymentStatuses(
+    status: AdminPurchasePaymentStatus,
+  ): FinancePaymentStatus[] {
+    if (status === AdminPurchasePaymentStatus.SUCCESS) {
+      return [FinancePaymentStatus.SUCCESS];
+    }
+    if (status === AdminPurchasePaymentStatus.FAILED) {
+      return [FinancePaymentStatus.FAILED, FinancePaymentStatus.CANCELED];
+    }
+    return [FinancePaymentStatus.PENDING];
   }
 }

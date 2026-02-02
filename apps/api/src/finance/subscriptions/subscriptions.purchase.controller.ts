@@ -34,12 +34,28 @@ export class SubscriptionsPurchaseController {
     const userId = requireUserId(user);
     const result = await this.subscriptionsService.createSubscriptionPurchase(
       userId,
-      dto.planId,
+      dto,
     );
     return {
       purchaseId: result.purchase.id,
       amount: result.purchase.amount,
-      planTitle: result.planTitle,
+      currency: result.purchase.currency,
+      durationDays: result.plan.durationDays,
+      planTitle: result.plan.title,
+      status: result.purchase.status as SubscriptionPurchaseResponseDto['status'],
+      plan: {
+        id: result.plan.id,
+        title: result.plan.title,
+        price: result.plan.price,
+        durationDays: result.plan.durationDays,
+        dailySubscriptionDownloadLimit:
+          result.plan.dailySubscriptionDownloadLimit,
+        dailyFreeDownloadLimitWithSubscription:
+          result.plan.dailyFreeDownloadLimitWithSubscription,
+        isActive: result.plan.isActive,
+        description: result.plan.description ?? null,
+      },
+      createdAt: result.purchase.createdAt.toISOString(),
     };
   }
 }

@@ -12,7 +12,6 @@ import {
   EntitlementSource,
   OrderStatus,
   ProductPricingType,
-  SubscriptionPlanCode,
 } from '@app/finance/common/finance.enums';
 import { BASE_FREE_DAILY_LIMIT } from '@app/finance/common/finance.constants';
 import { getTehranDateKey } from '@app/finance/common/date.utils';
@@ -24,6 +23,12 @@ import { toBigInt } from '@app/finance/common/prisma.utils';
 import { StorageService } from '@app/catalog/storage/storage.service';
 import { Readable } from 'node:stream';
 import type { FinanceEntitlementSource, Prisma } from '@prisma/client';
+
+type DownloadRequestMetadata = {
+  ip?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+};
 
 @Injectable()
 export class DownloadsService {
@@ -63,27 +68,29 @@ export class DownloadsService {
 
     return {
       usedFree,
-      freeLimit: plan.dailyFreeLimit,
+      freeLimit: plan.dailyFreeDownloadLimitWithSubscription,
       usedSub,
-      subLimit: plan.dailySubLimit,
+      subLimit: plan.dailySubscriptionDownloadLimit,
       hasSubscription: true,
-      planCode: plan.code as SubscriptionPlanCode,
     };
   }
 
   async downloadProduct(
     userId: string,
     productId: string,
+    metadata: DownloadRequestMetadata = {},
   ): Promise<DownloadDecisionDto> {
     const product = await this.productsService.findProductOrThrow(productId);
     const storageKey = await this.productsService.getProductStorageKey(productId);
+    const isFree = this.isFreeProduct(product);
 
     const hasEntitlement = await this.entitlementsService.hasPurchased(
       userId,
       productId,
     );
 
-    if (hasEntitlement) {
+    if (hasEntitlement && !isFree) {
+      const signedUrl = this.requireSignedUrl(storageKey);
       await this.prisma.financeDownloadLog.create({
         data: {
           userId,
@@ -94,43 +101,24 @@ export class DownloadsService {
           orderId: null,
         },
       });
+      await this.logDownloadEvent({
+        userId,
+        productId,
+        isFree,
+        metadata,
+      });
       return {
         allowed: true,
         source: EntitlementSource.PURCHASED,
         reason: 'PURCHASED',
         productType: product.pricingType,
-        signedUrl: null,
+        signedUrl,
         storageKey,
       };
     }
 
-    if (product.pricingType === ProductPricingType.PAID) {
-      throw new ForbiddenException('Product requires purchase.');
-    }
-
-    if (product.pricingType === ProductPricingType.PAID_OR_SUBSCRIPTION) {
-      const subscription = await this.subscriptionsService.getActiveSubscription(
-        userId,
-      );
-      if (!subscription) {
-        throw new ForbiddenException('Active subscription required.');
-      }
-      const plan = await this.subscriptionsService.getPlanById(
-        subscription.planId,
-      );
-      return this.consumeQuota({
-        userId,
-        productId,
-        type: 'sub',
-        limit: plan.dailySubLimit,
-        source: EntitlementSource.SUB_QUOTA,
-        subscriptionId: subscription.id,
-        productType: product.pricingType,
-        storageKey,
-      });
-    }
-
-    if (product.pricingType === ProductPricingType.FREE) {
+    if (isFree) {
+      this.requireSignedUrl(storageKey);
       const subscription = await this.subscriptionsService.getActiveSubscription(
         userId,
       );
@@ -138,7 +126,7 @@ export class DownloadsService {
         ? await this.subscriptionsService.getPlanById(subscription.planId)
         : null;
       const limit = subscription
-        ? plan?.dailyFreeLimit ?? BASE_FREE_DAILY_LIMIT
+        ? plan?.dailyFreeDownloadLimitWithSubscription ?? BASE_FREE_DAILY_LIMIT
         : BASE_FREE_DAILY_LIMIT;
 
       return this.consumeQuota({
@@ -150,6 +138,37 @@ export class DownloadsService {
         subscriptionId: subscription ? subscription.id : null,
         productType: product.pricingType,
         storageKey,
+        isFree: true,
+        metadata,
+      });
+    }
+
+    if (product.pricingType === ProductPricingType.PAID) {
+      throw new ForbiddenException('برای دانلود نیاز به خرید محصول است.');
+    }
+
+    if (product.pricingType === ProductPricingType.PAID_OR_SUBSCRIPTION) {
+      const subscription = await this.subscriptionsService.getActiveSubscription(
+        userId,
+      );
+      if (!subscription) {
+        throw new ForbiddenException('برای دانلود نیاز به اشتراک فعال است.');
+      }
+      const plan = await this.subscriptionsService.getPlanById(
+        subscription.planId,
+      );
+      this.requireSignedUrl(storageKey);
+      return this.consumeQuota({
+        userId,
+        productId,
+        type: 'sub',
+        limit: plan.dailySubscriptionDownloadLimit,
+        source: EntitlementSource.SUB_QUOTA,
+        subscriptionId: subscription.id,
+        productType: product.pricingType,
+        storageKey,
+        isFree: false,
+        metadata,
       });
     }
 
@@ -165,6 +184,8 @@ export class DownloadsService {
     subscriptionId: string | null;
     productType: ProductPricingType;
     storageKey: string | null;
+    isFree: boolean;
+    metadata?: DownloadRequestMetadata;
   }): Promise<DownloadDecisionDto> {
     const dateKey = getTehranDateKey();
 
@@ -190,7 +211,9 @@ export class DownloadsService {
           data: { usedFree: { increment: 1 } },
         });
         if (result.count === 0) {
-          throw new ForbiddenException('Daily free quota exceeded.');
+          throw new ForbiddenException(
+            'سقف دانلود روزانه محصولات رایگان به پایان رسیده است.',
+          );
         }
       } else {
         const result = await tx.financeDownloadUsageDaily.updateMany({
@@ -217,6 +240,13 @@ export class DownloadsService {
         },
       });
 
+      await this.createDownloadEvent(tx, {
+        userId: params.userId,
+        productId: params.productId,
+        isFree: params.isFree,
+        metadata: params.metadata,
+      });
+
       const decision: DownloadDecisionDto = {
         allowed: true,
         source: params.source,
@@ -235,6 +265,7 @@ export class DownloadsService {
     userId: string;
     orderId: string;
     fileId: string;
+    metadata?: DownloadRequestMetadata;
   }): Promise<{
     stream: Readable;
     filename: string;
@@ -249,6 +280,12 @@ export class DownloadsService {
         productId: true,
         storageKey: true,
         originalName: true,
+        product: {
+          select: {
+            pricingType: true,
+            price: true,
+          },
+        },
         sourceFile: { select: { filename: true, mime: true, size: true } },
       },
     });
@@ -302,6 +339,16 @@ export class DownloadsService {
       },
     });
 
+    await this.logDownloadEvent({
+      userId: params.userId,
+      productId: file.productId.toString(),
+      isFree: this.isFreeProduct({
+        pricingType: file.product.pricingType as ProductPricingType,
+        price: file.product.price ? Number(file.product.price) : null,
+      }),
+      metadata: params.metadata,
+    });
+
     const filename =
       file.originalName ??
       file.sourceFile?.filename ??
@@ -316,5 +363,61 @@ export class DownloadsService {
           ? Number(file.sourceFile.size)
           : undefined,
     };
+  }
+
+  private isFreeProduct(product: {
+    pricingType: ProductPricingType;
+    price: number | null;
+  }): boolean {
+    return (
+      product.pricingType === ProductPricingType.FREE ||
+      (product.price !== null && product.price <= 0)
+    );
+  }
+
+  private async createDownloadEvent(
+    tx: Prisma.TransactionClient,
+    params: {
+      userId: string;
+      productId: string;
+      isFree: boolean;
+      metadata?: DownloadRequestMetadata;
+    },
+  ): Promise<void> {
+    await tx.downloadEvent.create({
+      data: {
+        userId: params.userId,
+        productId: toBigInt(params.productId),
+        isFree: params.isFree,
+        ip: params.metadata?.ip ?? null,
+        userAgent: params.metadata?.userAgent ?? null,
+        requestId: params.metadata?.requestId ?? null,
+      },
+    });
+  }
+
+  private async logDownloadEvent(params: {
+    userId: string;
+    productId: string;
+    isFree: boolean;
+    metadata?: DownloadRequestMetadata;
+  }): Promise<void> {
+    await this.prisma.downloadEvent.create({
+      data: {
+        userId: params.userId,
+        productId: toBigInt(params.productId),
+        isFree: params.isFree,
+        ip: params.metadata?.ip ?? null,
+        userAgent: params.metadata?.userAgent ?? null,
+        requestId: params.metadata?.requestId ?? null,
+      },
+    });
+  }
+
+  private requireSignedUrl(storageKey: string | null): string {
+    if (!storageKey) {
+      throw new NotFoundException('فایل محصول یافت نشد.');
+    }
+    return this.storage.getDownloadUrl(storageKey);
   }
 }

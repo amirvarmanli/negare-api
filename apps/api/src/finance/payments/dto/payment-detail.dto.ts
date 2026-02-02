@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  PaymentFulfillmentStatus,
   PaymentProvider,
   PaymentReferenceType,
   PaymentStatus,
@@ -27,6 +28,15 @@ export class PaymentDetailDto {
   })
   status!: PaymentStatus;
 
+  @ApiProperty({
+    enum: PaymentFulfillmentStatus,
+    description: 'PENDING, SUCCESS, or FAILED fulfillment state.',
+  })
+  fulfillmentStatus!: PaymentFulfillmentStatus;
+
+  @ApiProperty({ example: 'Entitlements failed', nullable: true })
+  fulfillmentError!: string | null;
+
   @ApiProperty({ example: 250000 })
   amount!: number;
 
@@ -44,4 +54,7 @@ export class PaymentDetailDto {
 
   @ApiProperty({ example: '2025-01-01T12:05:00.000Z', nullable: true })
   paidAt!: string | null;
+
+  @ApiProperty({ example: '2025-01-01T12:05:05.000Z', nullable: true })
+  fulfilledAt!: string | null;
 }

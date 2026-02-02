@@ -13,7 +13,6 @@ import {
   OrderKind,
   OrderStatus,
   ProductPricingType,
-  DiscountType,
 } from '@app/finance/common/finance.enums';
 import { ORDER_PAYMENT_TTL_MINUTES } from '@app/finance/common/finance.constants';
 import type { CreateOrderDto } from '@app/finance/orders/dto/create-order.dto';
@@ -121,13 +120,11 @@ export class OrdersService {
     });
 
     const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const resolvedCoupon =
-      dto.couponCode ??
-      (dto.discount ? this.toLegacyCouponCode(dto.discount) : undefined);
+    const resolvedCoupon = dto.couponCode?.trim() || undefined;
 
     const savedOrder = await this.prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-        const resolution = await this.discountsService.resolveDiscount(tx, {
+        const quote = await this.discountsService.calculateDiscountQuote(tx, {
           userId,
           orderKind: OrderKind.PRODUCT,
           items: lineItems.map((item) => ({
@@ -140,7 +137,7 @@ export class OrdersService {
           couponCode: resolvedCoupon,
         });
 
-        const total = Math.max(0, subtotal - resolution.discountValue);
+        const total = Math.max(0, subtotal - quote.discountValue);
 
         const order = await tx.financeOrder.create({
           data: {
@@ -148,8 +145,12 @@ export class OrdersService {
             status: OrderStatus.PENDING_PAYMENT as FinanceOrderStatus,
             orderKind: OrderKind.PRODUCT as FinanceOrderKind,
             subtotal,
-            discountType: resolution.discountType as FinanceDiscountType,
-            discountValue: resolution.discountValue,
+            discountType: quote.discountType as FinanceDiscountType,
+            discountValue: quote.discountValue,
+            discountAmount: quote.discountValue,
+            discountSource: quote.appliedDiscountSource,
+            couponCode: quote.appliedDiscountCode ?? null,
+            discountReason: quote.appliedDiscountReason,
             total,
             currency: 'TOMAN',
             subscriptionPlanId: null,
@@ -160,22 +161,6 @@ export class OrdersService {
             ),
           },
         });
-
-        if (
-          resolution.source === 'SUBSCRIPTION' &&
-          resolution.subscriptionId &&
-          resolution.subscriptionPercent
-        ) {
-          await tx.subscriptionDiscountUsage.create({
-            data: {
-              subscriptionId: resolution.subscriptionId,
-              orderId: order.id,
-              userId,
-              discountPercent: resolution.subscriptionPercent,
-              discountAmount: resolution.discountValue,
-            },
-          });
-        }
 
         const itemsData = lineItems.map((item) => ({
           orderId: order.id,
@@ -188,14 +173,11 @@ export class OrdersService {
 
         await tx.financeOrderItem.createMany({ data: itemsData });
 
-        if (resolution.couponId && resolution.discountValue > 0) {
-          await tx.financeCouponRedemption.create({
-            data: {
-              couponId: resolution.couponId,
-              userId,
-              orderId: order.id,
-              amount: resolution.discountValue,
-            },
+        if (quote.couponId && quote.discountValue > 0) {
+          await this.discountsService.commitCouponRedemption(tx, {
+            couponId: quote.couponId,
+            userId,
+            orderId: order.id,
           });
         }
 
@@ -440,16 +422,4 @@ export class OrdersService {
     return 'PENDING';
   }
 
-  private toLegacyCouponCode(discount: CreateOrderDto['discount']): string {
-    if (!discount) {
-      return '';
-    }
-    if (discount.type === DiscountType.FIXED) {
-      return `FIXED_${discount.value}`;
-    }
-    if (discount.type === DiscountType.PERCENT) {
-      return `PERCENT_${discount.value}`;
-    }
-    throw new BadRequestException('Unsupported discount type.');
-  }
 }

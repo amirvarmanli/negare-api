@@ -55,6 +55,41 @@ export class SkillsController {
     return this.skillsService.create(dto);
   }
 
+  // =======================================================================
+  // AUTHENTICATED USER: مدیریت مهارت‌های خود کاربر
+  // =======================================================================
+
+  @Get('me')
+  @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'دریافت مهارت‌های کاربر فعلی' })
+  @ApiResponse({ status: 200, type: SkillListResultDto })
+  getMySkills(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SkillListResultDto> {
+    return this.skillsService.getUserSkillsById(user.id);
+  }
+
+  @Patch('me')
+  @ApiBearerAuth('bearer')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'به‌روزرسانی مهارت‌های کاربر فعلی',
+    description: 'لیست skillKeys ارسال شده جایگزین همه مهارت‌های قبلی می‌شود.',
+  })
+  @ApiResponse({ status: 200, type: SkillListResultDto })
+  updateMySkills(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: UserSkillsSetDto,
+  ): Promise<SkillListResultDto> {
+    return this.skillsService.setUserSkillsByUserIdAndKeys(
+      user.id,
+      body.skillKeys,
+    );
+  }
+
+  // NOTE: keep static routes (like /me) above :id to avoid route shadowing.
+
   @Patch(':id')
   @ApiBearerAuth('bearer')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -137,37 +172,6 @@ export class SkillsController {
     @Param('username') username: string,
   ): Promise<SkillListResultDto> {
     return this.skillsService.getUserSkillsByUsername(username);
-  }
-
-  // =======================================================================
-  // AUTHENTICATED USER: مدیریت مهارت‌های خود کاربر
-  // =======================================================================
-
-  @Get('me')
-  @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'دریافت مهارت‌های کاربر فعلی' })
-  @ApiResponse({ status: 200, type: SkillListResultDto })
-  getMySkills(
-    @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SkillListResultDto> {
-    return this.skillsService.getUserSkillsById(user.id);
-  }
-
-  @Patch('me')
-  @ApiBearerAuth('bearer')
-  @ApiOperation({
-    summary: 'به‌روزرسانی مهارت‌های کاربر فعلی',
-    description: 'لیست skillKeys ارسال شده جایگزین همه مهارت‌های قبلی می‌شود.',
-  })
-  @ApiResponse({ status: 200, type: SkillListResultDto })
-  updateMySkills(
-    @CurrentUser() user: CurrentUserPayload,
-    @Body() body: UserSkillsSetDto,
-  ): Promise<SkillListResultDto> {
-    return this.skillsService.setUserSkillsByUserIdAndKeys(
-      user.id,
-      body.skillKeys,
-    );
   }
 
   // =======================================================================

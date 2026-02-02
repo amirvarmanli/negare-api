@@ -1,5 +1,7 @@
 services:
   api:
+    build:
+      target: dev
     command: ["npm", "run", "start:dev"]
     environment:
       NODE_ENV: development

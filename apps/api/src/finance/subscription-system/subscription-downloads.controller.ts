@@ -25,7 +25,10 @@ export class SubscriptionDownloadsController {
   @Post('validate')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Validate and log a subscription download.' })
+  @ApiOperation({
+    summary:
+      'Validate subscription or purchased product downloads against entitlement records created during fulfillment (including platform-funded coupon purchases) and log the usage.',
+  })
   @ApiOkResponse({ type: SubscriptionDownloadDecisionDto })
   async validate(
     @Body() dto: SubscriptionDownloadRequestDto,

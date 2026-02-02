@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
@@ -14,19 +16,20 @@ import {
 } from '@app/finance/common/finance.constants';
 import { DiscountType, OrderKind, OrderStatus } from '@app/finance/common/finance.enums';
 import { addMonths } from '@app/finance/common/date.utils';
-import type { PurchaseSubscriptionDto } from '@app/finance/subscriptions/dto/purchase-subscription.dto';
+import type { LegacyPurchaseSubscriptionDto } from '@app/finance/subscriptions/dto/purchase-subscription.dto';
+import type { SubscriptionPurchaseDto } from '@app/finance/subscriptions/dto/subscription-purchase.dto';
 import {
   FinanceDiscountType,
   FinanceOrder,
   FinanceOrderKind,
   FinanceOrderStatus,
-  FinanceSubscriptionPlan,
   FinanceSubscriptionPurchase,
   FinanceSubscriptionPurchaseStatus,
   FinanceUserSubscription,
-  FinanceSubscriptionPlanCode as PrismaSubscriptionPlanCode,
   FinanceSubscriptionStatus,
   Prisma,
+  Subscription,
+  SubscriptionPlan,
 } from '@prisma/client';
 
 @Injectable()
@@ -35,8 +38,8 @@ export class SubscriptionsService {
 
   private readonly defaultDurationMonths = 1;
 
-  async listPlans(): Promise<FinanceSubscriptionPlan[]> {
-    return this.prisma.financeSubscriptionPlan.findMany({
+  async listPlans(): Promise<SubscriptionPlan[]> {
+    return this.prisma.subscriptionPlan.findMany({
       where: { isActive: true },
     });
   }
@@ -67,7 +70,7 @@ export class SubscriptionsService {
 
   async createSubscriptionOrder(
     userId: string,
-    dto: PurchaseSubscriptionDto,
+    dto: LegacyPurchaseSubscriptionDto,
   ): Promise<FinanceOrder> {
     if (!SUBSCRIPTION_DURATIONS_MONTHS.includes(dto.durationMonths)) {
       throw new BadRequestException('Invalid subscription duration.');
@@ -93,6 +96,10 @@ export class SubscriptionsService {
         subtotal: amount,
         discountType: DiscountType.NONE as FinanceDiscountType,
         discountValue: 0,
+        discountAmount: 0,
+        discountSource: 'NONE',
+        couponCode: null,
+        discountReason: 'No discount applied.',
         total: amount,
         currency: 'TOMAN',
         subscriptionPlanId: plan.id,
@@ -104,44 +111,48 @@ export class SubscriptionsService {
 
   async createSubscriptionPurchase(
     userId: string,
-    planId: string,
+    dto: SubscriptionPurchaseDto,
   ): Promise<{
     purchase: FinanceSubscriptionPurchase;
-    planTitle: string;
+    plan: SubscriptionPlan;
   }> {
-    const plan = await this.prisma.financeSubscriptionPlan.findFirst({
-      where: { id: planId, isActive: true },
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: dto.planId },
     });
 
     if (!plan) {
       throw new NotFoundException('Subscription plan not found.');
     }
 
-    const planCode = plan.code as SubscriptionPlanCode;
-    const monthlyPrice = SUBSCRIPTION_PLAN_PRICING[planCode];
-    const amount = monthlyPrice * this.defaultDurationMonths;
+    if (!plan.isActive) {
+      throw new ConflictException('Subscription plan is inactive.');
+    }
+
+    const amount = plan.price;
+    const durationMonths = Math.max(
+      1,
+      Math.ceil((plan.durationDays ?? 0) / 30),
+    );
 
     const purchase = await this.prisma.financeSubscriptionPurchase.create({
       data: {
         userId,
-        planId: plan.id,
+        planId: null,
+        subscriptionPlanId: plan.id,
         status: FinanceSubscriptionPurchaseStatus.PENDING,
         amount,
         currency: 'TOMAN',
-        durationMonths: this.defaultDurationMonths,
+        durationMonths,
       },
     });
 
-    return {
-      purchase,
-      planTitle: `Plan ${planCode}`,
-    };
+    return { purchase, plan };
   }
 
   async activateSubscriptionFromOrder(
     tx: Prisma.TransactionClient,
     order: FinanceOrder,
-  ): Promise<FinanceUserSubscription> {
+  ): Promise<Subscription> {
     if (!order.subscriptionPlanId || !order.subscriptionDurationMonths) {
       throw new BadRequestException('Order is missing subscription details.');
     }
@@ -157,27 +168,24 @@ export class SubscriptionsService {
   async activateSubscriptionFromPurchase(
     tx: Prisma.TransactionClient,
     purchase: FinanceSubscriptionPurchase,
-  ): Promise<FinanceUserSubscription> {
+  ): Promise<Subscription> {
+    if (!purchase.subscriptionPlanId) {
+      // v2 invariant: activation must use subscription_plan_id; legacy plan_id is invalid here.
+      throw new InternalServerErrorException(
+        'Invariant violation: subscriptionPlanId is required for subscription activation.',
+      );
+    }
     return this.activateSubscription(
       tx,
       purchase.userId,
-      purchase.planId,
+      purchase.subscriptionPlanId,
       purchase.durationMonths,
     );
   }
 
-  async getPlanByCode(code: SubscriptionPlanCode): Promise<FinanceSubscriptionPlan> {
-    const plan = await this.prisma.financeSubscriptionPlan.findFirst({
-      where: { code: code as PrismaSubscriptionPlanCode },
-    });
-    if (!plan) {
-      throw new NotFoundException('Subscription plan not found.');
-    }
-    return plan;
-  }
 
-  async getPlanById(id: string): Promise<FinanceSubscriptionPlan> {
-    const plan = await this.prisma.financeSubscriptionPlan.findUnique({
+  async getPlanById(id: string): Promise<SubscriptionPlan> {
+    const plan = await this.prisma.subscriptionPlan.findUnique({
       where: { id },
     });
     if (!plan) {
@@ -189,11 +197,11 @@ export class SubscriptionsService {
   private async activateSubscription(
     tx: Prisma.TransactionClient,
     userId: string,
-    planId: string,
+    subscriptionPlanId: string,
     durationMonths: number,
-  ): Promise<FinanceUserSubscription> {
-    const plan = await tx.financeSubscriptionPlan.findUnique({
-      where: { id: planId },
+  ): Promise<Subscription> {
+    const plan = await tx.subscriptionPlan.findUnique({
+      where: { id: subscriptionPlanId },
     });
 
     if (!plan) {
@@ -201,7 +209,7 @@ export class SubscriptionsService {
     }
 
     const now = new Date();
-    const existing = await tx.financeUserSubscription.findFirst({
+    const existing = await tx.subscription.findFirst({
       where: {
         userId,
         status: SubscriptionStatus.ACTIVE as FinanceSubscriptionStatus,
@@ -213,16 +221,36 @@ export class SubscriptionsService {
     const endAt = addMonths(startAt, durationMonths);
 
     if (existing && existing.endAt > now) {
-      return tx.financeUserSubscription.update({
+      return tx.subscription.update({
         where: { id: existing.id },
-        data: { endAt, planId: plan.id },
+        data: {
+          endAt,
+          planId: plan.id,
+          planTitle: plan.title,
+          price: plan.price,
+          durationDays: plan.durationDays,
+          dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+          dailyFreeDownloadLimitWithSubscription:
+            plan.dailyFreeDownloadLimitWithSubscription,
+          discountPercent: plan.discountPercent ?? null,
+          discountRemaining: plan.discountQuota ?? 0,
+          status: SubscriptionStatus.ACTIVE as FinanceSubscriptionStatus,
+        },
       });
     }
 
-    return tx.financeUserSubscription.create({
+    return tx.subscription.create({
       data: {
         userId,
         planId: plan.id,
+        planTitle: plan.title,
+        price: plan.price,
+        durationDays: plan.durationDays,
+        dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+        dailyFreeDownloadLimitWithSubscription:
+          plan.dailyFreeDownloadLimitWithSubscription,
+        discountPercent: plan.discountPercent ?? null,
+        discountRemaining: plan.discountQuota ?? 0,
         startAt,
         endAt,
         status: SubscriptionStatus.ACTIVE as FinanceSubscriptionStatus,

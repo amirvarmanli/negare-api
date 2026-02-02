@@ -38,7 +38,8 @@
     },
     {
       "key": "subscriptionPlanId",
-      "value": ""
+      "value": "",
+      "description": "ID from GET /subscriptions/plans (subscription_plans_v2)."
     },
     {
       "key": "subscriptionPurchaseId",
@@ -691,7 +692,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/admin/users?page=1&limit=20&q=&hasProduct=true&artistOnly=false&sortBy=createdAt&sortDir=desc&includeSkills=false&includeCity=true",
+              "raw": "{{baseUrl}}/admin/users?page=1&limit=20&q=&role=&city=&sort=createdAtDesc&from=&to=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -713,28 +714,183 @@
                   "value": ""
                 },
                 {
-                  "key": "hasProduct",
-                  "value": "true"
+                  "key": "role",
+                  "value": ""
                 },
                 {
-                  "key": "artistOnly",
-                  "value": "false"
+                  "key": "city",
+                  "value": ""
                 },
                 {
-                  "key": "sortBy",
-                  "value": "createdAt"
+                  "key": "sort",
+                  "value": "createdAtDesc"
                 },
                 {
-                  "key": "sortDir",
-                  "value": "desc"
+                  "key": "from",
+                  "value": ""
                 },
                 {
-                  "key": "includeSkills",
-                  "value": "false"
+                  "key": "to",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List User Purchases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/purchases?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{userId}}",
+                "purchases"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
                 },
                 {
-                  "key": "includeCity",
-                  "value": "true"
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List User Downloads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/downloads?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{userId}}",
+                "downloads"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List User Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/transactions?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{userId}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List User Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/notifications?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{userId}}",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
                 }
               ]
             }
@@ -1097,17 +1253,18 @@
       "name": "Supplier Products",
       "item": [
         {
-          "name": "List Supplier Products",
+          "name": "List Supplier Products (includes drafts/pending approval)",
           "request": {
             "method": "GET",
+            "description": "Returns drafts and pending approvals owned by the authenticated supplier in addition to published products.",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
+                "value": "Bearer {{accessToken}}"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/supplier/products?page=1&limit=20&status=DRAFT&sortBy=createdAt&sortDir=desc",
+              "raw": "{{baseUrl}}/supplier/products?page=1&limit=20&sortBy=createdAt&sortDir=desc",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1123,10 +1280,6 @@
                 {
                   "key": "limit",
                   "value": "20"
-                },
-                {
-                  "key": "status",
-                  "value": "DRAFT"
                 },
                 {
                   "key": "sortBy",

@@ -1,8 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentStatus } from '@prisma/client';
+import {
+  OrderRequestPaymentFulfillmentStatus,
+  PaymentStatus,
+} from '@prisma/client';
 import { IsString, IsUUID } from 'class-validator';
 
-export class PaymentStatusResponseDto {
+export class OrderRequestPaymentStatusResponseDto {
   @ApiProperty({ example: 'payment-uuid' })
   id!: string;
 
@@ -14,6 +17,9 @@ export class PaymentStatusResponseDto {
 
   @ApiProperty({ enum: PaymentStatus })
   status!: PaymentStatus;
+
+  @ApiProperty({ enum: OrderRequestPaymentFulfillmentStatus })
+  fulfillmentStatus!: OrderRequestPaymentFulfillmentStatus;
 
   @ApiProperty({ example: 2100000 })
   amountToman!: number;
@@ -43,6 +49,9 @@ export class PaymentCallbackResponseDto {
 
   @ApiProperty({ enum: PaymentStatus })
   status!: PaymentStatus;
+
+  @ApiProperty({ enum: OrderRequestPaymentFulfillmentStatus })
+  fulfillmentStatus!: OrderRequestPaymentFulfillmentStatus;
 }
 
 export class PaymentVerifyRequestDto {

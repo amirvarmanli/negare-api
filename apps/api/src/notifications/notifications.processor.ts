@@ -13,6 +13,7 @@ import type {
   DeliverToFollowersJob,
   DeliverToGroupJob,
   DeliverToUserJob,
+  DeliverToUserJobMetadata,
 } from '@app/notifications/notifications.jobs';
 
 const CHUNK_SIZE = 500;
@@ -45,7 +46,7 @@ export class NotificationsProcessor extends WorkerHost {
   private async handleDeliverToUser(
     job: Job<DeliverToUserJob>,
   ): Promise<void> {
-    const { notificationId, userId, dedupeKey } = job.data;
+    const { notificationId, userId, dedupeKey, metadata } = job.data;
     try {
       await this.prisma.userNotification.create({
         data: {
@@ -61,6 +62,11 @@ export class NotificationsProcessor extends WorkerHost {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        this.logger.log(
+          `wallet-transaction notification skipped due to dedupe ${this.formatMetadata(
+            metadata,
+          )} notificationId=${notificationId} userId=${userId} dedupeKey=${dedupeKey ?? 'n/a'}`,
+        );
         return;
       }
       this.logger.error(
@@ -165,5 +171,30 @@ export class NotificationsProcessor extends WorkerHost {
       return { role: RoleName.user, status: UserStatus.active };
     }
     return { status: UserStatus.active };
+  }
+
+  private formatMetadata(
+    metadata?: DeliverToUserJobMetadata | null,
+  ): string {
+    if (!metadata) {
+      return 'traceId=unknown';
+    }
+    const parts = [];
+    if (metadata.traceId) {
+      parts.push(`traceId=${metadata.traceId}`);
+    }
+    if (metadata.walletTxId) {
+      parts.push(`walletTxId=${metadata.walletTxId}`);
+    }
+    if (metadata.walletUserId) {
+      parts.push(`walletUserId=${metadata.walletUserId}`);
+    }
+    if (metadata.reason) {
+      parts.push(`reason=${metadata.reason}`);
+    }
+    if (typeof metadata.amount === 'number') {
+      parts.push(`amount=${metadata.amount}`);
+    }
+    return parts.join(' ');
   }
 }

@@ -4,8 +4,11 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "API_BASE", "value": "http://localhost:4000/api" },
+    { "key": "BASE_URL", "value": "http://localhost:4000" },
+    { "key": "API_BASE", "value": "{{BASE_URL}}/api" },
     { "key": "ACCESS_TOKEN", "value": "" },
+    { "key": "USER_TOKEN", "value": "" },
+    { "key": "ADMIN_TOKEN", "value": "" },
     { "key": "productId", "value": "" },
     { "key": "ORDER_ID", "value": "" },
     { "key": "PAYMENT_ID", "value": "" },
@@ -17,6 +20,9 @@
     { "key": "purchaseProductId", "value": "" },
     { "key": "fileId", "value": "" },
     { "key": "downloadToken", "value": "" },
+    { "key": "freeProductId", "value": "" },
+    { "key": "paidProductId", "value": "" },
+    { "key": "adminUserId", "value": "" },
     { "key": "DONATION_ID", "value": "" }
   ],
   "item": [
@@ -78,7 +84,34 @@
                 "exec": [
                   "pm.test('order paid', () => {",
                   "  const body = pm.response.json();",
-                  "  pm.expect(body.status).to.eql('PAID');",
+                  "  pm.expect(body.status).to.eql('SUCCESS');",
+                  "  pm.expect(body.id).to.be.a('string');",
+                  "});",
+                  "pm.environment.set('PAYMENT_ID', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/orders/{{ORDER_ID}}/pay-with-wallet"
+          }
+        },
+        {
+          "name": "Pay Order via Wallet - Insufficient Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('insufficient balance', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.eql('موجودی کیف پول کافی نیست.');",
                   "});"
                 ]
               }
@@ -90,6 +123,51 @@
               { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
             ],
             "url": "{{API_BASE}}/orders/{{ORDER_ID}}/pay-with-wallet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Purchases",
+      "item": [
+        {
+          "name": "Admin - List Purchases",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/purchases?page=1&limit=20&status=SUCCESS&q=amir&from=2025-01-01T00:00:00.000Z&to=2025-12-31T23:59:59.999Z"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Credits",
+      "item": [
+        {
+          "name": "Admin - List Credits",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/credits?page=1&limit=20&type=PRODUCT_PURCHASE&q=ali&from=2025-01-01T00:00:00.000Z&to=2025-12-31T23:59:59.999Z"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Users",
+      "item": [
+        {
+          "name": "Admin - User Downloads",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/users/{{adminUserId}}/downloads?from=2025-01-01&to=2025-01-31&freeOnly=true&page=1&limit=20"
           }
         }
       ]
@@ -260,6 +338,41 @@
       ]
     },
     {
+      "name": "Checkout",
+      "item": [
+        {
+          "name": "Price Quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/checkout/price-quote",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"1024\",\n      \"quantity\": 1\n    }\n  ],\n  \"couponCode\": \"WELCOME10\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Confirm Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/checkout/confirm",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"1024\",\n      \"quantity\": 1\n    }\n  ],\n  \"couponCode\": \"WELCOME10\",\n  \"requestId\": \"frontend-req-123\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Payments",
       "item": [
         {
@@ -288,13 +401,100 @@
           }
         },
         {
+          "name": "Retry Payment Fulfillment (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/payments/{{PAYMENT_ID}}/fulfill"
+          }
+        },
+        {
+          "name": "Retry Photo Restore Fulfillment (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/photo-restore/payments/{{PAYMENT_ID}}/fulfill"
+          }
+        },
+        {
           "name": "Get Payment Result",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
             ],
-            "url": "{{API_BASE}}/payments/{{PAYMENT_ID}}/result"
+            "url": "{{API_BASE}}/payments/result?paymentId={{PAYMENT_ID}}"
+          },
+          "response": [
+            {
+              "name": "Product Gateway",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"SUCCESS\",\n  \"source\": \"GATEWAY\",\n  \"provider\": \"ZIBAL\",\n  \"amount\": 250000,\n  \"currency\": \"TOMAN\",\n  \"purpose\": \"ORDER\",\n  \"referenceType\": \"cart\",\n  \"referenceId\": \"order-uuid\",\n  \"intent\": \"PRODUCT\",\n  \"fulfillmentStatus\": \"SUCCESS\",\n  \"fulfilledAt\": \"2026-02-02T12:05:03.000Z\",\n  \"verifiedAt\": \"2026-02-02T12:05:00.000Z\",\n  \"paidAt\": \"2026-02-02T12:05:00.000Z\",\n  \"failureReason\": null,\n  \"fulfillmentError\": null,\n  \"retryable\": false,\n  \"recommendedNextAction\": \"GO_TO_ORDER\",\n  \"orderId\": \"order-uuid\",\n  \"canAccessDownloads\": true\n}"
+            },
+            {
+              "name": "Product Wallet",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"SUCCESS\",\n  \"source\": \"WALLET\",\n  \"provider\": \"MOCK\",\n  \"amount\": 250000,\n  \"currency\": \"TOMAN\",\n  \"purpose\": \"ORDER\",\n  \"referenceType\": \"cart\",\n  \"referenceId\": \"order-uuid\",\n  \"intent\": \"PRODUCT\",\n  \"fulfillmentStatus\": \"SUCCESS\",\n  \"fulfilledAt\": \"2026-02-02T12:05:03.000Z\",\n  \"verifiedAt\": \"2026-02-02T12:05:00.000Z\",\n  \"paidAt\": \"2026-02-02T12:05:00.000Z\",\n  \"failureReason\": null,\n  \"fulfillmentError\": null,\n  \"retryable\": false,\n  \"recommendedNextAction\": \"GO_TO_ORDER\",\n  \"orderId\": \"order-uuid\",\n  \"canAccessDownloads\": true\n}"
+            },
+            {
+              "name": "Subscription Gateway",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"SUCCESS\",\n  \"source\": \"GATEWAY\",\n  \"provider\": \"ZIBAL\",\n  \"amount\": 150000,\n  \"currency\": \"TOMAN\",\n  \"purpose\": \"ORDER\",\n  \"referenceType\": \"subscription\",\n  \"referenceId\": \"purchase-uuid\",\n  \"intent\": \"SUBSCRIPTION\",\n  \"fulfillmentStatus\": \"SUCCESS\",\n  \"fulfilledAt\": \"2026-02-02T12:05:03.000Z\",\n  \"verifiedAt\": \"2026-02-02T12:05:00.000Z\",\n  \"paidAt\": \"2026-02-02T12:05:00.000Z\",\n  \"failureReason\": null,\n  \"fulfillmentError\": null,\n  \"retryable\": false,\n  \"recommendedNextAction\": \"GO_TO_SUBSCRIPTION\"\n}"
+            },
+            {
+              "name": "Photo Restore Gateway",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"SUCCESS\",\n  \"source\": \"GATEWAY\",\n  \"provider\": \"ZIBAL\",\n  \"amount\": 2100000,\n  \"currency\": \"TOMAN\",\n  \"purpose\": \"PHOTO_RESTORE\",\n  \"referenceType\": \"photo_restore\",\n  \"referenceId\": \"order-request-uuid\",\n  \"intent\": \"PHOTO_RESTORE\",\n  \"fulfillmentStatus\": \"SUCCESS\",\n  \"fulfilledAt\": \"2026-02-02T12:05:03.000Z\",\n  \"verifiedAt\": null,\n  \"paidAt\": null,\n  \"failureReason\": null,\n  \"fulfillmentError\": null,\n  \"retryable\": false,\n  \"recommendedNextAction\": \"GO_TO_PHOTO_RESTORE\",\n  \"orderId\": \"order-request-uuid\",\n  \"canAccessDownloads\": true\n}"
+            },
+            {
+              "name": "Donation Wallet",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"SUCCESS\",\n  \"source\": \"WALLET\",\n  \"provider\": \"MOCK\",\n  \"amount\": 50000,\n  \"currency\": \"TOMAN\",\n  \"purpose\": \"DONATION\",\n  \"referenceType\": \"donation\",\n  \"referenceId\": \"donation-uuid\",\n  \"intent\": \"DONATION\",\n  \"fulfillmentStatus\": \"SUCCESS\",\n  \"fulfilledAt\": \"2026-02-02T12:05:03.000Z\",\n  \"verifiedAt\": \"2026-02-02T12:05:00.000Z\",\n  \"paidAt\": \"2026-02-02T12:05:00.000Z\",\n  \"failureReason\": null,\n  \"fulfillmentError\": null,\n  \"retryable\": false,\n  \"recommendedNextAction\": \"CONTACT_SUPPORT\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Payment Result (Reference - canonical)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/result?referenceType=cart&referenceId={{ORDER_ID}}"
+          }
+        },
+        {
+          "name": "Get Payment Result (Reference - legacy)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/result?refType=cart&refId={{ORDER_ID}}"
+          }
+        },
+        {
+          "name": "Get Payment Result (TrackId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/payments/result?trackId={{trackId}}"
           }
         },
         {
@@ -353,7 +553,7 @@
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"id\": \"payment-uuid\",\n  \"orderId\": \"order-uuid\",\n  \"referenceType\": \"subscription\",\n  \"referenceId\": \"purchase-uuid\",\n  \"provider\": \"ZIBAL\",\n  \"status\": \"SUCCESS\",\n  \"amount\": 250000,\n  \"currency\": \"TOMAN\",\n  \"gatewayReferenceId\": \"ref_123\",\n  \"failureReason\": null,\n  \"createdAt\": \"2025-01-01T12:00:00.000Z\",\n  \"paidAt\": \"2025-01-01T12:05:00.000Z\"\n}"
+              "body": "{\n  \"id\": \"payment-uuid\",\n  \"orderId\": \"order-uuid\",\n  \"referenceType\": \"subscription\",\n  \"referenceId\": \"purchase-uuid\",\n  \"provider\": \"ZIBAL\",\n  \"status\": \"SUCCESS\",\n  \"fulfillmentStatus\": \"SUCCESS\",\n  \"fulfillmentError\": null,\n  \"amount\": 250000,\n  \"currency\": \"TOMAN\",\n  \"gatewayReferenceId\": \"ref_123\",\n  \"failureReason\": null,\n  \"createdAt\": \"2025-01-01T12:00:00.000Z\",\n  \"paidAt\": \"2025-01-01T12:05:00.000Z\",\n  \"fulfilledAt\": \"2025-01-01T12:05:03.000Z\"\n}"
             }
           ]
         },
@@ -437,19 +637,107 @@
             }
           }
         }
+        ,
+        {
+          "name": "Verify Platform Notifications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('wallet transaction notification exists', () => {",
+                  "  const found = body.items?.find(",
+                  "    (item) => item.type === 'WALLET_TRANSACTION_RECORDED',",
+                  "  );",
+                  "  pm.expect(found).to.be.ok;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/notifications?page=1&limit=5"
+          }
+        }
       ]
     },
     {
       "name": "Downloads",
       "item": [
         {
-          "name": "Download Product",
+          "name": "Download Product (Free) - GET",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{USER_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/products/{{freeProductId}}/download"
+          }
+        },
+        {
+          "name": "Download Product (Free) - POST (Legacy)",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+              { "key": "Authorization", "value": "Bearer {{USER_TOKEN}}" }
             ],
-            "url": "{{API_BASE}}/products/:id/download"
+            "url": "{{API_BASE}}/products/{{freeProductId}}/download"
+          }
+        },
+        {
+          "name": "Download Product - Exceed Free Limit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('limit exceeded', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.eql('سقف دانلود روزانه محصولات رایگان به پایان رسیده است.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{USER_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/products/{{freeProductId}}/download"
+          }
+        },
+        {
+          "name": "Download Paid Product - Forbidden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('forbidden', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.eql('برای دانلود نیاز به خرید محصول است.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{USER_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/products/{{paidProductId}}/download"
           }
         },
         {
@@ -535,58 +823,8 @@
       ]
     },
     {
-      "name": "Discounts",
+      "name": "Discount Coupons",
       "item": [
-        {
-          "name": "Create Product Discount",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": "{{API_BASE}}/admin/discounts/products",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"productId\": \"1024\",\n  \"type\": \"PERCENT\",\n  \"value\": 10\n}"
-            }
-          }
-        },
-        {
-          "name": "List Product Discounts",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
-            ],
-            "url": "{{API_BASE}}/admin/discounts/products"
-          }
-        },
-        {
-          "name": "Create User Discount",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": "{{API_BASE}}/admin/discounts/users",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"user-uuid\",\n  \"type\": \"PERCENT\",\n  \"value\": 15\n}"
-            }
-          }
-        },
-        {
-          "name": "List User Discounts",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
-            ],
-            "url": "{{API_BASE}}/admin/discounts/users"
-          }
-        },
         {
           "name": "Create Coupon",
           "request": {
@@ -595,10 +833,10 @@
               { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "url": "{{API_BASE}}/admin/discounts/coupons",
+            "url": "{{API_BASE}}/admin/discount-coupons",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"WELCOME10\",\n  \"type\": \"PERCENT\",\n  \"value\": 10,\n  \"maxUsage\": 100,\n  \"maxUsagePerUser\": 1\n}"
+              "raw": "{\n  \"title\": \"Yalda Sale\",\n  \"code\": \"YALDA20\",\n  \"valueType\": \"PERCENT\",\n  \"value\": 20,\n  \"maxUsage\": 100,\n  \"note\": \"Limited to new users\",\n  \"expiresAt\": \"2026-01-01T00:00:00.000Z\",\n  \"isActive\": true\n}"
             }
           }
         },
@@ -609,7 +847,42 @@
             "header": [
               { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
             ],
-            "url": "{{API_BASE}}/admin/discounts/coupons"
+            "url": "{{API_BASE}}/admin/discount-coupons?page=1&limit=10&q=YALDA&isActive=true&includeDeleted=false"
+          }
+        },
+        {
+          "name": "Get Coupon",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/discount-coupons/{{couponId}}"
+          }
+        },
+        {
+          "name": "Update Coupon",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/admin/discount-coupons/{{couponId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"valueType\": \"AMOUNT\",\n  \"value\": 50000,\n  \"maxUsage\": 50,\n  \"note\": \"Updated amount coupon\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Archive Coupon",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/admin/discount-coupons/{{couponId}}"
           }
         }
       ]
@@ -748,6 +1021,34 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"amount\": 50000\n}"
+            }
+          }
+        },
+        {
+          "name": "Pay Donation With Wallet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.donationId) pm.collectionVariables.set('DONATION_ID', body.donationId);",
+                  "if (body.paymentId) pm.collectionVariables.set('PAYMENT_ID', body.paymentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API_BASE}}/donations/pay-with-wallet",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000,\n  \"idempotencyKey\": \"donation-req-1\"\n}"
             }
           }
         },

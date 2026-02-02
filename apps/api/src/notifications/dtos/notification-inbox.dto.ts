@@ -27,7 +27,33 @@ export class NotificationInboxItemDto {
     entityId?: string | null;
     href?: string | null;
   };
-  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Optional metadata. Wallet transaction notifications include { type, amount, direction, reason, walletUserId, orderId?, paymentId?, actorUserId?, couponCode?, productId?, links, timestamp, traceId }.',
+    example: {
+      type: 'CREDIT',
+      amount: 500000,
+      direction: 'increase',
+      reason: 'TOPUP',
+      walletUserId: 'user-1',
+      orderId: 'order-1',
+      paymentId: 'payment-1',
+      actorUserId: 'user-1',
+      couponCode: null,
+      productId: '123',
+      traceId: 'trace-abc',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      links: {
+        wallet: '/admin/finance/wallets/user-1',
+        order: '/admin/orders/order-1',
+        payment: '/admin/finance/payments/payment-1',
+        user: '/admin/users/user-1',
+        product: '/products/123',
+      },
+    },
+  })
   data?: Record<string, unknown> | null;
 
   @ApiProperty({ enum: NotificationStatus })

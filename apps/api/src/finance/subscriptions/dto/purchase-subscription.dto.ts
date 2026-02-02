@@ -5,7 +5,7 @@ import {
 } from '@app/finance/common/finance.enums';
 import { SUBSCRIPTION_DURATIONS_MONTHS } from '@app/finance/common/finance.constants';
 
-export class PurchaseSubscriptionDto {
+export class LegacyPurchaseSubscriptionDto {
   @ApiProperty({ enum: SubscriptionPlanCode, example: SubscriptionPlanCode.A })
   @IsEnum(SubscriptionPlanCode)
   planCode!: SubscriptionPlanCode;

@@ -4,7 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { PaymentStatus, Prisma } from '@prisma/client';
+import {
+  PaymentStatus,
+  OrderRequestPaymentFulfillmentStatus,
+  Prisma,
+} from '@prisma/client';
 import type { OrderRequest } from '@prisma/client';
 import { ZibalGatewayService } from '@app/finance/payments/gateway/zibal.gateway';
 import type { Payment } from '@prisma/client';
@@ -22,6 +26,10 @@ export class OrderRequestPaymentsService {
       throw new NotFoundException('Payment not found.');
     }
     return payment;
+  }
+
+  async getPaymentByTrackId(trackId: string): Promise<Payment | null> {
+    return this.prisma.payment.findFirst({ where: { trackId } });
   }
 
   async getPaymentStatus(
@@ -74,6 +82,13 @@ export class OrderRequestPaymentsService {
     });
 
     if (payment.status !== PaymentStatus.PENDING) {
+      if (
+        payment.status === PaymentStatus.SUCCESS &&
+        payment.fulfillmentStatus !==
+          OrderRequestPaymentFulfillmentStatus.SUCCESS
+      ) {
+        return this.retryFulfillment(payment.id);
+      }
       return payment;
     }
 
@@ -83,9 +98,38 @@ export class OrderRequestPaymentsService {
   async verifyPaymentById(paymentId: string): Promise<Payment> {
     const payment = await this.getPaymentById(paymentId);
     if (payment.status !== PaymentStatus.PENDING) {
+      if (
+        payment.status === PaymentStatus.SUCCESS &&
+        payment.fulfillmentStatus !==
+          OrderRequestPaymentFulfillmentStatus.SUCCESS
+      ) {
+        return this.retryFulfillment(payment.id);
+      }
       return payment;
     }
     return this.verifyAndUpdate(payment, {});
+  }
+
+  async retryFulfillment(paymentId: string): Promise<Payment> {
+    const payment = await this.getPaymentById(paymentId);
+    if (payment.status !== PaymentStatus.SUCCESS) {
+      throw new BadRequestException('Payment is not successful yet.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const refreshed = await tx.payment.findUnique({
+        where: { id: payment.id },
+      });
+      if (!refreshed) {
+        throw new NotFoundException('Payment not found.');
+      }
+      if (
+        refreshed.fulfillmentStatus ===
+        OrderRequestPaymentFulfillmentStatus.SUCCESS
+      ) {
+        return refreshed;
+      }
+      return this.fulfillOrderRequestPayment(tx, refreshed);
+    });
   }
 
   private async verifyAndUpdate(
@@ -112,6 +156,9 @@ export class OrderRequestPaymentsService {
             result: rawResult,
             message,
             transactionId: result.refId,
+            fulfillmentStatus:
+              OrderRequestPaymentFulfillmentStatus.PENDING,
+            fulfillmentError: null,
             rawVerify: this.toJsonValue({
               callback: rawQuery,
               verify: result.raw,
@@ -121,6 +168,32 @@ export class OrderRequestPaymentsService {
       }
 
       const updated = await this.prisma.$transaction(async (tx) => {
+        const expectedAmount = payment.amountToman * 10;
+        if (
+          result.amount !== null &&
+          typeof result.amount === 'number' &&
+          result.amount !== expectedAmount
+        ) {
+          return tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: PaymentStatus.FAILED,
+              result: rawResult,
+              message: 'amount_mismatch',
+              transactionId: result.refId,
+              fulfillmentStatus:
+                OrderRequestPaymentFulfillmentStatus.PENDING,
+              fulfillmentError: null,
+              rawVerify: this.toJsonValue({
+                callback: rawQuery,
+                verify: result.raw,
+                mismatch: 'amount',
+                expectedAmount,
+              }),
+            },
+          });
+        }
+
         const paymentRecord = await tx.payment.update({
           where: { id: payment.id },
           data: {
@@ -128,6 +201,7 @@ export class OrderRequestPaymentsService {
             result: rawResult,
             message,
             transactionId: result.refId,
+            fulfillmentError: null,
             rawVerify: this.toJsonValue({
               callback: rawQuery,
               verify: result.raw,
@@ -135,32 +209,7 @@ export class OrderRequestPaymentsService {
           },
         });
 
-        if (paymentRecord.orderRequestId) {
-          return paymentRecord;
-        }
-
-        const draft = this.parseOrderDraft(paymentRecord.orderDraft);
-        if (!draft) {
-          return paymentRecord;
-        }
-
-        const orderRequest = await tx.orderRequest.create({
-          data: {
-            fullName: draft.fullName,
-            messenger: draft.messenger,
-            phoneNumber: draft.phoneNumber,
-            description: draft.description,
-            imageCount: draft.imageCount,
-            amountToman: draft.amountToman,
-            fileUrl: draft.fileUrl,
-            fileSource: draft.fileSource,
-          },
-        });
-
-        return await tx.payment.update({
-          where: { id: paymentRecord.id },
-          data: { orderRequestId: orderRequest.id },
-        });
+        return this.fulfillOrderRequestPayment(tx, paymentRecord);
       });
 
       return updated;
@@ -171,6 +220,8 @@ export class OrderRequestPaymentsService {
         data: {
           status: PaymentStatus.FAILED,
           message,
+          fulfillmentStatus: OrderRequestPaymentFulfillmentStatus.PENDING,
+          fulfillmentError: message,
           rawVerify: this.toJsonValue({
             callback: rawQuery,
             error: message,
@@ -178,6 +229,65 @@ export class OrderRequestPaymentsService {
         },
       });
     }
+  }
+
+  private async fulfillOrderRequestPayment(
+    tx: Prisma.TransactionClient,
+    payment: Payment,
+  ): Promise<Payment> {
+    if (payment.status !== PaymentStatus.SUCCESS) {
+      return payment;
+    }
+    if (
+      payment.fulfillmentStatus ===
+      OrderRequestPaymentFulfillmentStatus.SUCCESS
+    ) {
+      return payment;
+    }
+    if (payment.orderRequestId) {
+      return tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          fulfillmentStatus: OrderRequestPaymentFulfillmentStatus.SUCCESS,
+          fulfillmentError: null,
+          fulfilledAt: new Date(),
+        },
+      });
+    }
+
+    const draft = this.parseOrderDraft(payment.orderDraft);
+    if (!draft) {
+      return tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          fulfillmentStatus: OrderRequestPaymentFulfillmentStatus.FAILED,
+          fulfillmentError: 'order_draft_missing',
+        },
+      });
+    }
+
+    const orderRequest = await tx.orderRequest.create({
+      data: {
+        fullName: draft.fullName,
+        messenger: draft.messenger,
+        phoneNumber: draft.phoneNumber,
+        description: draft.description,
+        imageCount: draft.imageCount,
+        amountToman: draft.amountToman,
+        fileUrl: draft.fileUrl,
+        fileSource: draft.fileSource,
+      },
+    });
+
+    return tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        orderRequestId: orderRequest.id,
+        fulfillmentStatus: OrderRequestPaymentFulfillmentStatus.SUCCESS,
+        fulfillmentError: null,
+        fulfilledAt: new Date(),
+      },
+    });
   }
 
   private toJsonValue(value: unknown): Prisma.InputJsonValue {

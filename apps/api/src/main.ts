@@ -1,4 +1,5 @@
 ﻿import { Logger, ValidationPipe } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
@@ -9,7 +10,101 @@ import { HttpExceptionFilter } from '@app/common/filters/http-exception.filter';
 import { TransformResponseInterceptor } from '@app/common/interceptors/transform-response.interceptor';
 import { TracingInterceptor } from '@app/common/interceptors/tracing.interceptor';
 import { AllConfig } from '@app/config/config.module';
+import { countPlainTextCharacters } from '@app/common/utils/plain-text.util';
 import type { Request, Response, NextFunction } from 'express';
+import type { ValidationError } from 'class-validator';
+
+interface PlainTextValidationContext {
+  errorCode?: string;
+  maxLength?: number;
+  allowed?: string[];
+}
+
+function findFirstValidationError(
+  errors: ValidationError[],
+): ValidationError | undefined {
+  for (const error of errors) {
+    if (error.constraints && Object.keys(error.constraints).length > 0) {
+      return error;
+    }
+
+    if (error.children && error.children.length > 0) {
+      const child = findFirstValidationError(error.children);
+      if (child) {
+        return child;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function buildValidationException(
+  errors: ValidationError[],
+): BadRequestException {
+  const fallbackMessage = 'Invalid payload.';
+  const fallbackCode = 'INVALID_PAYLOAD';
+  const firstError = findFirstValidationError(errors);
+  let message = fallbackMessage;
+  let code = fallbackCode;
+  let meta: Record<string, unknown> | undefined;
+
+  if (firstError) {
+    const constraintKey = Object.keys(firstError.constraints ?? {})[0];
+    if (constraintKey) {
+      const constraintMessage = firstError.constraints?.[constraintKey];
+      if (constraintMessage) {
+        message = constraintMessage;
+      }
+
+      const contextValue = firstError.contexts?.[
+        constraintKey
+      ] as PlainTextValidationContext | undefined;
+
+      if (contextValue) {
+        if (typeof contextValue.errorCode === 'string') {
+          code = contextValue.errorCode;
+        }
+
+        const metaPayload: Record<string, unknown> = {};
+        if (typeof contextValue.maxLength === 'number') {
+          const actual =
+            firstError.value !== undefined && firstError.value !== null
+              ? countPlainTextCharacters(
+                  typeof firstError.value === 'string'
+                    ? firstError.value
+                    : String(firstError.value),
+                )
+              : undefined;
+          metaPayload.max = contextValue.maxLength;
+          if (actual !== undefined) {
+            metaPayload.actual = actual;
+          }
+        }
+
+        if (
+          Array.isArray(contextValue.allowed) &&
+          contextValue.allowed.length > 0
+        ) {
+          metaPayload.allowed = contextValue.allowed;
+        }
+
+        if (Object.keys(metaPayload).length > 0) {
+          meta = metaPayload;
+        }
+      }
+    }
+  }
+
+  return new BadRequestException({
+    success: false,
+    error: {
+      code,
+      message,
+      ...(meta ? { meta } : {}),
+    },
+  });
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -30,6 +125,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      exceptionFactory: buildValidationException,
     }),
   );
 

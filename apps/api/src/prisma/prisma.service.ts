@@ -17,6 +17,7 @@ export class PrismaService
 {
   async onModuleInit(): Promise<void> {
     await this.$connect();
+    await this.assertSubscriptionPurchaseSchema();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -27,6 +28,25 @@ export class PrismaService
     process.on('beforeExit', async () => {
       await app.close();
     });
+  }
+
+  private async assertSubscriptionPurchaseSchema(): Promise<void> {
+    const result = await this.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'finance'
+          AND table_name = 'subscription_purchases'
+          AND column_name = 'subscription_plan_id'
+      ) AS "exists";
+    `;
+
+    if (!result[0]?.exists) {
+      throw new Error(
+        'Database schema mismatch: finance.subscription_purchases.subscription_plan_id is missing. ' +
+          'Apply migration 20260202000000_subscription_purchase_plan_fk_hotfix (prisma migrate deploy).',
+      );
+    }
   }
 }
 

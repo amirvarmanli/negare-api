@@ -13,6 +13,74 @@ import { SkillCreateDto } from './dtos/skill-create.dto';
 import { SkillUpdateDto } from './dtos/skill-update.dto';
 import { SkillQueryDto } from './dtos/skill-query.dto';
 
+const MAX_SKILL_KEY_LENGTH = 191;
+const SKILL_KEY_SUFFIX_LENGTH = 4;
+
+function transliterateToAscii(input: string): string {
+  let output = input.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+
+  output = output
+    .replace(/[آا]/gu, 'A')
+    .replace(/ب/gu, 'B')
+    .replace(/پ/gu, 'P')
+    .replace(/ت/gu, 'T')
+    .replace(/ث/gu, 'S')
+    .replace(/ج/gu, 'J')
+    .replace(/چ/gu, 'CH')
+    .replace(/ح/gu, 'H')
+    .replace(/خ/gu, 'KH')
+    .replace(/د/gu, 'D')
+    .replace(/ذ/gu, 'Z')
+    .replace(/ر/gu, 'R')
+    .replace(/ز/gu, 'Z')
+    .replace(/ژ/gu, 'ZH')
+    .replace(/س/gu, 'S')
+    .replace(/ش/gu, 'SH')
+    .replace(/ص/gu, 'S')
+    .replace(/ض/gu, 'Z')
+    .replace(/ط/gu, 'T')
+    .replace(/ظ/gu, 'Z')
+    .replace(/ع/gu, 'A')
+    .replace(/غ/gu, 'GH')
+    .replace(/ف/gu, 'F')
+    .replace(/ق/gu, 'Q')
+    .replace(/[کك]/gu, 'K')
+    .replace(/گ/gu, 'G')
+    .replace(/ل/gu, 'L')
+    .replace(/م/gu, 'M')
+    .replace(/ن/gu, 'N')
+    .replace(/و/gu, 'V')
+    .replace(/[هۀة]/gu, 'H')
+    .replace(/[یي]/gu, 'Y')
+    .replace(/[ءؤئ]/gu, '');
+
+  output = output
+    .replace(/[۰-۹]/gu, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/gu, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+
+  return output;
+}
+
+function generateSkillKey(nameFa: string): string {
+  const base = transliterateToAscii(nameFa)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const suffix = Math.random()
+    .toString(36)
+    .slice(2, 2 + SKILL_KEY_SUFFIX_LENGTH)
+    .toUpperCase();
+
+  const maxBaseLength = Math.max(
+    1,
+    MAX_SKILL_KEY_LENGTH - (suffix.length + 1),
+  );
+  const safeBase = (base.length > 0 ? base : 'SKILL').slice(0, maxBaseLength);
+
+  return `${safeBase}_${suffix}`;
+}
+
 @Injectable()
 export class SkillsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -21,15 +89,32 @@ export class SkillsService {
   // CRUD روی خود Skill
   // =========================================================
 
+  private async generateUniqueKey(nameFa: string): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = generateSkillKey(nameFa);
+      const exists = await this.prisma.skill.findUnique({
+        where: { key: candidate },
+        select: { id: true },
+      });
+
+      if (!exists) {
+        return candidate;
+      }
+    }
+
+    throw new BadRequestException('Unable to generate unique skill key');
+  }
+
   async create(dto: SkillCreateDto): Promise<SkillDto> {
+    const key = await this.generateUniqueKey(dto.nameFa);
     const created = await this.prisma.skill.create({
       data: {
-        key: dto.key,
+        key,
         nameFa: dto.nameFa,
-        nameEn: dto.nameEn ?? null,
-        description: dto.description ?? null,
-        isActive: dto.isActive ?? true,
-        sortOrder: dto.sortOrder ?? 0,
+        nameEn: null,
+        description: null,
+        isActive: true,
+        sortOrder: 0,
       },
     });
 
@@ -48,12 +133,11 @@ export class SkillsService {
     const updated = await this.prisma.skill.update({
       where: { id },
       data: {
-        key: dto.key ?? existing.key,
-        nameFa: dto.nameFa ?? existing.nameFa,
-        nameEn: dto.nameEn ?? existing.nameEn,
-        description: dto.description ?? existing.description,
-        isActive: dto.isActive ?? existing.isActive,
-        sortOrder: dto.sortOrder ?? existing.sortOrder,
+        nameFa: dto.nameFa,
+        nameEn: dto.nameEn,
+        description: dto.description,
+        isActive: dto.isActive,
+        sortOrder: dto.sortOrder,
       },
     });
 

@@ -62,7 +62,9 @@ export class SupplierProductsController {
 
   @Get()
   @Permissions('supplier.products:read')
-  @ApiOperation({ summary: 'List products (supplier-owned only)' })
+  @ApiOperation({
+    summary: 'List products (supplier-owned only, includes drafts/pending approval)',
+  })
   @ApiOkResponse({ type: ProductManagementPaginatedResultDto })
   async list(
     @Query() query: ProductManagementQueryDto,

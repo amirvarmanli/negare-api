@@ -49,6 +49,7 @@ const envSchema = z
     PLATFORM_WALLET_USER_ID: z.string().uuid({
       message: 'PLATFORM_WALLET_USER_ID must be a valid UUID',
     }),
+    PLATFORM_WALLET_ALLOW_NEGATIVE: z.coerce.boolean().default(false),
     PLATFORM_COMMISSION_PERCENT: z.coerce.number().int().min(0).max(100).default(30),
     SUPPLIER_REVENUE_PERCENT: z.coerce.number().int().min(0).max(100).default(70),
 

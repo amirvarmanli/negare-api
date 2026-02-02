@@ -9,7 +9,7 @@ import { Public } from '@app/common/decorators/public.decorator';
 import { OrderRequestPaymentsService } from '@app/order-requests/order-request-payments.service';
 import {
   PaymentCallbackResponseDto,
-  PaymentStatusResponseDto,
+  OrderRequestPaymentStatusResponseDto,
   PaymentVerifyRequestDto,
 } from '@app/order-requests/dto/payment-response.dto';
 
@@ -21,8 +21,10 @@ export class PhotoRestorePaymentsController {
   @Get('payments/:id')
   @Public()
   @ApiOperation({ summary: 'Get photo restore payment status by id.' })
-  @ApiOkResponse({ type: PaymentStatusResponseDto })
-  async getPayment(@Param('id') id: string): Promise<PaymentStatusResponseDto> {
+  @ApiOkResponse({ type: OrderRequestPaymentStatusResponseDto })
+  async getPayment(
+    @Param('id') id: string,
+  ): Promise<OrderRequestPaymentStatusResponseDto> {
     const result = await this.paymentsService.getPaymentStatus(id);
     const payment = result.payment;
     return {
@@ -30,6 +32,7 @@ export class PhotoRestorePaymentsController {
       paymentId: payment.id,
       orderRequestId: payment.orderRequestId,
       status: payment.status,
+      fulfillmentStatus: payment.fulfillmentStatus,
       amountToman: payment.amountToman,
       imageCount: result.imageCount,
       fileUrl: result.fileUrl,
@@ -52,6 +55,7 @@ export class PhotoRestorePaymentsController {
       paymentId: payment.id,
       orderRequestId: payment.orderRequestId,
       status: payment.status,
+      fulfillmentStatus: payment.fulfillmentStatus,
     };
   }
 }

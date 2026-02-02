@@ -4,6 +4,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   StreamableFile,
   UnauthorizedException,
@@ -11,6 +12,9 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -29,7 +33,9 @@ import {
 } from '@app/finance/downloads/dto/download-response.dto';
 import { DownloadTokensService } from '@app/finance/downloads/download-tokens.service';
 import { Public } from '@app/common/decorators/public.decorator';
+import { requestTraceStorage } from '@app/common/tracing/request-trace';
 import type { Response } from 'express';
+import type { Request } from 'express';
 
 function sanitizeFilename(value: string): string {
   return value
@@ -57,12 +63,46 @@ export class DownloadsController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Gate and register a product download.' })
   @ApiOkResponse({ type: DownloadDecisionDto })
+  @ApiForbiddenResponse({
+    description:
+      'سقف دانلود روزانه محصولات رایگان به پایان رسیده است. | برای دانلود نیاز به خرید محصول است. | برای دانلود نیاز به اشتراک فعال است.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  @ApiNotFoundResponse({ description: 'فایل محصول یافت نشد.' })
   async download(
     @Param('id') productId: string,
     @CurrentUser() user: CurrentUserPayload | undefined,
+    @Req() req: Request,
   ): Promise<DownloadDecisionDto> {
     const userId = requireUserId(user);
-    return this.downloadsService.downloadProduct(userId, productId);
+    return this.downloadsService.downloadProduct(
+      userId,
+      productId,
+      buildDownloadMetadata(req),
+    );
+  }
+
+  @Get('products/:id/download')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Download a product (canonical endpoint).' })
+  @ApiOkResponse({ type: DownloadDecisionDto })
+  @ApiForbiddenResponse({
+    description:
+      'سقف دانلود روزانه محصولات رایگان به پایان رسیده است. | برای دانلود نیاز به خرید محصول است. | برای دانلود نیاز به اشتراک فعال است.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  @ApiNotFoundResponse({ description: 'فایل محصول یافت نشد.' })
+  async downloadGet(
+    @Param('id') productId: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+    @Req() req: Request,
+  ): Promise<DownloadDecisionDto> {
+    const userId = requireUserId(user);
+    return this.downloadsService.downloadProduct(
+      userId,
+      productId,
+      buildDownloadMetadata(req),
+    );
   }
 
   @Get('me/quotas/today')
@@ -84,6 +124,7 @@ export class DownloadsController {
   async downloadFile(
     @Param('fileId') fileId: string,
     @Query('token') token: string | undefined,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     if (!token) {
@@ -98,6 +139,7 @@ export class DownloadsController {
       userId: payload.sub,
       orderId: payload.oid,
       fileId,
+      metadata: buildDownloadMetadata(req),
     });
 
     const stream = download.stream;
@@ -128,4 +170,22 @@ export class DownloadsController {
 
     return new StreamableFile(stream);
   }
+}
+
+function buildDownloadMetadata(req: Request): {
+  ip?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+} {
+  const traceId = requestTraceStorage.getStore()?.traceId ?? null;
+  const requestId =
+    traceId ||
+    (typeof req.headers['x-request-id'] === 'string'
+      ? req.headers['x-request-id']
+      : null);
+  return {
+    ip: req.ip ?? null,
+    userAgent: req.get('user-agent') ?? null,
+    requestId,
+  };
 }

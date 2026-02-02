@@ -138,6 +138,18 @@ export class ProductBriefDto {
 }
 
 export class ProductListItemDto extends ProductBriefDto {
+  @ApiProperty()
+  isPublished!: boolean;
+
+  @ApiProperty()
+  isDraft!: boolean;
+
+  @ApiProperty()
+  isPendingApproval!: boolean;
+
+  @ApiProperty()
+  statusLabel!: string;
+
   @ApiPropertyOptional({ type: [ProductCategoryDto] })
   categories?: ProductCategoryDto[];
   @ApiPropertyOptional({ type: [ProductTagDto] })

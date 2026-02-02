@@ -45,7 +45,7 @@
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"id\": \"payment-uuid\",\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"PENDING\",\n  \"amountToman\": 2100000,\n  \"imageCount\": 3,\n  \"fileUrl\": \"https://cdn.example.com/uploads/file.zip\",\n  \"trackId\": \"123456\",\n  \"orderRequestId\": null,\n  \"createdAt\": \"2025-01-01T10:00:00.000Z\"\n}"
+              "body": "{\n  \"id\": \"payment-uuid\",\n  \"paymentId\": \"payment-uuid\",\n  \"status\": \"PENDING\",\n  \"fulfillmentStatus\": \"PENDING\",\n  \"amountToman\": 2100000,\n  \"imageCount\": 3,\n  \"fileUrl\": \"https://cdn.example.com/uploads/file.zip\",\n  \"trackId\": \"123456\",\n  \"orderRequestId\": null,\n  \"createdAt\": \"2025-01-01T10:00:00.000Z\"\n}"
             }
           ]
         },

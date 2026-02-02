@@ -1,0 +1,231 @@
+{
+  "info": {
+    "name": "Purchase Flow",
+    "_postman_id": "purchase-flow",
+    "description": "Verify the one-time purchase flow: checkout, mock payment verify, entitlement download validation, and cart reset.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Checkout Quote (with coupon)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1\n    }\n  ],\n  \"couponCode\": \"{{couponCode}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/checkout/price-quote",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "checkout",
+            "price-quote"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Checkout Confirm (with coupon)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1\n    }\n  ],\n  \"couponCode\": \"{{couponCode}}\",\n  \"requestId\": \"checkout-{{orderId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/checkout/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "checkout",
+            "confirm"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Payment Verify (mock)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"paymentId\": \"{{paymentId}}\",\n  \"success\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/payments/gateway/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payments",
+            "gateway",
+            "verify"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Validate Download",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"productId\": \"{{productId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/subscriptions/downloads/validate",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "subscriptions",
+            "downloads",
+            "validate"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Cart (confirm empty)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/cart",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "cart"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Platform Wallet Transactions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{platformAccessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/wallet/transactions?page=1&limit=20",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "wallet",
+            "transactions"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": "order-123"
+    },
+    {
+      "key": "productId",
+      "value": "product-abc"
+    },
+    {
+      "key": "paymentId",
+      "value": "payment-xyz"
+    },
+    {
+      "key": "couponCode",
+      "value": ""
+    },
+    {
+      "key": "platformAccessToken",
+      "value": ""
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+ALTER TYPE core.notification_type_enum ADD VALUE 'PLATFORM_DISCOUNT_APPLIED';

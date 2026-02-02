@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CatalogModule } from '@app/catalog/catalog.module';
 import { ProductsModule } from '@app/finance/products/products.module';
+import { EntitlementsModule } from '@app/finance/entitlements/entitlements.module';
 import { SubscriptionPlansService } from '@app/finance/subscription-system/subscription-plans.service';
 import { UserSubscriptionsService } from '@app/finance/subscription-system/user-subscriptions.service';
 import { SubscriptionDownloadsService } from '@app/finance/subscription-system/subscription-downloads.service';
@@ -11,7 +12,7 @@ import { SubscriptionDownloadsController } from '@app/finance/subscription-syste
 import { SubscriptionSettlementsController } from '@app/finance/subscription-system/subscription-settlements.controller';
 
 @Module({
-  imports: [CatalogModule, ProductsModule],
+  imports: [CatalogModule, ProductsModule, EntitlementsModule],
   controllers: [
     SubscriptionPlansController,
     UserSubscriptionsController,

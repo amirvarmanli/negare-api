@@ -6,7 +6,11 @@
   "variable": [
     { "key": "API_BASE", "value": "http://localhost:4000/api" },
     { "key": "ACCESS_TOKEN", "value": "" },
-    { "key": "PLAN_ID", "value": "" },
+    {
+      "key": "PLAN_ID",
+      "value": "",
+      "description": "ID from GET /subscriptions/plans (subscription_plans_v2)."
+    },
     { "key": "SUBSCRIPTION_ID", "value": "" },
     { "key": "PRODUCT_ID", "value": "" }
   ],
@@ -75,6 +79,20 @@
             "method": "GET",
             "url": "{{API_BASE}}/subscriptions/plans"
           }
+          ,"event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const result = pm.response.json();",
+                  "if (Array.isArray(result) && result.length > 0) {",
+                  "  pm.variables.set('PLAN_ID', result[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get My Subscription",

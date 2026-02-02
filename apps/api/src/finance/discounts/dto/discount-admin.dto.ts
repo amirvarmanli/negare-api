@@ -1,124 +1,84 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
-  IsPositive,
   IsString,
-  Max,
   MaxLength,
+  Min,
+  MinLength,
 } from 'class-validator';
-import { DiscountValueType } from '@app/finance/common/finance.enums';
+import { CouponValueType } from '@app/finance/common/finance.enums';
 
 export class DiscountListQueryDto {
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsInt()
-  @IsPositive()
+  @Min(1)
   page?: number;
 
   @ApiPropertyOptional({ example: 20 })
   @IsOptional()
   @IsInt()
-  @IsPositive()
+  @Min(1)
   limit?: number;
 }
 
-export class CreateProductDiscountDto {
-  @ApiProperty({ example: '1024' })
-  @IsString()
-  @MaxLength(32)
-  productId!: string;
-
-  @ApiProperty({ enum: DiscountValueType })
-  @IsEnum(DiscountValueType)
-  type!: DiscountValueType;
-
-  @ApiProperty({ example: 10, description: 'Fixed amount or percent value.' })
-  @IsInt()
-  @IsPositive()
-  @Max(1_000_000)
-  value!: number;
-
-  @ApiPropertyOptional({ example: '2024-01-01T00:00:00.000Z' })
+export class DiscountCouponListQueryDto extends DiscountListQueryDto {
+  @ApiPropertyOptional({ example: 'WELCOME10' })
   @IsOptional()
-  @IsDateString()
-  startsAt?: string;
-
-  @ApiPropertyOptional({ example: '2024-12-31T23:59:59.000Z' })
-  @IsOptional()
-  @IsDateString()
-  endsAt?: string;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-}
-
-export class CreateUserDiscountDto {
-  @ApiProperty({ example: 'user-uuid' })
   @IsString()
   @MaxLength(64)
-  userId!: string;
-
-  @ApiProperty({ enum: DiscountValueType })
-  @IsEnum(DiscountValueType)
-  type!: DiscountValueType;
-
-  @ApiProperty({ example: 15 })
-  @IsInt()
-  @IsPositive()
-  @Max(100)
-  value!: number;
-
-  @ApiPropertyOptional({ example: '2024-01-01T00:00:00.000Z' })
-  @IsOptional()
-  @IsDateString()
-  startsAt?: string;
-
-  @ApiPropertyOptional({ example: '2024-12-31T23:59:59.000Z' })
-  @IsOptional()
-  @IsDateString()
-  endsAt?: string;
+  q?: string;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  includeDeleted?: boolean;
 }
 
-export class CreateCouponDto {
-  @ApiProperty({ example: 'WELCOME10' })
+export class CreateDiscountCouponDto {
+  @ApiProperty({ example: 'Yalda Sale' })
   @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  title!: string;
+
+  @ApiProperty({ example: 'YALDA20' })
+  @IsString()
+  @MinLength(3)
   @MaxLength(64)
   code!: string;
 
-  @ApiProperty({ enum: DiscountValueType })
-  @IsEnum(DiscountValueType)
-  type!: DiscountValueType;
+  @ApiProperty({ enum: CouponValueType })
+  @IsEnum(CouponValueType)
+  valueType!: CouponValueType;
 
-  @ApiProperty({ example: 10 })
+  @ApiProperty({ example: 15 })
   @IsInt()
-  @IsPositive()
-  @Max(1_000_000)
+  @Min(1)
   value!: number;
 
   @ApiPropertyOptional({ example: 100 })
   @IsOptional()
   @IsInt()
-  @IsPositive()
+  @Min(1)
   maxUsage?: number;
 
-  @ApiPropertyOptional({ example: 1 })
+  @ApiPropertyOptional({ example: 'Valid for new users only.' })
   @IsOptional()
-  @IsInt()
-  @IsPositive()
-  maxUsagePerUser?: number;
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 
-  @ApiPropertyOptional({ example: '2024-12-31T23:59:59.000Z' })
+  @ApiPropertyOptional({ example: '2026-01-10T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
@@ -129,115 +89,52 @@ export class CreateCouponDto {
   isActive?: boolean;
 }
 
-export class ProductDiscountDto {
-  @ApiProperty({ example: 'discount-uuid' })
-  id!: string;
+export class UpdateDiscountCouponDto extends PartialType(CreateDiscountCouponDto) {}
 
-  @ApiProperty({ example: '1024' })
-  productId!: string;
-
-  @ApiProperty({ enum: DiscountValueType })
-  type!: DiscountValueType;
-
-  @ApiProperty({ example: 10 })
-  value!: number;
-
-  @ApiPropertyOptional()
-  startsAt?: string | null;
-
-  @ApiPropertyOptional()
-  endsAt?: string | null;
-
-  @ApiProperty({ example: true })
-  isActive!: boolean;
-}
-
-export class UserDiscountDto {
-  @ApiProperty({ example: 'discount-uuid' })
-  id!: string;
-
-  @ApiProperty({ example: 'user-uuid' })
-  userId!: string;
-
-  @ApiProperty({ enum: DiscountValueType })
-  type!: DiscountValueType;
-
-  @ApiProperty({ example: 15 })
-  value!: number;
-
-  @ApiPropertyOptional()
-  startsAt?: string | null;
-
-  @ApiPropertyOptional()
-  endsAt?: string | null;
-
-  @ApiProperty({ example: true })
-  isActive!: boolean;
-}
-
-export class CouponDto {
+export class DiscountCouponDto {
   @ApiProperty({ example: 'coupon-uuid' })
   id!: string;
 
-  @ApiProperty({ example: 'WELCOME10' })
+  @ApiProperty({ example: 'Yalda Sale' })
+  title!: string;
+
+  @ApiProperty({ example: 'YALDA20' })
   code!: string;
 
-  @ApiProperty({ enum: DiscountValueType })
-  type!: DiscountValueType;
+  @ApiProperty({ enum: CouponValueType })
+  valueType!: CouponValueType;
 
-  @ApiProperty({ example: 10 })
+  @ApiProperty({ example: 15 })
   value!: number;
 
   @ApiPropertyOptional({ example: 100 })
   maxUsage?: number | null;
 
-  @ApiPropertyOptional({ example: 1 })
-  maxUsagePerUser?: number | null;
+  @ApiProperty({ example: 0 })
+  usedCount!: number;
+
+  @ApiPropertyOptional({ example: 'Valid for new users only.' })
+  note?: string | null;
 
   @ApiPropertyOptional()
   expiresAt?: string | null;
 
+  @ApiPropertyOptional()
+  deletedAt?: string | null;
+
   @ApiProperty({ example: true })
   isActive!: boolean;
+
+  @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
+  createdAt!: string;
+
+  @ApiProperty({ example: '2026-01-02T00:00:00.000Z' })
+  updatedAt!: string;
 }
 
-export class PaginatedProductDiscountsDto {
-  @ApiProperty({ type: [ProductDiscountDto] })
-  data!: ProductDiscountDto[];
-
-  @ApiProperty({ example: 1 })
-  total!: number;
-
-  @ApiProperty({ example: 1 })
-  page!: number;
-
-  @ApiProperty({ example: 20 })
-  limit!: number;
-
-  @ApiProperty({ example: false })
-  hasNext!: boolean;
-}
-
-export class PaginatedUserDiscountsDto {
-  @ApiProperty({ type: [UserDiscountDto] })
-  data!: UserDiscountDto[];
-
-  @ApiProperty({ example: 1 })
-  total!: number;
-
-  @ApiProperty({ example: 1 })
-  page!: number;
-
-  @ApiProperty({ example: 20 })
-  limit!: number;
-
-  @ApiProperty({ example: false })
-  hasNext!: boolean;
-}
-
-export class PaginatedCouponsDto {
-  @ApiProperty({ type: [CouponDto] })
-  data!: CouponDto[];
+export class PaginatedDiscountCouponsDto {
+  @ApiProperty({ type: [DiscountCouponDto] })
+  data!: DiscountCouponDto[];
 
   @ApiProperty({ example: 1 })
   total!: number;
