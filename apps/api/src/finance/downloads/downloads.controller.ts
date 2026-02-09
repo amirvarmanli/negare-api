@@ -14,9 +14,11 @@ import {
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
@@ -28,27 +30,16 @@ import {
 import { requireUserId } from '@app/catalog/utils/current-user.util';
 import { DownloadsService } from '@app/finance/downloads/downloads.service';
 import {
-  DownloadDecisionDto,
   QuotaStatusDto,
+  DownloadLimitsSummaryDto,
 } from '@app/finance/downloads/dto/download-response.dto';
 import { DownloadTokensService } from '@app/finance/downloads/download-tokens.service';
 import { Public } from '@app/common/decorators/public.decorator';
 import { requestTraceStorage } from '@app/common/tracing/request-trace';
+import type { Readable } from 'node:stream';
 import type { Response } from 'express';
 import type { Request } from 'express';
-
-function sanitizeFilename(value: string): string {
-  return value
-    .replace(/[\r\n"]/gu, '')
-    .replace(/[^\x20-\x7E]/gu, '_')
-    .trim() || 'download';
-}
-
-function buildContentDisposition(filename: string): string {
-  const safe = sanitizeFilename(filename);
-  const encoded = encodeURIComponent(filename);
-  return `attachment; filename="${safe}"; filename*=UTF-8''${encoded}`;
-}
+import { buildContentDisposition } from '@app/finance/downloads/downloads.utils';
 
 @ApiTags('Finance / Downloads')
 @ApiBearerAuth()
@@ -62,47 +53,79 @@ export class DownloadsController {
   @Post('products/:id/download')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Gate and register a product download.' })
-  @ApiOkResponse({ type: DownloadDecisionDto })
+  @ApiProduces('application/octet-stream')
+  @ApiOkResponse({ description: 'File download stream.' })
   @ApiForbiddenResponse({
-    description:
-      'سقف دانلود روزانه محصولات رایگان به پایان رسیده است. | برای دانلود نیاز به خرید محصول است. | برای دانلود نیاز به اشتراک فعال است.',
+    description: 'SUBSCRIPTION_REQUIRED | برای دانلود نیاز به خرید محصول است.',
   })
-  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  @ApiTooManyRequestsResponse({ description: 'DAILY_QUOTA_EXCEEDED' })
+  @ApiUnauthorizedResponse({ description: 'NOT_AUTHENTICATED' })
   @ApiNotFoundResponse({ description: 'فایل محصول یافت نشد.' })
   async download(
     @Param('id') productId: string,
     @CurrentUser() user: CurrentUserPayload | undefined,
     @Req() req: Request,
-  ): Promise<DownloadDecisionDto> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
     const userId = requireUserId(user);
-    return this.downloadsService.downloadProduct(
+    const download = await this.downloadsService.downloadProductStream(
       userId,
       productId,
       buildDownloadMetadata(req),
     );
+    return streamDownload(res, download);
   }
 
   @Get('products/:id/download')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Download a product (canonical endpoint).' })
-  @ApiOkResponse({ type: DownloadDecisionDto })
+  @ApiProduces('application/octet-stream')
+  @ApiOkResponse({ description: 'File download stream.' })
   @ApiForbiddenResponse({
-    description:
-      'سقف دانلود روزانه محصولات رایگان به پایان رسیده است. | برای دانلود نیاز به خرید محصول است. | برای دانلود نیاز به اشتراک فعال است.',
+    description: 'SUBSCRIPTION_REQUIRED | برای دانلود نیاز به خرید محصول است.',
   })
-  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  @ApiTooManyRequestsResponse({ description: 'DAILY_QUOTA_EXCEEDED' })
+  @ApiUnauthorizedResponse({ description: 'NOT_AUTHENTICATED' })
   @ApiNotFoundResponse({ description: 'فایل محصول یافت نشد.' })
   async downloadGet(
     @Param('id') productId: string,
     @CurrentUser() user: CurrentUserPayload | undefined,
     @Req() req: Request,
-  ): Promise<DownloadDecisionDto> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
     const userId = requireUserId(user);
-    return this.downloadsService.downloadProduct(
+    const download = await this.downloadsService.downloadProductStream(
       userId,
       productId,
       buildDownloadMetadata(req),
     );
+    return streamDownload(res, download);
+  }
+
+  @Post('downloads/:fileId')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Gate and register a product file download.' })
+  @ApiProduces('application/octet-stream')
+  @ApiOkResponse({ description: 'File download stream.' })
+  @ApiForbiddenResponse({
+    description: 'SUBSCRIPTION_REQUIRED | برای دانلود نیاز به خرید محصول است.',
+  })
+  @ApiTooManyRequestsResponse({ description: 'DAILY_QUOTA_EXCEEDED' })
+  @ApiUnauthorizedResponse({ description: 'NOT_AUTHENTICATED' })
+  @ApiNotFoundResponse({ description: 'File not found.' })
+  async downloadFileGate(
+    @Param('fileId') fileId: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const userId = requireUserId(user);
+    const download = await this.downloadsService.downloadFileStream(
+      userId,
+      fileId,
+      buildDownloadMetadata(req),
+    );
+    return streamDownload(res, download);
   }
 
   @Get('me/quotas/today')
@@ -116,12 +139,26 @@ export class DownloadsController {
     return this.downloadsService.getTodayQuota(userId);
   }
 
+  @Get('me/quotas/summary')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get daily download limits and remaining quotas.',
+  })
+  @ApiOkResponse({ type: DownloadLimitsSummaryDto })
+  @ApiUnauthorizedResponse({ description: 'NOT_AUTHENTICATED' })
+  async downloadLimitsSummary(
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<DownloadLimitsSummaryDto> {
+    const userId = requireUserId(user);
+    return this.downloadsService.getDownloadLimitsSummary(userId);
+  }
+
   @Get('downloads/files/:fileId')
   @Public()
   @ApiOperation({ summary: 'Download a purchased product file (token required).' })
   @ApiQuery({ name: 'token', required: true })
   @ApiOkResponse({ description: 'File download stream.' })
-  async downloadFile(
+  async downloadFileStream(
     @Param('fileId') fileId: string,
     @Query('token') token: string | undefined,
     @Req() req: Request,
@@ -160,16 +197,42 @@ export class DownloadsController {
       'Content-Disposition',
       buildContentDisposition(download.filename),
     );
-    res.setHeader(
-      'Content-Type',
-      download.mimeType ?? 'application/octet-stream',
-    );
+    res.setHeader('Content-Type', download.mimeType ?? 'application/octet-stream');
     if (download.size !== undefined) {
       res.setHeader('Content-Length', String(download.size));
     }
+    exposeDownloadHeaders(res);
 
     return new StreamableFile(stream);
   }
+}
+
+function streamDownload(
+  res: Response,
+  download: { stream: Readable; filename: string; mimeType?: string; size?: number },
+): StreamableFile {
+  const stream = download.stream;
+  stream.once('error', (err) => {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (!res.headersSent) {
+      if (code === 'ENOENT') {
+        res.status(404).json({ message: 'File not found.' });
+      } else {
+        res.status(500).json({ message: 'Download failed.' });
+      }
+    } else {
+      res.end();
+    }
+  });
+
+  res.setHeader('Content-Disposition', buildContentDisposition(download.filename));
+  res.setHeader('Content-Type', download.mimeType ?? 'application/octet-stream');
+  if (download.size !== undefined) {
+    res.setHeader('Content-Length', String(download.size));
+  }
+  exposeDownloadHeaders(res);
+
+  return new StreamableFile(stream);
 }
 
 function buildDownloadMetadata(req: Request): {
@@ -188,4 +251,25 @@ function buildDownloadMetadata(req: Request): {
     userAgent: req.get('user-agent') ?? null,
     requestId,
   };
+}
+
+function exposeDownloadHeaders(res: Response): void {
+  const expose = ['Content-Disposition', 'Content-Type', 'Content-Length'];
+  const existing = res.getHeader('Access-Control-Expose-Headers');
+  if (!existing) {
+    res.setHeader('Access-Control-Expose-Headers', expose.join(', '));
+    return;
+  }
+
+  const existingValues = Array.isArray(existing)
+    ? existing.join(', ')
+    : String(existing);
+  const merged = new Set(
+    existingValues
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  for (const header of expose) merged.add(header);
+  res.setHeader('Access-Control-Expose-Headers', Array.from(merged).join(', '));
 }

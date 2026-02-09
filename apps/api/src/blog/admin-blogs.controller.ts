@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -10,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -21,6 +24,7 @@ import { BlogAdminListResponseDto } from '@app/blog/dto/admin-blogs-list-item.dt
 import { BlogAdminDetailDto } from '@app/blog/dto/admin-blog-detail.dto';
 import { AdminUpdateBlogDto } from '@app/blog/dto/admin-update-blog.dto';
 import { AdminRejectDto } from '@app/blog/dto/admin-reject.dto';
+import { CreateBlogPostDto } from '@app/blog/dto/create-blog-post.dto';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '@app/common/decorators/current-user.decorator';
 import { Roles } from '@app/common/decorators/roles.decorator';
@@ -34,7 +38,9 @@ export class AdminBlogsController {
   constructor(private readonly blogService: BlogService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all blogs with filters and pagination' })
+  @ApiOperation({
+    summary: 'List all blogs with filters and pagination (admin only)',
+  })
   @ApiOkResponse({ type: BlogAdminListResponseDto })
   async list(
     @Query() query: AdminBlogsListQueryDto,
@@ -43,8 +49,21 @@ export class AdminBlogsController {
     return this.blogService.adminListAllPosts(query, currentUser);
   }
 
+  @Post()
+  @ApiOperation({
+    summary: 'Create a blog post (admin only)',
+    description: 'Defaults to DRAFT when status is omitted.',
+  })
+  @ApiOkResponse({ type: BlogAdminDetailDto })
+  async create(
+    @Body() dto: CreateBlogPostDto,
+    @CurrentUser() currentUser?: CurrentUserPayload,
+  ): Promise<BlogAdminDetailDto> {
+    return this.blogService.adminCreatePost(dto, currentUser);
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Get a blog post by ID' })
+  @ApiOperation({ summary: 'Get a blog post by ID (admin only)' })
   @ApiOkResponse({ type: BlogAdminDetailDto })
   async getById(
     @Param('id') id: string,
@@ -54,7 +73,7 @@ export class AdminBlogsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a blog post (admin)' })
+  @ApiOperation({ summary: 'Update a blog post (admin only)' })
   @ApiOkResponse({ type: BlogAdminDetailDto })
   async update(
     @Param('id') id: string,
@@ -62,6 +81,21 @@ export class AdminBlogsController {
     @CurrentUser() currentUser?: CurrentUserPayload,
   ): Promise<BlogAdminDetailDto> {
     return this.blogService.adminUpdatePost(id, dto, currentUser);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Soft-delete a blog post (admin only)',
+    description:
+      'Soft delete sets deletedAt and forces status=ARCHIVED with archivedAt.',
+  })
+  @ApiNoContentResponse()
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser?: CurrentUserPayload,
+  ): Promise<void> {
+    await this.blogService.adminSoftDeletePost(id, currentUser);
   }
 
   @Post(':id/approve')

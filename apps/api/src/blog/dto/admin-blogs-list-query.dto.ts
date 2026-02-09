@@ -46,7 +46,14 @@ export class AdminBlogsListQueryDto {
   @IsString()
   q?: string;
 
-  @ApiPropertyOptional({ enum: PublicationStatus })
+  @ApiPropertyOptional({
+    enum: [
+      PublicationStatus.DRAFT,
+      PublicationStatus.PUBLISHED,
+      PublicationStatus.ARCHIVED,
+    ],
+    description: 'Admin panel status filter (DRAFT | PUBLISHED | ARCHIVED)',
+  })
   @IsOptional()
   @IsEnum(PublicationStatus)
   status?: PublicationStatus;

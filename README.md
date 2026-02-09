@@ -14,12 +14,98 @@
   or `npx prisma migrate deploy` in CI/CD. Regenerate the Prisma client (`npm run prisma:gen`) before compiling NestJS.
 - **Running locally**: ensure `DATABASE_URL` is set, then `npm run start:dev` (or `npm run start` after building). Swagger auto-docs show everything at `http://localhost:4000/api/docs`.
 
+## Admin Blog & Newsletter Management
+
+- **Admin-only access**: endpoints under `/api/admin/blogs` and `/api/admin/newsletters` require `Authorization: Bearer <token>` and `role=admin`. These routes are reserved for the admin panel only.
+- **Status lifecycle**: `DRAFT → PUBLISHED → ARCHIVED` (admin may set status directly; when switching to `PUBLISHED` the service auto-sets `publishedAt`, and when switching to `ARCHIVED` it sets `archivedAt`).
+- **Soft delete behavior**: admin deletes set `deletedAt` and force `status=ARCHIVED` while also setting `archivedAt` (records remain in the database for auditing).
+- **Admin endpoints**:
+  - Blog: `GET /api/admin/blogs`, `POST /api/admin/blogs`, `GET /api/admin/blogs/:id`, `PATCH /api/admin/blogs/:id`, `DELETE /api/admin/blogs/:id`
+  - Newsletter: `GET /api/admin/newsletters`, `POST /api/admin/newsletters`, `GET /api/admin/newsletters/:id`, `PATCH /api/admin/newsletters/:id`, `DELETE /api/admin/newsletters/:id`
+
+## Notifications
+
+- **Unread count (panel)**: `GET /api/notifications/unread-counts` (auth required) returns:
+  ```json
+  { "unreadCount": 5 }
+  ```
+- **Legacy unread count**: `GET /api/notifications/unread-count` (auth required) returns `{ "count": 5 }`.
+
 ## Finance subscriptions (v2)
 - Purchase flow uses `POST /subscriptions/purchase` with a `planId` from `GET /subscriptions/plans`
   (backed by `finance.subscription_plans_v2`).
+- Subscription plan discounts are per-user and applied at purchase time when:
+  - `discountPercent > 0` and `discountQuota > 0` on the plan.
+  - Remaining discount uses for the user on that plan are available.
+- Discount quota is enforced per user, per plan, for the lifetime of the subscription (not daily and never multiplied by duration).
+  - Remaining = `max(plan.discountQuota - usedDiscounts, 0)` where usedDiscounts counts consumed subscription discount usages.
+- Discount usage is tracked per user by counting discounted purchases and is enforced transactionally.
+  - If the quota is exhausted during checkout, the purchase proceeds at full price.
+  - Discount fields are persisted on `finance.subscription_purchases` (`original_amount`, `discount_applied`,
+    `discount_percent`, `discount_amount`) and surfaced in the purchase response.
+- Admin panel edit flow uses `GET /admin/subscription-plans/:id` to fetch a single plan and prefill
+  the Edit Subscription Plan form (daily limits, discount fields, etc.).
 - Production requires `finance.subscription_purchases.subscription_plan_id`; apply migration
   `20260202000000_subscription_purchase_plan_fk_hotfix` via `npx prisma migrate deploy`.
+- Discount tracking fields require migration `20260206120000_subscription_purchase_discounts`.
+- Subscription quota/access changes require migration `20260204000000_subscription_quota_and_access`.
 - After DB changes, regenerate Prisma (`npx prisma generate`).
+- Subscription downloads enforce Tehran-day quotas and subscription validity:
+  - Daily limits reset by Asia/Tehran day boundaries (`dateKey` uses Tehran timezone).
+  - Free daily downloads: base limit = `10` for non-subscribers, plan-defined limit for active subscribers.
+  - Subscription downloads: only active subscriptions can download subscription-only files; limit is plan-defined.
+  - Quota summary endpoint: `GET /me/quotas/summary` returns free + subscription used/limit/remaining for today.
+  - Download endpoints: `POST /downloads/:fileId` and `GET|POST /products/:id/download` stream files directly from the API (no signed URLs).
+  - Errors: `SUBSCRIPTION_REQUIRED` (403) and `DAILY_QUOTA_EXCEEDED` (429).
+  - Tables: `subscription_daily_quota_usage` (subscription quota snapshot) and `download_usage_daily` (free usage).
+
+Discount stats endpoint:
+- `GET /subscriptions/plans/:id/discount-stats` (auth required) returns:
+```json
+{
+  "discountPercent": 20,
+  "discountQuota": 20,
+  "usedDiscounts": 7,
+  "remainingDiscounts": 13,
+  "isDiscountActive": true,
+  "quotaType": "LIFETIME"
+}
+```
+
+Purchase response example (discount applied):
+```json
+{
+  "purchaseId": "purchase-uuid",
+  "originalPrice": 750000,
+  "discountPercent": 20,
+  "discountAmount": 150000,
+  "finalPrice": 600000,
+  "discountApplied": true,
+  "amount": 600000,
+  "currency": "TOMAN",
+  "durationDays": 30,
+  "planTitle": "Pro",
+  "status": "PENDING",
+  "plan": { "id": "plan-uuid", "title": "Pro", "price": 750000, "durationDays": 30, "dailyDownloadLimit": 10, "dailyFreeDownloadLimitWithSubscription": 15, "features": null, "isActive": true, "description": null },
+  "createdAt": "2026-02-06T00:00:00.000Z"
+}
+```
+
+Example quota summary response:
+```json
+{
+  "freeDownloads": { "used": 5, "limit": 10, "remaining": 5 },
+  "subscriptionDownloads": { "used": 2, "limit": 15, "remaining": 13 },
+  "hasActiveSubscription": true,
+  "subscriptionStatus": "ACTIVE",
+  "subscriptionPlan": { "id": "plan-123", "title": "Pro", "expiresAt": "2026-03-01T00:00:00.000Z" }
+}
+```
+
+Example limit exceeded response (HTTP 429):
+```json
+{ "code": "DAILY_QUOTA_EXCEEDED", "message": "DAILY_QUOTA_EXCEEDED" }
+```
 ### How to run Prisma Studio
 - `npm run prisma:studio`
 - `npm run dev:studio` (binds Studio to port 5555)

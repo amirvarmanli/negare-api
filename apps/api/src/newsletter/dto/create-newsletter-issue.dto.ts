@@ -52,7 +52,14 @@ export class CreateNewsletterIssueDto {
   @IsUUID()
   categoryId!: string;
 
-  @ApiPropertyOptional({ enum: PublicationStatus })
+  @ApiPropertyOptional({
+    enum: [
+      PublicationStatus.DRAFT,
+      PublicationStatus.PUBLISHED,
+      PublicationStatus.ARCHIVED,
+    ],
+    description: 'Admin panel status (DRAFT | PUBLISHED | ARCHIVED)',
+  })
   @IsOptional()
   @IsEnum(PublicationStatus)
   status?: PublicationStatus;

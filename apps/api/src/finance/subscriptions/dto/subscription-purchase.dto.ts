@@ -26,10 +26,13 @@ export class SubscriptionPlanSummaryDto {
   durationDays!: number;
 
   @ApiProperty({ example: 5 })
-  dailySubscriptionDownloadLimit!: number;
+  dailyDownloadLimit!: number;
 
   @ApiProperty({ example: 10 })
   dailyFreeDownloadLimitWithSubscription!: number;
+
+  @ApiProperty({ example: [{ label: 'Premium exports' }], required: false })
+  features?: Record<string, unknown> | null;
 
   @ApiProperty({ example: true })
   isActive!: boolean;
@@ -41,6 +44,21 @@ export class SubscriptionPlanSummaryDto {
 export class SubscriptionPurchaseResponseDto {
   @ApiProperty({ example: 'purchase-uuid' })
   purchaseId!: string;
+
+  @ApiProperty({ example: 150000 })
+  originalPrice!: number;
+
+  @ApiProperty({ example: 20 })
+  discountPercent!: number;
+
+  @ApiProperty({ example: 30000 })
+  discountAmount!: number;
+
+  @ApiProperty({ example: 120000 })
+  finalPrice!: number;
+
+  @ApiProperty({ example: true })
+  discountApplied!: boolean;
 
   @ApiProperty({ example: 150000 })
   amount!: number;

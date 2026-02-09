@@ -13,12 +13,12 @@ import {
 } from '@app/finance/payments/dto/payment-result.dto';
 import {
   PaymentProvider,
-  PaymentPurpose,
   PaymentReferenceType,
   PaymentSource,
   PaymentStatus,
   PaymentFulfillmentStatus,
 } from '@app/finance/common/finance.enums';
+import { PaymentResultPurpose } from '@app/finance/payments/dto/payment-result.dto';
 
 const paymentResultFixture = (): PaymentResultDto => ({
   paymentId: '9b4f2b2d-1a0b-4b77-8f75-2f2f0c0a8a33',
@@ -27,7 +27,23 @@ const paymentResultFixture = (): PaymentResultDto => ({
   provider: PaymentProvider.ZIBAL,
   amount: 150000,
   currency: 'TOMAN',
-  purpose: PaymentPurpose.ORDER,
+  purpose: PaymentResultPurpose.PRODUCT_PURCHASE,
+  purposeRef: { orderId: 'order-uuid' },
+  dateTime: '2026-02-02T12:05:00.000Z',
+  refId: 'A1B2C3',
+  trackingCode: 'XYZ-999',
+  errorMessage: null,
+  cta: { label: 'Go to Purchased Products', href: '/panel/purchases/products' },
+  details: {
+    orderId: 'order-uuid',
+    items: [{ productId: '1', title: 'File A', qty: 1 }],
+    downloadAllowed: true,
+    subscriptionId: null,
+    planId: null,
+    walletId: null,
+    donationId: null,
+    customOrderId: null,
+  },
   referenceType: PaymentReferenceType.CART,
   referenceId: 'order-uuid',
   intent: PaymentResultIntent.PRODUCT,

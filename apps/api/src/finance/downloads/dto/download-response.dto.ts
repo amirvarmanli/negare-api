@@ -1,5 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { EntitlementSource, ProductPricingType, SubscriptionPlanCode } from '@app/finance/common/finance.enums';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  EntitlementSource,
+  ProductPricingType,
+  SubscriptionPlanCode,
+  SubscriptionStatus,
+} from '@app/finance/common/finance.enums';
 
 export class DownloadDecisionDto {
   @ApiProperty({ example: true })
@@ -39,4 +44,46 @@ export class QuotaStatusDto {
 
   @ApiProperty({ enum: SubscriptionPlanCode, required: false })
   planCode?: SubscriptionPlanCode;
+}
+
+export class DownloadQuotaSummaryDto {
+  @ApiProperty({ example: 5 })
+  used!: number;
+
+  @ApiProperty({ example: 10 })
+  limit!: number;
+
+  @ApiProperty({ example: 5 })
+  remaining!: number;
+}
+
+export class SubscriptionPlanSummaryDto {
+  @ApiProperty({ example: 'plan-123' })
+  id!: string;
+
+  @ApiProperty({ example: 'Pro' })
+  title!: string;
+
+  @ApiProperty({ example: '2026-02-06T12:30:00.000Z' })
+  expiresAt!: string;
+}
+
+export class DownloadLimitsSummaryDto {
+  @ApiProperty({ type: DownloadQuotaSummaryDto })
+  freeDownloads!: DownloadQuotaSummaryDto;
+
+  @ApiProperty({ type: DownloadQuotaSummaryDto })
+  subscriptionDownloads!: DownloadQuotaSummaryDto;
+
+  @ApiProperty({ example: true })
+  hasActiveSubscription!: boolean;
+
+  @ApiProperty({ enum: ['NONE', ...Object.values(SubscriptionStatus)] })
+  subscriptionStatus!: SubscriptionStatus | 'NONE';
+
+  @ApiPropertyOptional({ type: SubscriptionPlanSummaryDto })
+  subscriptionPlan?: SubscriptionPlanSummaryDto | null;
+
+  @ApiPropertyOptional({ example: 'SUBSCRIPTION_DATA_INCONSISTENT' })
+  warning?: string;
 }

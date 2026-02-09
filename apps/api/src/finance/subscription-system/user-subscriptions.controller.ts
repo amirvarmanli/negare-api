@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -17,6 +17,7 @@ import { PurchaseSubscriptionDto } from '@app/finance/subscription-system/dto/pu
 import { UserSubscriptionDto } from '@app/finance/subscription-system/dto/user-subscription.dto';
 import { SubscriptionStatus } from '@app/finance/subscription-system/subscription-system.enums';
 import { SubscriptionPlanDto } from '@app/finance/subscription-system/dto/subscription-plan.dto';
+import { SubscriptionDiscountStatsDto } from '@app/finance/subscription-system/dto/subscription-discount-stats.dto';
 import type { Subscription, SubscriptionPlan } from '@prisma/client';
 
 @ApiTags('Finance / Subscriptions')
@@ -35,6 +36,19 @@ export class UserSubscriptionsController {
     return plans.map((plan) => this.toPlanDto(plan));
   }
 
+  @Get('plans/:id/discount-stats')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get subscription plan discount stats for the current user.' })
+  @ApiOkResponse({ type: SubscriptionDiscountStatsDto })
+  async getDiscountStats(
+    @Param('id') planId: string,
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<SubscriptionDiscountStatsDto> {
+    const userId = requireUserId(user);
+    return this.plansService.getDiscountStatsForUser(userId, planId);
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -50,7 +64,9 @@ export class UserSubscriptionsController {
     if (!subscription) {
       return null;
     }
-    return this.toDto(subscription);
+    const discountRemaining =
+      await this.subscriptionsService.getDiscountRemaining(subscription);
+    return this.toDto(subscription, discountRemaining);
   }
 
   @Post('purchase')
@@ -67,21 +83,26 @@ export class UserSubscriptionsController {
       userId,
       dto.planId,
     );
-    return this.toDto(subscription);
+    const discountRemaining =
+      await this.subscriptionsService.getDiscountRemaining(subscription);
+    return this.toDto(subscription, discountRemaining);
   }
 
-  private toDto(subscription: Subscription): UserSubscriptionDto {
+  private toDto(
+    subscription: Subscription,
+    discountRemainingOverride: number,
+  ): UserSubscriptionDto {
     return {
       id: subscription.id,
       planId: subscription.planId,
       planTitle: subscription.planTitle,
       price: subscription.price,
       durationDays: subscription.durationDays,
-      dailySubscriptionDownloadLimit: subscription.dailySubscriptionDownloadLimit,
+      dailyDownloadLimit: subscription.dailyDownloadLimit,
       dailyFreeDownloadLimitWithSubscription:
         subscription.dailyFreeDownloadLimitWithSubscription,
       discountPercent: subscription.discountPercent ?? null,
-      discountRemaining: subscription.discountRemaining,
+      discountRemaining: discountRemainingOverride,
       status: this.mapStatus(subscription.status),
       startAt: subscription.startAt.toISOString(),
       endAt: subscription.endAt.toISOString(),
@@ -89,8 +110,11 @@ export class UserSubscriptionsController {
   }
 
   private mapStatus(status: Subscription['status']): SubscriptionStatus {
-    if (status === 'CANCELLED') {
+    if (status === 'CANCELED') {
       return SubscriptionStatus.CANCELED;
+    }
+    if (status === 'PAUSED') {
+      return SubscriptionStatus.PAUSED;
     }
     return status as SubscriptionStatus;
   }
@@ -101,13 +125,15 @@ export class UserSubscriptionsController {
       title: plan.title,
       price: plan.price,
       durationDays: plan.durationDays,
-      dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+      dailyDownloadLimit: plan.dailyDownloadLimit,
       dailyFreeDownloadLimitWithSubscription:
         plan.dailyFreeDownloadLimitWithSubscription,
       description: plan.description ?? null,
       isActive: plan.isActive,
       discountPercent: plan.discountPercent ?? null,
+      features: (plan.features ?? null) as Record<string, unknown> | null,
       discountQuota: plan.discountQuota ?? null,
+      discountQuotaType: 'LIFETIME',
       createdAt: plan.createdAt.toISOString(),
       updatedAt: plan.updatedAt.toISOString(),
     };

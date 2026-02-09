@@ -32,7 +32,7 @@ export class UpdateSubscriptionPlanDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  dailySubscriptionDownloadLimit?: number;
+  dailyDownloadLimit?: number;
 
   @ApiPropertyOptional({ example: 10 })
   @IsOptional()
@@ -46,19 +46,30 @@ export class UpdateSubscriptionPlanDto {
   @MaxLength(2000)
   description?: string;
 
+  @ApiPropertyOptional({ example: [{ label: 'Premium exports' }] })
+  @IsOptional()
+  features?: Record<string, unknown> | null;
+
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Percentage applied per discounted subscription purchase.',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(100)
   discountPercent?: number | null;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({
+    example: 10,
+    description:
+      'Total discounted purchases allowed per user for the lifetime of the subscription (not daily, not per billing cycle).',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

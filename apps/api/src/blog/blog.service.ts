@@ -24,6 +24,7 @@ import {
   BlogAdminListItemDto,
   BlogAdminListResponseDto,
 } from '@app/blog/dto/admin-blogs-list-item.dto';
+import { BlogAdminAuthorDto } from '@app/blog/dto/admin-author.dto';
 import { BlogAdminDetailDto } from '@app/blog/dto/admin-blog-detail.dto';
 import { AdminUpdateBlogDto } from '@app/blog/dto/admin-update-blog.dto';
 import { AdminRejectDto } from '@app/blog/dto/admin-reject.dto';
@@ -58,6 +59,11 @@ const AUTHOR_SUMMARY_SELECT = {
   id: true,
   name: true,
   avatarUrl: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  role: true,
+  username: true,
 } as const;
 
 const POST_SUMMARY_SELECT = {
@@ -373,6 +379,48 @@ export class BlogService {
     return this.toPostDto(post);
   }
 
+  async adminCreatePost(
+    dto: CreateBlogPostDto,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<BlogAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    await this.ensureCategoryExists(dto.categoryId);
+    const slugSource = dto.slug ?? dto.title;
+    const slug = await this.ensureUniquePostSlug(createSlug(slugSource));
+    const status = dto.status ?? PublicationStatus.DRAFT;
+    const publishedAt = this.resolvePublishedAt(status, dto.publishedAt);
+    const archivedAt =
+      status === PublicationStatus.ARCHIVED ? new Date() : null;
+
+    const post = await this.prisma.$transaction(async (tx) => {
+      if (dto.isPinned) {
+        await this.unpinOtherBlogPosts(tx);
+      }
+
+      return tx.blogPost.create({
+        data: {
+          title: dto.title,
+          slug,
+          content: dto.content,
+          excerpt: dto.excerpt,
+          coverImageUrl: dto.coverImageUrl,
+          status,
+          publishedAt,
+          archivedAt,
+          categoryId: dto.categoryId,
+          authorId: admin.id,
+          isFeatured: dto.isFeatured ?? false,
+          isPinned: dto.isPinned ?? false,
+          pinnedAt: dto.isPinned ? new Date() : null,
+          pinnedByAdminId: dto.isPinned ? admin.id : null,
+        },
+        include: ADMIN_POST_INCLUDE,
+      });
+    });
+
+    return this.toAdminDetailDto(post);
+  }
+
   async updatePost(
     id: string,
     dto: UpdateBlogPostDto,
@@ -472,6 +520,32 @@ export class BlogService {
       data: {
         status: PublicationStatus.ARCHIVED,
         deletedAt: new Date(),
+      },
+    });
+  }
+
+  async adminSoftDeletePost(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<void> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.blogPost.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, archivedAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Blog post not found');
+    }
+
+    await this.prisma.blogPost.update({
+      where: { id },
+      data: {
+        status: PublicationStatus.ARCHIVED,
+        archivedAt: existing.archivedAt ?? new Date(),
+        deletedAt: new Date(),
+        reviewedAt: new Date(),
+        reviewedByAdminId: admin.id,
+        rejectReason: null,
       },
     });
   }
@@ -1207,7 +1281,9 @@ export class BlogService {
     return {
       id: post.id,
       title: post.title,
+      coverImageUrl: post.coverImageUrl ?? null,
       slug: post.slug,
+      excerpt: post.excerpt ?? null,
       status: post.status,
       publishedAt: post.publishedAt,
       archivedAt: post.archivedAt ?? null,
@@ -1216,11 +1292,7 @@ export class BlogService {
       rejectReason: post.rejectReason ?? null,
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
-      author: {
-        id: post.author.id,
-        name: post.author.name,
-        avatarUrl: post.author.avatarUrl,
-      },
+      author: this.toAdminAuthorDto(post.author),
       category: this.toCategoryDto(post.category, 0),
     };
   }
@@ -1248,12 +1320,44 @@ export class BlogService {
       viewCount: post.viewCount,
       commentCount: post._count?.comments ?? 0,
       category: this.toCategoryDto(post.category, 0),
-      author: {
-        id: post.author.id,
-        name: post.author.name,
-        avatarUrl: post.author.avatarUrl,
-      },
+      author: this.toAdminAuthorDto(post.author),
     };
+  }
+
+  private toAdminAuthorDto(
+    author: BlogPostWithRelations['author'],
+  ): BlogAdminAuthorDto {
+    return {
+      userId: author.id,
+      fullName: this.resolveAuthorFullName(author),
+      avatarUrl: author.avatarUrl ?? null,
+      email: author.email ?? null,
+      role: author.role,
+    };
+  }
+
+  private resolveAuthorFullName(
+    author: BlogPostWithRelations['author'],
+  ): string | null {
+    const first = author.firstName?.trim() ?? '';
+    const last = author.lastName?.trim() ?? '';
+    const combined = `${first} ${last}`.trim();
+    if (combined) {
+      return combined;
+    }
+    const name = author.name?.trim();
+    if (name) {
+      return name;
+    }
+    const username = author.username?.trim();
+    if (username) {
+      return username;
+    }
+    const email = author.email?.trim();
+    if (email) {
+      return email;
+    }
+    return null;
   }
 
   private publicStatusSet(): PublicationStatus[] {

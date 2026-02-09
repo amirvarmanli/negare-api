@@ -4,9 +4,10 @@ import { OrdersController } from '@app/finance/orders/orders.controller';
 import { ProductsModule } from '@app/finance/products/products.module';
 import { DiscountsModule } from '@app/finance/discounts/discounts.module';
 import { DownloadsModule } from '@app/finance/downloads/downloads.module';
+import { SubscriptionsModule } from '@app/finance/subscriptions/subscriptions.module';
 
 @Module({
-  imports: [ProductsModule, DiscountsModule, DownloadsModule],
+  imports: [ProductsModule, DiscountsModule, DownloadsModule, SubscriptionsModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

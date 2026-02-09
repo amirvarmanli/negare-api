@@ -59,12 +59,14 @@ model User {
   financeEntitlements         FinanceEntitlement[]                 @relation("FinanceEntitlement_user")
   financeDownloadUsage        FinanceDownloadUsageDaily[]          @relation("FinanceDownloadUsageDaily_user")
   financeDownloadLogs         FinanceDownloadLog[]                 @relation("FinanceDownloadLog_user")
+  financeDownloadDailyUniques FinanceDownloadDailyUnique[]
   downloadEvents              DownloadEvent[]                      @relation("DownloadEvent_user")
   financeSubscriptions        FinanceUserSubscription[]            @relation("FinanceUserSubscription_user")
   financeSubscriptionPurchases FinanceSubscriptionPurchase[]
   subscriptionsV2             Subscription[]
   subscriptionDownloadLogs    SubscriptionDownloadLog[]
   subscriptionDownloadLogsAsSupplier SubscriptionDownloadLog[]     @relation("SubscriptionDownloadLog_supplier")
+  subscriptionDailyQuotaUsage SubscriptionDailyQuotaUsage[]
   subscriptionDiscountUsages  SubscriptionDiscountUsage[]
   subscriptionSettlements     SubscriptionSettlement[]
   subscriptionSettlementSuppliers SubscriptionSettlementSupplier[]
@@ -394,8 +396,10 @@ model Product {
   financeOrderItems          FinanceOrderItem[]          @relation("FinanceOrderItem_product")
   financeEntitlements        FinanceEntitlement[]        @relation("FinanceEntitlement_product")
   financeDownloadLogs        FinanceDownloadLog[]        @relation("FinanceDownloadLog_product")
+  financeDownloadDailyUniques FinanceDownloadDailyUnique[]
   downloadEvents             DownloadEvent[]             @relation("DownloadEvent_product")
   subscriptionDownloadLogs  SubscriptionDownloadLog[]
+  subscriptionPlanProductAccess SubscriptionPlanProductAccess[]
   financeOrderRevenueSplits  FinanceOrderRevenueSplit[]  @relation("FinanceOrderRevenueSplit_product")
   financeProductDiscounts    FinanceProductDiscount[]
   financeCartItems           FinanceCartItem[]           @relation("FinanceCartItem_product")
@@ -450,6 +454,7 @@ model Category {
   parent       Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children     Category[]        @relation("CategoryHierarchy")
   productLinks ProductCategory[]
+  subscriptionPlanCategoryAccess SubscriptionPlanCategoryAccess[]
 
   @@index([parentId], map: "categories_parent_idx")
   @@map("categories")
@@ -1233,9 +1238,18 @@ enum FinanceSubscriptionPlanCode {
 enum FinanceSubscriptionStatus {
   ACTIVE
   EXPIRED
-  CANCELLED
+  CANCELED
+  PAUSED
 
   @@map("finance_subscription_status_enum")
+  @@schema("finance")
+}
+
+enum SubscriptionDownloadStatus {
+  SUCCESS
+  FAILED
+
+  @@map("subscription_download_status_enum")
   @@schema("finance")
 }
 
@@ -1606,6 +1620,21 @@ model FinanceDownloadLog {
   @@schema("finance")
 }
 
+model FinanceDownloadDailyUnique {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  productId BigInt   @map("product_id")
+  dateKey   String   @map("date_key") @db.VarChar(10)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId, dateKey])
+  @@index([userId, dateKey])
+  @@map("download_daily_uniques")
+  @@schema("finance")
+}
+
 model DownloadEvent {
   id         String   @id @default(uuid()) @db.Uuid
   userId     String   @map("user_id") @db.Uuid
@@ -1677,7 +1706,11 @@ model FinanceSubscriptionPurchase {
   planId              String?                          @map("plan_id") @db.Uuid
   subscriptionPlanId  String?                          @map("subscription_plan_id") @db.Uuid
   status              FinanceSubscriptionPurchaseStatus @default(PENDING)
+  originalAmount      Int                              @map("original_amount")
   amount              Int
+  discountApplied     Boolean                          @default(false) @map("discount_applied")
+  discountPercent     Int                              @default(0) @map("discount_percent")
+  discountAmount      Int                              @default(0) @map("discount_amount")
   currency            String                           @db.VarChar(8)
   durationMonths      Int                              @default(1) @map("duration_months")
   createdAt           DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1701,9 +1734,10 @@ model SubscriptionPlan {
   title                                      String   @db.VarChar(255)
   price                                      Int
   durationDays                               Int      @map("duration_days")
-  dailySubscriptionDownloadLimit             Int      @map("daily_subscription_download_limit")
+  dailyDownloadLimit                         Int      @map("daily_subscription_download_limit")
   dailyFreeDownloadLimitWithSubscription     Int      @map("daily_free_download_limit_with_subscription")
   description                                String?  @db.VarChar(2000)
+  features                                   Json?
   isActive                                   Boolean  @default(true) @map("is_active")
   discountPercent                            Int?     @map("discount_percent")
   discountQuota                              Int?     @map("discount_quota")
@@ -1712,6 +1746,8 @@ model SubscriptionPlan {
   subscriptions                              Subscription[]
   settlements                                SubscriptionSettlement[]
   subscriptionPurchases                      FinanceSubscriptionPurchase[] @relation("SubscriptionPurchasePlan")
+  productAccess                              SubscriptionPlanProductAccess[]
+  categoryAccess                             SubscriptionPlanCategoryAccess[]
 
   @@index([isActive])
   @@map("subscription_plans_v2")
@@ -1725,12 +1761,13 @@ model Subscription {
   planTitle                              String                   @map("plan_title") @db.VarChar(255)
   price                                  Int
   durationDays                           Int                      @map("duration_days")
-  dailySubscriptionDownloadLimit         Int                      @map("daily_subscription_download_limit")
+  dailyDownloadLimit                     Int                      @map("daily_subscription_download_limit")
   dailyFreeDownloadLimitWithSubscription Int                      @map("daily_free_download_limit_with_subscription")
   discountPercent                        Int?                     @map("discount_percent")
   discountRemaining                      Int                      @map("discount_remaining")
   startAt                                DateTime                 @map("start_at") @db.Timestamptz(6)
   endAt                                  DateTime                 @map("end_at") @db.Timestamptz(6)
+  autoRenew                              Boolean?                 @map("auto_renew")
   status                                 FinanceSubscriptionStatus
   createdAt                              DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                              DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1754,6 +1791,11 @@ model SubscriptionDownloadLog {
   downloadType   String        @map("download_type") @db.VarChar(20)
   subscriptionId String?       @map("subscription_id") @db.Uuid
   dateKey        String        @map("date_key") @db.VarChar(10)
+  isSubscriptionDownload Boolean @default(false) @map("is_subscription_download")
+  status         SubscriptionDownloadStatus @default(SUCCESS)
+  failReason     String?       @map("fail_reason") @db.VarChar(255)
+  ip             String?       @db.VarChar(64)
+  userAgent      String?       @map("user_agent") @db.VarChar(255)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   user           User          @relation(fields: [userId], references: [id])
   supplier       User          @relation("SubscriptionDownloadLog_supplier", fields: [supplierId], references: [id])
@@ -1763,7 +1805,52 @@ model SubscriptionDownloadLog {
   @@index([userId, dateKey, downloadType])
   @@index([subscriptionId, createdAt])
   @@index([supplierId, createdAt])
+  @@index([userId, createdAt])
   @@map("subscription_download_logs")
+  @@schema("finance")
+}
+
+model SubscriptionDailyQuotaUsage {
+  id                     String   @id @default(uuid()) @db.Uuid
+  userId                 String   @map("user_id") @db.Uuid
+  dateKey                String   @map("date_key") @db.VarChar(10)
+  downloadsUsed          Int      @default(0) @map("downloads_used")
+  downloadsLimitSnapshot Int      @map("downloads_limit_snapshot")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                   User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, dateKey])
+  @@index([userId, dateKey])
+  @@map("subscription_daily_quota_usage")
+  @@schema("finance")
+}
+
+model SubscriptionPlanProductAccess {
+  id        String   @id @default(uuid()) @db.Uuid
+  planId    String   @map("plan_id") @db.Uuid
+  productId BigInt   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plan      SubscriptionPlan @relation(fields: [planId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([planId, productId])
+  @@index([productId])
+  @@map("subscription_plan_product_access")
+  @@schema("finance")
+}
+
+model SubscriptionPlanCategoryAccess {
+  id         String   @id @default(uuid()) @db.Uuid
+  planId     String   @map("plan_id") @db.Uuid
+  categoryId BigInt   @map("category_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plan       SubscriptionPlan @relation(fields: [planId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([planId, categoryId])
+  @@index([categoryId])
+  @@map("subscription_plan_category_access")
   @@schema("finance")
 }
 

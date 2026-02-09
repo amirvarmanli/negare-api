@@ -45,4 +45,11 @@ describe('SubscriptionDownloadsService', () => {
     expect(decision.storageKey).toBe('files/paid.zip');
     expect(storage.getDownloadUrl).toHaveBeenCalledWith('files/paid.zip');
   });
+
+  it('throws when storage key is missing', async () => {
+    (productsService.getProductStorageKey as jest.Mock).mockResolvedValue(null);
+    await expect(service.validateDownload('user-1', 'prod-1')).rejects.toThrow(
+      'File not found.',
+    );
+  });
 });

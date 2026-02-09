@@ -9,7 +9,7 @@ export interface CheckoutNonAppliedDiscount {
 
 export interface CheckoutDiscountMetadata {
   subtotal: number;
-  appliedDiscountSource: 'COUPON' | 'NONE';
+  appliedDiscountSource: 'COUPON' | 'SUBSCRIPTION' | 'NONE';
   appliedDiscountPercent: number;
   appliedDiscountAmount: number;
   appliedDiscountCode?: string;
@@ -20,6 +20,11 @@ export interface CheckoutDiscountMetadata {
   couponValue?: number;
   discountAmount: number;
   discountReason: string;
+  subscriptionDiscountPercent?: number;
+  subscriptionDiscountTotal?: number;
+  subscriptionDiscountUsed?: number;
+  subscriptionDiscountRemaining?: number;
+  subscriptionDiscountQuotaType?: 'LIFETIME';
   nonAppliedDiscounts: CheckoutNonAppliedDiscount[];
 }
 
@@ -38,8 +43,8 @@ export class CheckoutDiscountMetadataDto implements CheckoutDiscountMetadata {
   @ApiProperty({ example: 200000 })
   subtotal!: number;
 
-  @ApiProperty({ enum: ['COUPON', 'NONE'], example: 'COUPON' })
-  appliedDiscountSource!: 'COUPON' | 'NONE';
+  @ApiProperty({ enum: ['COUPON', 'SUBSCRIPTION', 'NONE'], example: 'COUPON' })
+  appliedDiscountSource!: 'COUPON' | 'SUBSCRIPTION' | 'NONE';
 
   @ApiProperty({ example: 20 })
   appliedDiscountPercent!: number;
@@ -70,6 +75,35 @@ export class CheckoutDiscountMetadataDto implements CheckoutDiscountMetadata {
 
   @ApiProperty({ example: 'Coupon WELCOME10 applied: 20% off' })
   discountReason!: string;
+
+  @ApiPropertyOptional({ example: 20 })
+  subscriptionDiscountPercent?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
+    description:
+      'Total discounted purchases allowed per user for the lifetime of the subscription (not daily, not per billing cycle).',
+  })
+  subscriptionDiscountTotal?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Lifetime discounted purchases already used.',
+  })
+  subscriptionDiscountUsed?: number;
+
+  @ApiPropertyOptional({
+    example: 7,
+    description: 'Remaining discounted purchases for the lifetime of the subscription.',
+  })
+  subscriptionDiscountRemaining?: number;
+
+  @ApiPropertyOptional({
+    example: 'LIFETIME',
+    enum: ['LIFETIME'],
+    description: 'Discount quota applies to the lifetime of the subscription.',
+  })
+  subscriptionDiscountQuotaType?: 'LIFETIME';
 
   @ApiProperty({ type: [CheckoutNonAppliedDiscountDto] })
   nonAppliedDiscounts!: CheckoutNonAppliedDiscountDto[];

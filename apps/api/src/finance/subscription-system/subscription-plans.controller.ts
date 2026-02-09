@@ -1,10 +1,23 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
@@ -32,6 +45,17 @@ export class SubscriptionPlansController {
   async listPlans(): Promise<SubscriptionPlanDto[]> {
     const plans = await this.plansService.listPlans();
     return plans.map((plan) => this.toDto(plan));
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get subscription plan by id (admin).' })
+  @ApiOkResponse({ type: SubscriptionPlanDto })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Subscription plan ID.' })
+  async getPlan(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<SubscriptionPlanDto> {
+    const plan = await this.plansService.getPlanById(id);
+    return this.toDto(plan);
   }
 
   @Post()
@@ -69,13 +93,15 @@ export class SubscriptionPlansController {
       title: plan.title,
       price: plan.price,
       durationDays: plan.durationDays,
-      dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+      dailyDownloadLimit: plan.dailyDownloadLimit,
       dailyFreeDownloadLimitWithSubscription:
         plan.dailyFreeDownloadLimitWithSubscription,
       description: plan.description ?? null,
       isActive: plan.isActive,
       discountPercent: plan.discountPercent ?? null,
+      features: (plan.features ?? null) as Record<string, unknown> | null,
       discountQuota: plan.discountQuota ?? null,
+      discountQuotaType: 'LIFETIME',
       createdAt: plan.createdAt.toISOString(),
       updatedAt: plan.updatedAt.toISOString(),
     };

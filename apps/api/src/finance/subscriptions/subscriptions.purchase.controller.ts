@@ -38,6 +38,11 @@ export class SubscriptionsPurchaseController {
     );
     return {
       purchaseId: result.purchase.id,
+      originalPrice: result.purchase.originalAmount,
+      discountPercent: result.purchase.discountPercent,
+      discountAmount: result.purchase.discountAmount,
+      finalPrice: result.purchase.amount,
+      discountApplied: result.purchase.discountApplied,
       amount: result.purchase.amount,
       currency: result.purchase.currency,
       durationDays: result.plan.durationDays,
@@ -48,10 +53,11 @@ export class SubscriptionsPurchaseController {
         title: result.plan.title,
         price: result.plan.price,
         durationDays: result.plan.durationDays,
-        dailySubscriptionDownloadLimit:
-          result.plan.dailySubscriptionDownloadLimit,
+        dailyDownloadLimit:
+          result.plan.dailyDownloadLimit,
         dailyFreeDownloadLimitWithSubscription:
           result.plan.dailyFreeDownloadLimitWithSubscription,
+        features: (result.plan.features ?? null) as Record<string, unknown> | null,
         isActive: result.plan.isActive,
         description: result.plan.description ?? null,
       },

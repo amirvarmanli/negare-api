@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -10,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -24,6 +27,7 @@ import { NewsletterAdminListResponseDto } from '@app/newsletter/dto/admin-newsle
 import { NewsletterAdminDetailDto } from '@app/newsletter/dto/admin-newsletter-detail.dto';
 import { AdminUpdateNewsletterDto } from '@app/newsletter/dto/admin-update-newsletter.dto';
 import { AdminRejectDto } from '@app/newsletter/dto/admin-reject.dto';
+import { CreateNewsletterIssueDto } from '@app/newsletter/dto/create-newsletter-issue.dto';
 
 @ApiTags('Admin Newsletters')
 @ApiBearerAuth()
@@ -34,7 +38,9 @@ export class AdminNewslettersController {
   constructor(private readonly newsletterService: NewsletterService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all newsletters with filters and pagination' })
+  @ApiOperation({
+    summary: 'List all newsletters with filters and pagination (admin only)',
+  })
   @ApiOkResponse({ type: NewsletterAdminListResponseDto })
   async list(
     @Query() query: AdminNewslettersListQueryDto,
@@ -43,8 +49,21 @@ export class AdminNewslettersController {
     return this.newsletterService.adminListAllIssues(query, currentUser);
   }
 
+  @Post()
+  @ApiOperation({
+    summary: 'Create a newsletter issue (admin only)',
+    description: 'Defaults to DRAFT when status is omitted.',
+  })
+  @ApiOkResponse({ type: NewsletterAdminDetailDto })
+  async create(
+    @Body() dto: CreateNewsletterIssueDto,
+    @CurrentUser() currentUser?: CurrentUserPayload,
+  ): Promise<NewsletterAdminDetailDto> {
+    return this.newsletterService.adminCreateIssue(dto, currentUser);
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Get a newsletter issue by ID' })
+  @ApiOperation({ summary: 'Get a newsletter issue by ID (admin only)' })
   @ApiOkResponse({ type: NewsletterAdminDetailDto })
   async getById(
     @Param('id') id: string,
@@ -54,7 +73,7 @@ export class AdminNewslettersController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a newsletter issue (admin)' })
+  @ApiOperation({ summary: 'Update a newsletter issue (admin only)' })
   @ApiOkResponse({ type: NewsletterAdminDetailDto })
   async update(
     @Param('id') id: string,
@@ -62,6 +81,21 @@ export class AdminNewslettersController {
     @CurrentUser() currentUser?: CurrentUserPayload,
   ): Promise<NewsletterAdminDetailDto> {
     return this.newsletterService.adminUpdateIssue(id, dto, currentUser);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Soft-delete a newsletter issue (admin only)',
+    description:
+      'Soft delete sets deletedAt and forces status=ARCHIVED with archivedAt.',
+  })
+  @ApiNoContentResponse()
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser?: CurrentUserPayload,
+  ): Promise<void> {
+    await this.newsletterService.adminSoftDeleteIssue(id, currentUser);
   }
 
   @Post(':id/approve')

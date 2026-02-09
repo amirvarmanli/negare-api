@@ -3,6 +3,7 @@ import { CouponValueType, ProductPricingType } from '@app/finance/common/finance
 import { PaymentsService } from '@app/finance/payments/payments.service';
 import { CheckoutService } from './checkout.service';
 import { ProductsService } from '@app/finance/products/products.service';
+import { SubscriptionsService } from '@app/finance/subscriptions/subscriptions.service';
 import { PrismaService } from '@app/prisma/prisma.service';
 import type { Prisma } from '@prisma/client';
 
@@ -15,6 +16,7 @@ describe('CheckoutService', () => {
     commitCouponRedemption: jest.Mock<Promise<void>, unknown[]>;
   }>;
   let paymentsService: Partial<PaymentsService>;
+  let subscriptionsService: Partial<SubscriptionsService>;
   let txClient: Partial<Prisma.TransactionClient>;
 
   const productSnapshot = {
@@ -61,11 +63,17 @@ describe('CheckoutService', () => {
       initOrderPayment: jest.fn().mockResolvedValue(paymentResponse),
     };
 
+    subscriptionsService = {
+      getDiscountCandidate: jest.fn().mockResolvedValue(null),
+      consumeSubscriptionDiscountForOrder: jest.fn().mockResolvedValue(null),
+    };
+
     service = new CheckoutService(
       prisma as PrismaService,
       productsService as ProductsService,
       discountsService as any,
       paymentsService as PaymentsService,
+      subscriptionsService as SubscriptionsService,
     );
   });
 
@@ -88,6 +96,11 @@ describe('CheckoutService', () => {
         discountAmount: 20000,
         reason: 'Coupon WELCOME10 applied: 10% off',
       },
+      subscriptionDiscountPercent: 0,
+      subscriptionDiscountRemaining: 0,
+      subscriptionDiscountTotal: 0,
+      subscriptionDiscountUsed: 0,
+      nonAppliedDiscounts: [],
     };
 
     (discountsService.calculateDiscountQuote as jest.Mock).mockResolvedValue(quote);
@@ -105,6 +118,10 @@ describe('CheckoutService', () => {
       couponValue: 10,
       discountAmount: 20000,
       discountReason: 'Coupon WELCOME10 applied: 10% off',
+      subscriptionDiscountPercent: 0,
+      subscriptionDiscountTotal: 0,
+      subscriptionDiscountUsed: 0,
+      subscriptionDiscountRemaining: 0,
       nonAppliedDiscounts: [],
     };
 

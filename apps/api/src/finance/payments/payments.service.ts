@@ -76,10 +76,11 @@ import {
 } from '@prisma/client';
 import type { AllConfig } from '@app/config/config.module';
 import { requestTraceStorage } from '@app/common/tracing/request-trace';
-import { toBigInt } from '@app/finance/common/prisma.utils';
+import { toBigInt, toBigIntString } from '@app/finance/common/prisma.utils';
 import {
   PaymentResultIntent,
   PaymentResultNextAction,
+  PaymentResultPurpose,
 } from '@app/finance/payments/dto/payment-result.dto';
 
 @Injectable()
@@ -1321,6 +1322,44 @@ export class PaymentsService {
     return PaymentResultIntent.PRODUCT;
   }
 
+  private resolveResultPurpose(
+    purpose: PaymentPurpose,
+    referenceType: PaymentReferenceType,
+  ): PaymentResultPurpose {
+    if (purpose === PaymentPurpose.WALLET_TOPUP) {
+      return PaymentResultPurpose.WALLET_TOPUP;
+    }
+    if (purpose === PaymentPurpose.DONATION) {
+      return PaymentResultPurpose.DONATION;
+    }
+    if (referenceType === PaymentReferenceType.DONATION) {
+      return PaymentResultPurpose.DONATION;
+    }
+    if (referenceType === PaymentReferenceType.SUBSCRIPTION) {
+      return PaymentResultPurpose.SUBSCRIPTION_PURCHASE;
+    }
+    return PaymentResultPurpose.PRODUCT_PURCHASE;
+  }
+
+  private resolveCta(
+    resultPurpose: PaymentResultPurpose,
+  ): { label: string; href: string } {
+    switch (resultPurpose) {
+      case PaymentResultPurpose.PRODUCT_PURCHASE:
+        return { label: 'Go to Purchased Products', href: '/panel/purchases/products' };
+      case PaymentResultPurpose.WALLET_TOPUP:
+        return { label: 'Go to Wallet', href: '/panel/wallet' };
+      case PaymentResultPurpose.SUBSCRIPTION_PURCHASE:
+        return { label: 'Go to Subscription', href: '/panel/subscription' };
+      case PaymentResultPurpose.DONATION:
+        return { label: 'Back to Home', href: '/' };
+      case PaymentResultPurpose.IMAGE_RESTORE_ORDER:
+        return { label: 'Go to Orders', href: '/panel/orders' };
+      default:
+        return { label: 'Back to Home', href: '/' };
+    }
+  }
+
   private resolveNextAction(
     intent: PaymentResultIntent,
     status: PaymentStatus,
@@ -1400,6 +1439,7 @@ export class PaymentsService {
       );
     }
     const intent = this.resolvePaymentIntent(purpose, referenceType);
+    let resultPurpose = this.resolveResultPurpose(purpose, referenceType);
     const retryable =
       normalizedStatus === PaymentStatus.SUCCESS &&
       fulfillmentStatus === PaymentFulfillmentStatus.FAILED;
@@ -1414,11 +1454,59 @@ export class PaymentsService {
 
     let orderId: string | null = payment.orderId ?? null;
     let canAccessDownloads = false;
+    let orderSubscriptionPlanId: string | null = null;
     if (orderId) {
       const order = await this.prisma.financeOrder.findUnique({
         where: { id: orderId },
+        select: { status: true, orderKind: true, subscriptionPlanId: true },
       });
       canAccessDownloads = (order?.status as OrderStatus) === OrderStatus.PAID;
+      orderSubscriptionPlanId = order?.subscriptionPlanId ?? null;
+      if (
+        order?.orderKind === (OrderKind.SUBSCRIPTION as FinanceOrderKind) ||
+        orderSubscriptionPlanId
+      ) {
+        resultPurpose = PaymentResultPurpose.SUBSCRIPTION_PURCHASE;
+      }
+    }
+    const cta = this.resolveCta(resultPurpose);
+
+    const purposeRef: Record<string, string | null> = {};
+    if (resultPurpose === PaymentResultPurpose.WALLET_TOPUP) {
+      purposeRef.walletId = referenceId;
+    } else if (resultPurpose === PaymentResultPurpose.PRODUCT_PURCHASE) {
+      purposeRef.orderId = orderId ?? referenceId;
+    } else if (resultPurpose === PaymentResultPurpose.SUBSCRIPTION_PURCHASE) {
+      if (orderSubscriptionPlanId) {
+        purposeRef.planId = orderSubscriptionPlanId;
+      } else {
+        const purchase =
+          await this.prisma.financeSubscriptionPurchase.findUnique({
+            where: { id: referenceId },
+            select: { subscriptionPlanId: true, planId: true },
+          });
+        purposeRef.planId =
+          purchase?.subscriptionPlanId ?? purchase?.planId ?? null;
+      }
+    } else if (resultPurpose === PaymentResultPurpose.DONATION) {
+      purposeRef.donationId = referenceId;
+    }
+
+    let items: Array<{ productId: string; title: string; qty: number }> | undefined;
+    if (orderId) {
+      const orderItems = await this.prisma.financeOrderItem.findMany({
+        where: { orderId },
+        select: {
+          productId: true,
+          quantity: true,
+          product: { select: { title: true } },
+        },
+      });
+      items = orderItems.map((item) => ({
+        productId: toBigIntString(item.productId),
+        title: item.product?.title ?? '',
+        qty: item.quantity,
+      }));
     }
 
     const result: import('@app/finance/payments/dto/payment-result.dto').PaymentResultDto =
@@ -1429,7 +1517,24 @@ export class PaymentsService {
         provider: payment.provider as PaymentProvider,
         amount: payment.amount,
         currency: payment.currency,
-        purpose,
+        purpose: resultPurpose,
+        purposeRef,
+        dateTime:
+          (payment.paidAt ?? payment.verifiedAt ?? payment.createdAt).toISOString(),
+        refId: payment.refId ?? null,
+        trackingCode: payment.trackId ?? payment.authority ?? null,
+        errorMessage: payment.failureReason ?? payment.fulfillmentError ?? null,
+        cta,
+        details: {
+          orderId,
+          items,
+          downloadAllowed: canAccessDownloads,
+          subscriptionId: null,
+          planId: purposeRef.planId ?? null,
+          walletId: purposeRef.walletId ?? null,
+          donationId: purposeRef.donationId ?? null,
+          customOrderId: null,
+        },
         referenceType,
         referenceId,
         intent,

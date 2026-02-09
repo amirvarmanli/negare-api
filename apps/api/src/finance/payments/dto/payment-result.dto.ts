@@ -2,11 +2,18 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   PaymentFulfillmentStatus,
   PaymentProvider,
-  PaymentPurpose,
   PaymentReferenceType,
   PaymentSource,
   PaymentStatus,
 } from '@app/finance/common/finance.enums';
+
+export enum PaymentResultPurpose {
+  WALLET_TOPUP = 'wallet_topup',
+  PRODUCT_PURCHASE = 'product_purchase',
+  SUBSCRIPTION_PURCHASE = 'subscription_purchase',
+  DONATION = 'donation',
+  IMAGE_RESTORE_ORDER = 'image_restore_order',
+}
 
 export enum PaymentResultIntent {
   PRODUCT = 'PRODUCT',
@@ -22,6 +29,51 @@ export enum PaymentResultNextAction {
   CONTACT_SUPPORT = 'CONTACT_SUPPORT',
   RETRY = 'RETRY',
   WAIT = 'WAIT',
+}
+
+export class PaymentResultCtaDto {
+  @ApiProperty({ example: 'Go to Purchased Products' })
+  label!: string;
+
+  @ApiProperty({ example: '/panel/purchases/products' })
+  href!: string;
+}
+
+export class PaymentResultItemDto {
+  @ApiProperty({ example: '1' })
+  productId!: string;
+
+  @ApiProperty({ example: 'File A' })
+  title!: string;
+
+  @ApiProperty({ example: 1 })
+  qty!: number;
+}
+
+export class PaymentResultDetailsDto {
+  @ApiPropertyOptional({ example: 'order-uuid' })
+  orderId?: string | null;
+
+  @ApiPropertyOptional({ type: [PaymentResultItemDto] })
+  items?: PaymentResultItemDto[];
+
+  @ApiPropertyOptional({ example: true })
+  downloadAllowed?: boolean;
+
+  @ApiPropertyOptional({ example: 'subscription-uuid' })
+  subscriptionId?: string | null;
+
+  @ApiPropertyOptional({ example: 'plan-uuid' })
+  planId?: string | null;
+
+  @ApiPropertyOptional({ example: 'wallet-uuid' })
+  walletId?: string | null;
+
+  @ApiPropertyOptional({ example: 'donation-uuid' })
+  donationId?: string | null;
+
+  @ApiPropertyOptional({ example: 'custom-order-uuid' })
+  customOrderId?: string | null;
 }
 
 export class PaymentResultDto {
@@ -43,8 +95,32 @@ export class PaymentResultDto {
   @ApiProperty({ example: 'TOMAN' })
   currency!: string;
 
-  @ApiProperty({ enum: PaymentPurpose })
-  purpose!: PaymentPurpose | 'PHOTO_RESTORE';
+  @ApiProperty({ enum: PaymentResultPurpose })
+  purpose!: PaymentResultPurpose;
+
+  @ApiProperty({
+    example: { orderId: 'order-uuid' },
+    description: 'Structured link to the business entity for this payment.',
+  })
+  purposeRef!: Record<string, string | null>;
+
+  @ApiProperty({ example: '2026-02-04T10:12:30.000Z' })
+  dateTime!: string;
+
+  @ApiPropertyOptional({ example: 'A1B2C3', nullable: true })
+  refId?: string | null;
+
+  @ApiPropertyOptional({ example: 'XYZ-999', nullable: true })
+  trackingCode?: string | null;
+
+  @ApiPropertyOptional({ example: 'gateway_verification_failed', nullable: true })
+  errorMessage?: string | null;
+
+  @ApiProperty({ type: PaymentResultCtaDto })
+  cta!: PaymentResultCtaDto;
+
+  @ApiPropertyOptional({ type: PaymentResultDetailsDto })
+  details?: PaymentResultDetailsDto;
 
   @ApiProperty({ enum: PaymentReferenceType })
   referenceType!: PaymentReferenceType | 'photo_restore';

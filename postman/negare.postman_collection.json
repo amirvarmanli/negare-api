@@ -1869,6 +1869,43 @@
           }
         },
         {
+          "name": "Unread Count (Simple)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-counts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "unread-counts"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Unread Count (Simple) Example",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"unreadCount\": 5\n}"
+            }
+          ]
+        },
+        {
           "name": "Mark Read",
           "request": {
             "method": "PATCH",

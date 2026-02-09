@@ -24,18 +24,13 @@ function findFirstValidationError(
   errors: ValidationError[],
 ): ValidationError | undefined {
   for (const error of errors) {
-    if (error.constraints && Object.keys(error.constraints).length > 0) {
+    if (error.constraints && Object.keys(error.constraints).length > 0)
       return error;
-    }
-
     if (error.children && error.children.length > 0) {
       const child = findFirstValidationError(error.children);
-      if (child) {
-        return child;
-      }
+      if (child) return child;
     }
   }
-
   return undefined;
 }
 
@@ -53,18 +48,14 @@ function buildValidationException(
     const constraintKey = Object.keys(firstError.constraints ?? {})[0];
     if (constraintKey) {
       const constraintMessage = firstError.constraints?.[constraintKey];
-      if (constraintMessage) {
-        message = constraintMessage;
-      }
+      if (constraintMessage) message = constraintMessage;
 
-      const contextValue = firstError.contexts?.[
-        constraintKey
-      ] as PlainTextValidationContext | undefined;
-
+      const contextValue = firstError.contexts?.[constraintKey] as
+        | PlainTextValidationContext
+        | undefined;
       if (contextValue) {
-        if (typeof contextValue.errorCode === 'string') {
+        if (typeof contextValue.errorCode === 'string')
           code = contextValue.errorCode;
-        }
 
         const metaPayload: Record<string, unknown> = {};
         if (typeof contextValue.maxLength === 'number') {
@@ -77,48 +68,37 @@ function buildValidationException(
                 )
               : undefined;
           metaPayload.max = contextValue.maxLength;
-          if (actual !== undefined) {
-            metaPayload.actual = actual;
-          }
+          if (actual !== undefined) metaPayload.actual = actual;
         }
-
         if (
           Array.isArray(contextValue.allowed) &&
           contextValue.allowed.length > 0
         ) {
           metaPayload.allowed = contextValue.allowed;
         }
-
-        if (Object.keys(metaPayload).length > 0) {
-          meta = metaPayload;
-        }
+        if (Object.keys(metaPayload).length > 0) meta = metaPayload;
       }
     }
   }
 
   return new BadRequestException({
     success: false,
-    error: {
-      code,
-      message,
-      ...(meta ? { meta } : {}),
-    },
+    error: { code, message, ...(meta ? { meta } : {}) },
   });
 }
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
-
   const bootstrapLogger = new Logger('Bootstrap');
   const config = app.get<ConfigService<AllConfig>>(ConfigService);
 
   app.useLogger(bootstrapLogger);
   app.flushLogs();
 
-  // ---- Security headers (Helmet) ----
+  // ---- Security headers ----
   app.use(helmet());
 
-  // ---- ValidationPipe (strict) ----
+  // ---- ValidationPipe ----
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -136,7 +116,7 @@ async function bootstrap() {
   const globalPrefix = config.get<string>('GLOBAL_PREFIX') ?? 'api';
   if (globalPrefix) app.setGlobalPrefix(globalPrefix);
 
-  // ---- Trust proxy in production (for correct req.secure / HTTPS) ----
+  // ---- Trust proxy in production ----
   if ((process.env.NODE_ENV || '').toLowerCase() === 'production') {
     // @ts-ignore
     app.set('trust proxy', 1);
@@ -144,8 +124,7 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  // ---- CORS (with credentials) ----
-  // Supports either an array config key (corsOrigins) or a CSV env (CORS_ORIGIN)
+  // ---- CORS ----
   const corsRaw = config.get<string | string[]>('corsOrigins', { infer: true });
   const corsFromArray = Array.isArray(corsRaw)
     ? corsRaw
@@ -155,7 +134,6 @@ async function bootstrap() {
         .filter((origin) => origin.length > 0);
   const corsFromEnv = (config.get<string>('CORS_ORIGIN') ??
     'http://localhost:3000') as string;
-
   const allowedOrigins = (
     corsFromArray && corsFromArray.length > 0
       ? corsFromArray
@@ -166,13 +144,12 @@ async function bootstrap() {
     origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    // ✅ هدرهای لازم برای احراز، CSRF و جریان آپلود (مطابق کلاینت/پستمن)
     allowedHeaders: [
       'Content-Type',
       'Authorization',
       'X-CSRF-Token',
-      'x-user-id', // <— اگر خواستی حذفش کنی، همین خط رو بردار
-      'upload-id', // <— فقط در صورت استفاده هدرمحور؛ اگر Query Param داری می‌تونی حذف کنی
+      'x-user-id',
+      'upload-id',
       'file-id',
       'chunk-index',
       'chunk-checksum',
@@ -180,7 +157,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // Ensure Vary: Origin (برای کش‌های میانی/CDN)
+  // ---- Vary header ----
   app.use((_req: Request, res: Response, next: NextFunction) => {
     const existingVary = res.getHeader('Vary');
     const varyVal = Array.isArray(existingVary)
@@ -203,12 +180,10 @@ async function bootstrap() {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const prefix = globalPrefix ? `/${globalPrefix}` : '';
     const path = req.path || req.url;
-
     const isAuth = path.startsWith(`${prefix}/auth`);
     const isSensitiveCore =
       path.startsWith(`${prefix}/core/profile`) ||
       path.startsWith(`${prefix}/auth/session`);
-
     if (isAuth || isSensitiveCore) {
       res.setHeader('Cache-Control', 'no-store');
       const existingVary = res.getHeader('Vary');
@@ -222,11 +197,10 @@ async function bootstrap() {
       varyList.add('Cookie');
       res.setHeader('Vary', Array.from(varyList).join(', '));
     }
-
     next();
   });
 
-  // ---- Swagger (only non-production) ----
+  // ---- Swagger ----
   if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Negare Core API Documentation')
@@ -246,8 +220,19 @@ async function bootstrap() {
       .build();
 
     const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+
+    // ---- Swagger UI ----
     const docsPath = `${globalPrefix ? `/${globalPrefix}` : ''}/docs`;
     SwaggerModule.setup(docsPath, app, swaggerDocument);
+
+    // ---- JSON endpoint for Insomnia ----
+    const docsJsonPath = `${docsPath}-json`;
+    app
+      .getHttpAdapter()
+      .getInstance()
+      .get(docsJsonPath, (_req: Request, res: Response) => {
+        res.json(swaggerDocument);
+      });
   }
 
   // ---- Listen ----
@@ -264,16 +249,15 @@ async function bootstrap() {
   const docsPath = `${globalPrefix ? `/${globalPrefix}` : ''}/docs`;
   if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
     bootstrapLogger.log(`Swagger Docs available at ${appUrl}${docsPath}`);
+    bootstrapLogger.log(`Swagger JSON available at ${appUrl}${docsPath}-json`);
   }
   bootstrapLogger.log(`Allowed CORS Origins: ${allowedOrigins.join(', ')}`);
 }
 
 bootstrap().catch((error: unknown) => {
   const logger = new Logger('Bootstrap');
-  if (error instanceof Error) {
+  if (error instanceof Error)
     logger.error('Failed to start application', error.stack);
-  } else {
-    logger.error(`Failed to start application: ${String(error)}`);
-  }
+  else logger.error(`Failed to start application: ${String(error)}`);
   process.exitCode = 1;
 });

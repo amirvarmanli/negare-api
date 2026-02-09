@@ -29,6 +29,7 @@ import { NotificationListQueryDto } from '@app/notifications/dtos/notification-q
 import {
   NotificationInboxResponseDto,
   NotificationUnreadCountDto,
+  NotificationUnreadCountResponseDto,
   NotificationUpdateCountDto,
 } from '@app/notifications/dtos/notification-inbox.dto';
 
@@ -61,6 +62,22 @@ export class NotificationsController {
     const userId = requireUserId(user);
     const count = await this.service.countUnread(userId);
     return { count };
+  }
+
+  @Get('unread-counts')
+  @Permissions('user.notifications:read')
+  @ApiOperation({
+    summary: 'Get unread notifications count (simple)',
+    description:
+      'Returns the unread notifications count for the current authenticated user.',
+  })
+  @ApiOkResponse({ type: NotificationUnreadCountResponseDto })
+  async unreadCountSimple(
+    @CurrentUser() user: CurrentUserPayload | undefined,
+  ): Promise<NotificationUnreadCountResponseDto> {
+    const userId = requireUserId(user);
+    const count = await this.service.countUnread(userId);
+    return { unreadCount: count };
   }
 
   @Patch(':id/read')

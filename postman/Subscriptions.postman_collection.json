@@ -4,15 +4,42 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "API_BASE", "value": "http://localhost:4000/api" },
-    { "key": "ACCESS_TOKEN", "value": "" },
+    {
+      "key": "API_BASE",
+      "value": "http://localhost:4000/api"
+    },
+    {
+      "key": "ACCESS_TOKEN",
+      "value": ""
+    },
     {
       "key": "PLAN_ID",
       "value": "",
       "description": "ID from GET /subscriptions/plans (subscription_plans_v2)."
     },
-    { "key": "SUBSCRIPTION_ID", "value": "" },
-    { "key": "PRODUCT_ID", "value": "" }
+    {
+      "key": "SUBSCRIPTION_ID",
+      "value": ""
+    },
+    {
+      "key": "PRODUCT_ID",
+      "value": ""
+    },
+    {
+      "key": "FILE_ID",
+      "value": "",
+      "description": "Product file ID for POST /downloads/:fileId."
+    },
+    {
+      "key": "FREE_PRODUCT_ID",
+      "value": "",
+      "description": "Free product ID for download quota tests."
+    },
+    {
+      "key": "SUBSCRIPTION_PRODUCT_ID",
+      "value": "",
+      "description": "Subscription product ID for download quota tests."
+    }
   ],
   "item": [
     {
@@ -23,9 +50,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
             ],
             "url": "{{API_BASE}}/admin/subscription-plans"
+          }
+        },
+        {
+          "name": "Get Plan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/admin/subscription-plans/{{PLAN_ID}}"
           }
         },
         {
@@ -33,13 +76,19 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{API_BASE}}/admin/subscription-plans",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Starter\",\n  \"price\": 150000,\n  \"durationDays\": 30,\n  \"dailySubscriptionDownloadLimit\": 5,\n  \"dailyFreeDownloadLimitWithSubscription\": 10,\n  \"description\": \"Starter plan\",\n  \"isActive\": true,\n  \"discountPercent\": 10,\n  \"discountQuota\": 5\n}"
+              "raw": "{\n  \"title\": \"Starter\",\n  \"price\": 150000,\n  \"durationDays\": 30,\n  \"dailyDownloadLimit\": 5,\n  \"dailyFreeDownloadLimitWithSubscription\": 10,\n  \"description\": \"Starter plan\",\n  \"features\": [{ \"label\": \"Premium exports\" }],\n  \"isActive\": true,\n  \"discountPercent\": 10,\n  \"discountQuota\": 5\n}"
             }
           }
         },
@@ -48,8 +97,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{API_BASE}}/admin/subscription-plans/{{PLAN_ID}}",
             "body": {
@@ -63,7 +118,10 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
             ],
             "url": "{{API_BASE}}/admin/subscription-plans/{{PLAN_ID}}"
           }
@@ -78,8 +136,8 @@
           "request": {
             "method": "GET",
             "url": "{{API_BASE}}/subscriptions/plans"
-          }
-          ,"event": [
+          },
+          "event": [
             {
               "listen": "test",
               "script": {
@@ -99,9 +157,38 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
             ],
             "url": "{{API_BASE}}/subscriptions/me"
+          }
+        },
+        {
+          "name": "Get My Subscription Panel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/me/subscription"
+          }
+        },
+        {
+          "name": "Get Subscription Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/me/subscription-status"
           }
         },
         {
@@ -109,14 +196,77 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{API_BASE}}/subscriptions/purchase",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"planId\": \"{{PLAN_ID}}\"\n}"
             }
+          }
+        },
+        {
+          "name": "Purchase Subscription (Discount Applied)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{API_BASE}}/subscriptions/purchase",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{PLAN_ID}}\"\n}"
+            }
+          },
+          "description": "Expect discount fields populated when plan has discountPercent > 0 and remaining discountQuota > 0."
+        },
+        {
+          "name": "Purchase Subscription (Discount Exhausted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{API_BASE}}/subscriptions/purchase",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{PLAN_ID}}\"\n}"
+            }
+          },
+          "description": "Run after discount quota is exhausted; expect discountApplied=false and finalPrice=originalPrice."
+        },
+        {
+          "name": "Get Discount Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/subscriptions/plans/{{PLAN_ID}}/discount-stats"
           }
         }
       ]
@@ -129,8 +279,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "url": "{{API_BASE}}/subscriptions/downloads/validate",
             "body": {
@@ -138,6 +294,130 @@
               "raw": "{\n  \"productId\": \"{{PRODUCT_ID}}\"\n}"
             }
           }
+        },
+        {
+          "name": "Download File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/downloads/{{FILE_ID}}"
+          },
+          "description": "Streams the file from the API with attachment headers. Expect 200 if subscription + quota are valid."
+        },
+        {
+          "name": "Download File - Unauthorized",
+          "request": {
+            "method": "POST",
+            "url": "{{API_BASE}}/downloads/{{FILE_ID}}"
+          }
+        },
+        {
+          "name": "Download File - Quota Exceeded",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/downloads/{{FILE_ID}}",
+            "description": "Run multiple times after quota is exhausted to expect 429 DAILY_QUOTA_EXCEEDED."
+          },
+          "description": "Run multiple times after quota is exhausted to expect 429 DAILY_QUOTA_EXCEEDED."
+        },
+        {
+          "name": "Download File - Subscription Required",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/downloads/{{FILE_ID}}"
+          },
+          "description": "Use a user without an active subscription to expect 403 SUBSCRIPTION_REQUIRED."
+        }
+      ]
+    },
+    {
+      "name": "Download Quotas",
+      "item": [
+        {
+          "name": "Get Quota Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/me/quotas/summary"
+          }
+        },
+        {
+          "name": "Free Download (Success)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/products/{{FREE_PRODUCT_ID}}/download"
+          },
+          "description": "Streams a free product file. Should decrement free daily quota."
+        },
+        {
+          "name": "Free Download - Limit Reached",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/products/{{FREE_PRODUCT_ID}}/download"
+          },
+          "description": "Repeat until free quota is exhausted. Expect 429 DAILY_QUOTA_EXCEEDED."
+        },
+        {
+          "name": "Subscription Download (Success)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/products/{{SUBSCRIPTION_PRODUCT_ID}}/download"
+          },
+          "description": "Streams a subscription-only product file. Should decrement subscription quota."
+        },
+        {
+          "name": "Subscription Download - Limit Reached",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": "{{API_BASE}}/products/{{SUBSCRIPTION_PRODUCT_ID}}/download"
+          },
+          "description": "Repeat until subscription quota is exhausted. Expect 429 DAILY_QUOTA_EXCEEDED."
         }
       ]
     },
@@ -149,7 +429,10 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
             ],
             "url": "{{API_BASE}}/admin/subscriptions/settlements/expired?limit=50"
           }

@@ -51,6 +51,20 @@ export class PaymentResultQueryDto {
   trackId?: string;
 
   @ApiPropertyOptional({
+    example: 'authority-uuid',
+    description: 'Gateway authority/session id (alias of trackId).',
+  })
+  @IsOptional()
+  @ValidateIf(
+    (dto) => !dto.paymentId && dto.trackId === undefined && dto.authority !== undefined,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  @Transform(toOptionalTrimmedString)
+  authority?: string;
+
+  @ApiPropertyOptional({
     enum: PaymentReferenceType,
     description:
       'Legacy reference type (alias of referenceType). Used when paymentId/trackId are missing.',

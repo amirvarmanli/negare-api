@@ -5,6 +5,7 @@ This document describes the subscription foundation implemented in the backend.
 ## Subscription Rules
 - Admins manage subscription plans (create/update/delete).
 - Each plan defines: title, price, durationDays, daily limits, description, isActive, and optional discountPercent/discountQuota.
+- Discount quota is enforced per user, per plan, for the lifetime of the subscription (not daily and never multiplied by duration).
 - A user can have only one ACTIVE subscription at a time.
 - A new subscription purchase is rejected if an ACTIVE subscription exists.
 - On purchase:
@@ -28,6 +29,8 @@ This document describes the subscription foundation implemented in the backend.
 - If the user has an ACTIVE subscription with discountRemaining > 0:
   - PAID product purchases can apply discountPercent.
   - After a successful discounted purchase, discountRemaining is decreased by 1.
+  - DiscountRemaining does not reset by date and is not multiplied by subscription duration.
+- Remaining is calculated from plan configuration: `max(plan.discountQuota - usedDiscounts, 0)` where usedDiscounts counts consumed subscription discount usages.
 
 ## Settlement Logic
 - Settlement runs only when a subscription expires.

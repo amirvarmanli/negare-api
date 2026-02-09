@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PublicationStatus } from '@prisma/client';
-import { NewsletterAuthorDto } from '@app/newsletter/dto/newsletter-author.dto';
+import { NewsletterAdminAuthorDto } from '@app/newsletter/dto/admin-author.dto';
 import { NewsletterCategoryDto } from '@app/newsletter/dto/newsletter-category.dto';
 
 export class NewsletterAdminDetailDto {
@@ -67,6 +67,6 @@ export class NewsletterAdminDetailDto {
   @ApiProperty({ type: () => NewsletterCategoryDto })
   category!: NewsletterCategoryDto;
 
-  @ApiProperty({ type: () => NewsletterAuthorDto })
-  author!: NewsletterAuthorDto;
+  @ApiProperty({ type: () => NewsletterAdminAuthorDto })
+  author!: NewsletterAdminAuthorDto;
 }

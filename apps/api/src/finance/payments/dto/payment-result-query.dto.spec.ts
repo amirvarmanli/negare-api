@@ -24,6 +24,15 @@ describe('PaymentResultQueryDto', () => {
     expect(dto.refType).toBe(PaymentReferenceType.CART);
   });
 
+  it('accepts authority as alias of trackId', async () => {
+    const dto = plainToInstance(PaymentResultQueryDto, {
+      authority: 'authority-123',
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+    expect(dto.authority).toBe('authority-123');
+  });
+
   it('normalizes reference type to be case-insensitive', async () => {
     const dto = plainToInstance(PaymentResultQueryDto, {
       refType: 'CART',

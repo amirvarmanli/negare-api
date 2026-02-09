@@ -32,6 +32,7 @@ import {
   NewsletterAdminListItemDto,
   NewsletterAdminListResponseDto,
 } from '@app/newsletter/dto/admin-newsletters-list-item.dto';
+import { NewsletterAdminAuthorDto } from '@app/newsletter/dto/admin-author.dto';
 import { NewsletterAdminDetailDto } from '@app/newsletter/dto/admin-newsletter-detail.dto';
 import { AdminUpdateNewsletterDto } from '@app/newsletter/dto/admin-update-newsletter.dto';
 import { AdminRejectDto } from '@app/newsletter/dto/admin-reject.dto';
@@ -62,6 +63,11 @@ const AUTHOR_SUMMARY_SELECT = {
   id: true,
   name: true,
   avatarUrl: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  role: true,
+  username: true,
 } as const;
 
 const ISSUE_SUMMARY_SELECT = {
@@ -350,6 +356,53 @@ export class NewsletterService {
     return this.toIssueDto(issue);
   }
 
+  async adminCreateIssue(
+    dto: CreateNewsletterIssueDto,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<NewsletterAdminDetailDto> {
+    const admin = this.assertAdmin(currentUser);
+    await this.ensureCategoryExists(dto.categoryId);
+    const slugSource = dto.slug ?? dto.title;
+    const slug = await this.ensureUniqueIssueSlug(createSlug(slugSource));
+    const status = dto.status ?? PublicationStatus.DRAFT;
+    const publishedAt = this.resolvePublishedAt(status, dto.publishedAt);
+    const archivedAt =
+      status === PublicationStatus.ARCHIVED ? new Date() : null;
+
+    const issue = await this.prisma.$transaction(async (tx) => {
+      if (dto.isPinned) {
+        await this.unpinOtherNewsletterIssues(tx);
+      }
+
+      return tx.newsletterIssue.create({
+        data: {
+          title: dto.title,
+          slug,
+          content: dto.content,
+          excerpt: dto.excerpt,
+          coverImageUrl: dto.coverImageUrl,
+          fileUrl: dto.fileUrl,
+          status,
+          publishedAt,
+          archivedAt,
+          categoryId: dto.categoryId,
+          authorId: admin.id,
+          isFeatured: dto.isFeatured ?? false,
+          isPinned: dto.isPinned ?? false,
+          pinnedAt: dto.isPinned ? new Date() : null,
+          pinnedByAdminId: dto.isPinned ? admin.id : null,
+        },
+        include: {
+          category: true,
+          author: { select: AUTHOR_SUMMARY_SELECT },
+          _count: { select: { comments: true } },
+        },
+      });
+    });
+
+    return this.toAdminDetailDto(issue);
+  }
+
   async updateIssue(
     id: string,
     dto: UpdateNewsletterIssueDto,
@@ -445,6 +498,32 @@ export class NewsletterService {
       data: {
         status: PublicationStatus.ARCHIVED,
         deletedAt: new Date(),
+      },
+    });
+  }
+
+  async adminSoftDeleteIssue(
+    id: string,
+    currentUser: CurrentUserPayload | undefined,
+  ): Promise<void> {
+    const admin = this.assertAdmin(currentUser);
+    const existing = await this.prisma.newsletterIssue.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, archivedAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Newsletter issue not found');
+    }
+
+    await this.prisma.newsletterIssue.update({
+      where: { id },
+      data: {
+        status: PublicationStatus.ARCHIVED,
+        archivedAt: existing.archivedAt ?? new Date(),
+        deletedAt: new Date(),
+        reviewedAt: new Date(),
+        reviewedByAdminId: admin.id,
+        rejectReason: null,
       },
     });
   }
@@ -1234,7 +1313,9 @@ export class NewsletterService {
     return {
       id: issue.id,
       title: issue.title,
+      coverImageUrl: issue.coverImageUrl ?? null,
       slug: issue.slug,
+      excerpt: issue.excerpt ?? null,
       status: issue.status,
       publishedAt: issue.publishedAt,
       archivedAt: issue.archivedAt ?? null,
@@ -1243,11 +1324,7 @@ export class NewsletterService {
       rejectReason: issue.rejectReason ?? null,
       createdAt: issue.createdAt,
       updatedAt: issue.updatedAt,
-      author: {
-        id: issue.author.id,
-        name: issue.author.name,
-        avatarUrl: issue.author.avatarUrl,
-      },
+      author: this.toAdminAuthorDto(issue.author),
       category: this.toCategoryDto(issue.category, 0),
     };
   }
@@ -1277,12 +1354,44 @@ export class NewsletterService {
       viewCount: issue.viewCount,
       commentCount: issue._count?.comments ?? 0,
       category: this.toCategoryDto(issue.category, 0),
-      author: {
-        id: issue.author.id,
-        name: issue.author.name,
-        avatarUrl: issue.author.avatarUrl,
-      },
+      author: this.toAdminAuthorDto(issue.author),
     };
+  }
+
+  private toAdminAuthorDto(
+    author: NewsletterIssueWithRelations['author'],
+  ): NewsletterAdminAuthorDto {
+    return {
+      userId: author.id,
+      fullName: this.resolveAuthorFullName(author),
+      avatarUrl: author.avatarUrl ?? null,
+      email: author.email ?? null,
+      role: author.role,
+    };
+  }
+
+  private resolveAuthorFullName(
+    author: NewsletterIssueWithRelations['author'],
+  ): string | null {
+    const first = author.firstName?.trim() ?? '';
+    const last = author.lastName?.trim() ?? '';
+    const combined = `${first} ${last}`.trim();
+    if (combined) {
+      return combined;
+    }
+    const name = author.name?.trim();
+    if (name) {
+      return name;
+    }
+    const username = author.username?.trim();
+    if (username) {
+      return username;
+    }
+    const email = author.email?.trim();
+    if (email) {
+      return email;
+    }
+    return null;
   }
 
   private publicStatusSet(): PublicationStatus[] {

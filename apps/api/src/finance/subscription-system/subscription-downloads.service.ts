@@ -1,7 +1,11 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { ProductsService } from '@app/finance/products/products.service';
@@ -9,12 +13,10 @@ import { EntitlementsService } from '@app/finance/entitlements/entitlements.serv
 import { UserSubscriptionsService } from '@app/finance/subscription-system/user-subscriptions.service';
 import { StorageService } from '@app/catalog/storage/storage.service';
 import { ProductPricingType } from '@app/finance/common/finance.enums';
-import { getTehranDateKey } from '@app/finance/common/date.utils';
-import { SUBSCRIPTION_BASE_FREE_DAILY_LIMIT } from '@app/finance/subscription-system/subscription-system.constants';
+import { getTehranDayBounds } from '@app/finance/common/date.utils';
+import { BASE_FREE_DAILY_LIMIT } from '@app/finance/common/finance.constants';
 import { SubscriptionDownloadType } from '@app/finance/subscription-system/subscription-system.enums';
-import { toBigInt } from '@app/finance/common/prisma.utils';
 import type { SubscriptionDownloadDecisionDto } from '@app/finance/subscription-system/dto/subscription-download-decision.dto';
-import type { Prisma } from '@prisma/client';
 
 @Injectable()
 export class SubscriptionDownloadsService {
@@ -26,12 +28,17 @@ export class SubscriptionDownloadsService {
     private readonly storage: StorageService,
   ) {}
 
+  private readonly logger = new Logger(SubscriptionDownloadsService.name);
+
   async validateDownload(
     userId: string,
     productId: string,
   ): Promise<SubscriptionDownloadDecisionDto> {
     const product = await this.productsService.findProductOrThrow(productId);
     const storageKey = await this.productsService.getProductStorageKey(productId);
+    if (!storageKey) {
+      throw new NotFoundException('File not found.');
+    }
     const hasEntitlement = await this.entitlementsService.hasPurchased(
       userId,
       productId,
@@ -42,34 +49,51 @@ export class SubscriptionDownloadsService {
     const subscription = await this.subscriptionsService.getActiveSubscription(userId);
 
     if (product.pricingType === ProductPricingType.PAID) {
-      throw new ForbiddenException('Product requires purchase.');
+      throw new ForbiddenException({
+        code: 'PURCHASE_REQUIRED',
+        message: 'PURCHASE_REQUIRED',
+      });
     }
 
     if (product.pricingType === ProductPricingType.PAID_OR_SUBSCRIPTION) {
       if (!subscription) {
-        throw new ForbiddenException('Active subscription required.');
+        throw new ForbiddenException({
+          code: 'SUBSCRIPTION_REQUIRED',
+          message: 'SUBSCRIPTION_REQUIRED',
+        });
       }
-      return this.consumeQuota({
+      const plan = await this.subscriptionsService.getPlanById(subscription.planId);
+      await this.assertQuota({
         userId,
-        productId,
         subscriptionId: subscription.id,
+        planId: plan.id,
+        limit: plan.dailyDownloadLimit,
         downloadType: SubscriptionDownloadType.SUBSCRIPTION,
-        limit: subscription.dailySubscriptionDownloadLimit,
+      });
+      return this.buildDecision({
+        downloadType: SubscriptionDownloadType.SUBSCRIPTION,
+        subscriptionId: subscription.id,
         storageKey,
       });
     }
 
     if (product.pricingType === ProductPricingType.FREE) {
       const limit = subscription
-        ? subscription.dailyFreeDownloadLimitWithSubscription
-        : SUBSCRIPTION_BASE_FREE_DAILY_LIMIT;
+        ? (await this.subscriptionsService.getPlanById(subscription.planId))
+            .dailyFreeDownloadLimitWithSubscription
+        : BASE_FREE_DAILY_LIMIT;
 
-      return this.consumeQuota({
+      await this.assertQuota({
         userId,
-        productId,
-        subscriptionId: null,
-        downloadType: SubscriptionDownloadType.FREE,
+        subscriptionId: subscription?.id ?? null,
+        planId: subscription?.planId ?? null,
         limit,
+        downloadType: SubscriptionDownloadType.FREE,
+      });
+
+      return this.buildDecision({
+        downloadType: SubscriptionDownloadType.FREE,
+        subscriptionId: null,
         storageKey,
       });
     }
@@ -77,92 +101,71 @@ export class SubscriptionDownloadsService {
     throw new BadRequestException('Unsupported product type.');
   }
 
-  private async consumeQuota(params: {
+  private async assertQuota(params: {
     userId: string;
-    productId: string;
     subscriptionId: string | null;
+    planId: string | null;
     downloadType: SubscriptionDownloadType;
     limit: number;
-    storageKey: string | null;
-  }): Promise<SubscriptionDownloadDecisionDto> {
-    const dateKey = getTehranDateKey();
+  }): Promise<void> {
+    const { dateKey, start, end } = getTehranDayBounds();
 
-    return this.prisma.$transaction(async (tx) => {
-      const used = await tx.subscriptionDownloadLog.count({
-        where: {
-          userId: params.userId,
-          dateKey,
-          downloadType: params.downloadType,
-        },
-      });
+    const used =
+      params.downloadType === SubscriptionDownloadType.SUBSCRIPTION
+        ? (
+            await this.prisma.subscriptionDailyQuotaUsage.findUnique({
+              where: { userId_dateKey: { userId: params.userId, dateKey } },
+              select: { downloadsUsed: true },
+            })
+          )?.downloadsUsed ?? 0
+        : (
+            await this.prisma.financeDownloadUsageDaily.findUnique({
+              where: { userId_dateKey: { userId: params.userId, dateKey } },
+              select: { usedFree: true },
+            })
+          )?.usedFree ?? 0;
 
-      if (used >= params.limit) {
-        if (params.downloadType === SubscriptionDownloadType.SUBSCRIPTION) {
-          throw new ForbiddenException('Daily subscription quota exceeded.');
-        }
-        throw new ForbiddenException('Daily free quota exceeded.');
-      }
-
-      const supplierId = await this.resolveSupplierId(params.productId, tx);
-
-      await tx.subscriptionDownloadLog.create({
-        data: {
-          userId: params.userId,
-          productId: toBigInt(params.productId),
-          supplierId,
-          subscriptionId: params.subscriptionId,
-          downloadType: params.downloadType,
-          dateKey,
-        },
-      });
-
-      return {
-        allowed: true,
-        downloadType: params.downloadType,
-        reason:
-          params.downloadType === SubscriptionDownloadType.SUBSCRIPTION
-            ? 'SUBSCRIPTION_LIMIT_OK'
-            : 'FREE_LIMIT_OK',
-        subscriptionId: params.subscriptionId,
-        signedUrl: params.storageKey
-          ? this.storage.getDownloadUrl(params.storageKey)
-          : null,
-        storageKey: params.storageKey,
-      };
-    });
-  }
-
-  private async resolveSupplierId(
-    productId: string,
-    tx: Prisma.TransactionClient,
-  ): Promise<string> {
-    const contributors = await this.productsService.resolveContributors(
-      productId,
-      tx,
+    this.logger.debug(
+      `quota_check user=${params.userId} subscription=${params.subscriptionId ?? 'none'} plan=${params.planId ?? 'none'} limit=${params.limit} used=${used} tz=Asia/Tehran dateKey=${dateKey} start=${start.toISOString()} end=${end.toISOString()}`,
     );
 
-    if (contributors.supplierIds.length === 0) {
-      throw new BadRequestException('Product supplier not found.');
+    if (used >= params.limit) {
+      throw new HttpException(
+        {
+          code: 'DAILY_QUOTA_EXCEEDED',
+          message: 'DAILY_QUOTA_EXCEEDED',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
-
-    const supplierId = contributors.supplierIds[0];
-    if (!supplierId) {
-      throw new BadRequestException('Product supplier not found.');
-    }
-
-    return supplierId;
   }
 
-  private buildPurchaseDecision(
-    storageKey: string | null,
-  ): SubscriptionDownloadDecisionDto {
+  private buildPurchaseDecision(storageKey: string | null): SubscriptionDownloadDecisionDto {
     return {
       allowed: true,
       downloadType: SubscriptionDownloadType.PURCHASED,
       reason: 'PURCHASED',
       subscriptionId: null,
-      signedUrl: storageKey ? this.storage.getDownloadUrl(storageKey) : null,
+      signedUrl: null,
       storageKey,
+    };
+  }
+
+  private buildDecision(params: {
+    downloadType: SubscriptionDownloadType;
+    subscriptionId: string | null;
+    storageKey: string | null;
+  }): SubscriptionDownloadDecisionDto {
+    return {
+      allowed: true,
+      downloadType: params.downloadType,
+      reason:
+        params.downloadType === SubscriptionDownloadType.SUBSCRIPTION
+          ? 'SUBSCRIPTION_LIMIT_OK'
+          : 'FREE_LIMIT_OK',
+      subscriptionId: params.subscriptionId,
+      signedUrl: null,
+      storageKey: params.storageKey,
     };
   }
 }

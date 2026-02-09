@@ -19,8 +19,15 @@ describe('SubscriptionsService', () => {
       },
       financeSubscriptionPurchase: {
         create: jest.fn(),
+        count: jest.fn(),
       },
+      $transaction: jest.fn(),
+      $executeRaw: jest.fn(),
     } as unknown as Partial<PrismaService>;
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      async (cb: (tx: PrismaService) => Promise<unknown>) => cb(prisma as PrismaService),
+    );
+    (prisma.$executeRaw as jest.Mock).mockResolvedValue(1);
     service = new SubscriptionsService(prisma as PrismaService);
   });
 
@@ -31,7 +38,7 @@ describe('SubscriptionsService', () => {
         title: 'Starter',
         price: 150000,
         durationDays: 30,
-        dailySubscriptionDownloadLimit: 5,
+        dailyDownloadLimit: 5,
         dailyFreeDownloadLimitWithSubscription: 10,
         description: 'Starter plan',
         isActive: true,
@@ -59,7 +66,7 @@ describe('SubscriptionsService', () => {
       title: 'Starter',
       price: 150000,
       durationDays: 30,
-      dailySubscriptionDownloadLimit: 5,
+      dailyDownloadLimit: 5,
       dailyFreeDownloadLimitWithSubscription: 10,
       description: 'Starter plan',
       isActive: true,
@@ -74,7 +81,11 @@ describe('SubscriptionsService', () => {
       userId: 'user-1',
       planId: plan.id,
       status: 'PENDING',
+      originalAmount: plan.price,
       amount: plan.price,
+      discountApplied: false,
+      discountPercent: 0,
+      discountAmount: 0,
       currency: 'TOMAN',
       durationMonths: 1,
       createdAt: new Date(),
@@ -87,6 +98,7 @@ describe('SubscriptionsService', () => {
       (prisma.financeSubscriptionPurchase!.create as jest.Mock).mockResolvedValue(
         purchase,
       );
+      (prisma.financeSubscriptionPurchase!.count as jest.Mock).mockResolvedValue(0);
     });
 
     it('creates purchase using planId', async () => {
@@ -95,6 +107,7 @@ describe('SubscriptionsService', () => {
 
       const result = await service.createSubscriptionPurchase('user-1', dto);
 
+      expect(prisma.$transaction).toHaveBeenCalled();
       expect(prisma.subscriptionPlan!.findUnique).toHaveBeenCalledWith({
         where: { id: plan.id },
       });
@@ -104,6 +117,10 @@ describe('SubscriptionsService', () => {
           planId: null,
           subscriptionPlanId: plan.id,
           amount: plan.price,
+          originalAmount: plan.price,
+          discountApplied: false,
+          discountPercent: 0,
+          discountAmount: 0,
         }),
       });
       expect(result.purchase).toBe(purchase);

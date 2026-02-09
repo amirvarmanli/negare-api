@@ -781,6 +781,16 @@
           }
         },
         {
+          "name": "My Subscription Panel",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": "{{API_BASE}}/me/subscription"
+          }
+        },
+        {
           "name": "Purchase Subscription",
           "request": {
             "method": "POST",

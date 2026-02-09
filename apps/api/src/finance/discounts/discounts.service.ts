@@ -12,7 +12,7 @@ export interface DiscountLineItem {
   lineTotal: number;
 }
 
-export type DiscountQuoteSource = 'COUPON' | 'NONE';
+export type DiscountQuoteSource = 'COUPON' | 'SUBSCRIPTION' | 'NONE';
 
 export interface CouponDiscountMetadata {
   couponId?: string;
@@ -34,6 +34,19 @@ export interface DiscountQuote {
   appliedDiscountReason: string;
   couponId?: string;
   discountMetadata: CouponDiscountMetadata;
+  subscriptionDiscountPercent?: number;
+  subscriptionDiscountRemaining?: number;
+  subscriptionDiscountTotal?: number;
+  subscriptionDiscountUsed?: number;
+  subscriptionDiscountQuotaType?: 'LIFETIME';
+  nonAppliedDiscounts: Array<{ source: 'COUPON' | 'SUBSCRIPTION'; code?: string; reason: string }>;
+}
+
+export interface SubscriptionDiscountCandidate {
+  percent: number;
+  remaining: number;
+  total: number;
+  used: number;
 }
 
 export interface DiscountQuoteParams {
@@ -41,6 +54,7 @@ export interface DiscountQuoteParams {
   items: DiscountLineItem[];
   couponCode?: string;
   orderKind: OrderKind;
+  subscriptionDiscount?: SubscriptionDiscountCandidate | null;
 }
 
 @Injectable()
@@ -54,11 +68,18 @@ export class DiscountsService {
     void params.orderKind;
     const subtotal = params.items.reduce((sum, item) => sum + item.lineTotal, 0);
     if (subtotal <= 0) {
-      return this.buildEmptyQuote(subtotal);
+      return this.buildEmptyQuote(subtotal, params.subscriptionDiscount ?? null);
     }
 
     if (!params.couponCode) {
-      return this.buildEmptyQuote(subtotal);
+      if (this.hasSubscriptionDiscount(params.subscriptionDiscount)) {
+        return this.buildSubscriptionQuote(
+          subtotal,
+          params.subscriptionDiscount!,
+          this.buildEmptyQuote(subtotal, params.subscriptionDiscount ?? null),
+        );
+      }
+      return this.buildEmptyQuote(subtotal, params.subscriptionDiscount ?? null);
     }
 
     const coupon = await this.resolveCoupon(tx, params.couponCode);
@@ -68,17 +89,34 @@ export class DiscountsService {
     const metadata = this.buildMetadata(coupon, discountAmount, reason);
 
     if (discountAmount <= 0) {
-      return {
-        discountType: DiscountType.NONE,
-        discountValue: 0,
-        subtotal,
-        appliedDiscountSource: 'NONE',
-        appliedDiscountAmount: 0,
-        appliedDiscountPercent: 0,
-        appliedDiscountReason: reason,
-        discountMetadata: metadata,
-      };
+      const base = this.buildEmptyQuote(subtotal, params.subscriptionDiscount ?? null);
+      base.appliedDiscountReason = reason;
+      base.discountMetadata = metadata;
+      base.couponId = coupon.id;
+      base.nonAppliedDiscounts = [
+        ...base.nonAppliedDiscounts,
+        { source: 'COUPON', code: coupon.code, reason },
+      ];
+
+      if (this.hasSubscriptionDiscount(params.subscriptionDiscount)) {
+        return this.buildSubscriptionQuote(
+          subtotal,
+          params.subscriptionDiscount!,
+          base,
+        );
+      }
+
+      return base;
     }
+
+    const nonAppliedDiscounts = this.hasSubscriptionDiscount(params.subscriptionDiscount)
+      ? [
+          {
+            source: 'SUBSCRIPTION' as const,
+            reason: 'Subscription discount available but coupon applied.',
+          },
+        ]
+      : [];
 
     return {
       discountType: DiscountType.COUPON,
@@ -91,6 +129,12 @@ export class DiscountsService {
       appliedDiscountReason: reason,
       couponId: coupon.id,
       discountMetadata: metadata,
+      subscriptionDiscountPercent: params.subscriptionDiscount?.percent ?? 0,
+      subscriptionDiscountRemaining: params.subscriptionDiscount?.remaining ?? 0,
+      subscriptionDiscountTotal: params.subscriptionDiscount?.total ?? 0,
+      subscriptionDiscountUsed: params.subscriptionDiscount?.used ?? 0,
+      subscriptionDiscountQuotaType: 'LIFETIME',
+      nonAppliedDiscounts,
     };
   }
 
@@ -129,7 +173,10 @@ export class DiscountsService {
     });
   }
 
-  private buildEmptyQuote(subtotal: number): DiscountQuote {
+  private buildEmptyQuote(
+    subtotal: number,
+    subscription: SubscriptionDiscountCandidate | null,
+  ): DiscountQuote {
     const metadata: CouponDiscountMetadata = {
       discountAmount: 0,
       reason: 'No coupon applied.',
@@ -144,6 +191,44 @@ export class DiscountsService {
       appliedDiscountPercent: 0,
       appliedDiscountReason: 'No coupon applied.',
       discountMetadata: metadata,
+      subscriptionDiscountPercent: subscription?.percent ?? 0,
+      subscriptionDiscountRemaining: subscription?.remaining ?? 0,
+      subscriptionDiscountTotal: subscription?.total ?? 0,
+      subscriptionDiscountUsed: subscription?.used ?? 0,
+      subscriptionDiscountQuotaType: 'LIFETIME',
+      nonAppliedDiscounts: [],
+    };
+  }
+
+  private hasSubscriptionDiscount(
+    subscription?: SubscriptionDiscountCandidate | null,
+  ): boolean {
+    return Boolean(
+      subscription &&
+        subscription.percent > 0 &&
+        subscription.remaining > 0 &&
+        subscription.total > 0,
+    );
+  }
+
+  private buildSubscriptionQuote(
+    subtotal: number,
+    subscription: SubscriptionDiscountCandidate,
+    base: DiscountQuote,
+  ): DiscountQuote {
+    const discountAmount = this.applyPercentDiscount(subtotal, subscription.percent);
+    if (discountAmount <= 0) {
+      return base;
+    }
+    return {
+      ...base,
+      discountType: DiscountType.PERCENT,
+      discountValue: discountAmount,
+      appliedDiscountSource: 'SUBSCRIPTION',
+      appliedDiscountAmount: discountAmount,
+      appliedDiscountPercent: subscription.percent,
+      appliedDiscountReason: `Subscription discount applied: ${subscription.percent}% off`,
+      nonAppliedDiscounts: base.nonAppliedDiscounts ?? [],
     };
   }
 
@@ -225,6 +310,13 @@ export class DiscountsService {
       return Math.min(coupon.value, subtotal);
     }
     return Math.min(Math.floor((subtotal * coupon.value) / 100), subtotal);
+  }
+
+  private applyPercentDiscount(subtotal: number, percent: number): number {
+    if (percent <= 0) {
+      return 0;
+    }
+    return Math.min(Math.floor((subtotal * percent) / 100), subtotal);
   }
 
   private buildReason(

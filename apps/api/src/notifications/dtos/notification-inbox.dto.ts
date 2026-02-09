@@ -81,6 +81,11 @@ export class NotificationUnreadCountDto {
   count!: number;
 }
 
+export class NotificationUnreadCountResponseDto {
+  @ApiProperty({ example: 3 })
+  unreadCount!: number;
+}
+
 export class NotificationUpdateCountDto {
   @ApiProperty({ example: 5 })
   updatedCount!: number;

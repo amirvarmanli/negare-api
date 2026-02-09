@@ -77,7 +77,7 @@ export class UserSubscriptionsService {
           planTitle: plan.title,
           price: plan.price,
           durationDays: plan.durationDays,
-          dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+          dailyDownloadLimit: plan.dailyDownloadLimit,
           dailyFreeDownloadLimitWithSubscription:
             plan.dailyFreeDownloadLimitWithSubscription,
           discountPercent: plan.discountPercent ?? null,
@@ -100,10 +100,49 @@ export class UserSubscriptionsService {
     }
 
     const discountPercent = subscription.discountPercent ?? 0;
-    if (discountPercent <= 0 || subscription.discountRemaining <= 0) {
+    if (discountPercent <= 0) {
+      return null;
+    }
+
+    const snapshot = await this.getSubscriptionDiscountSnapshot(tx, subscription);
+    if (snapshot.remaining <= 0) {
       return null;
     }
 
     return { subscription, discountPercent };
+  }
+
+  async getDiscountRemaining(
+    subscription: Subscription,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<number> {
+    const snapshot = await this.getSubscriptionDiscountSnapshot(tx, subscription);
+    return snapshot.remaining;
+  }
+
+  private async getSubscriptionDiscountSnapshot(
+    tx: Prisma.TransactionClient | PrismaService,
+    subscription: Subscription,
+  ): Promise<{ percent: number; total: number; used: number; remaining: number }> {
+    const percent = subscription.discountPercent ?? 0;
+    if (percent <= 0) {
+      return { percent: 0, total: 0, used: 0, remaining: 0 };
+    }
+
+    const plan = await tx.subscriptionPlan.findUnique({
+      where: { id: subscription.planId },
+      select: { discountQuota: true },
+    });
+    const total = plan?.discountQuota ?? 0;
+    if (total <= 0) {
+      return { percent, total: 0, used: 0, remaining: 0 };
+    }
+
+    const used = await tx.subscriptionDiscountUsage.count({
+      where: { subscriptionId: subscription.id, consumedAt: { not: null } },
+    });
+    const remaining = Math.max(0, total - used);
+
+    return { percent, total, used, remaining };
   }
 }

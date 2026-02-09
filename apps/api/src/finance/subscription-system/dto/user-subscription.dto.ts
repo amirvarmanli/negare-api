@@ -18,15 +18,22 @@ export class UserSubscriptionDto {
   durationDays!: number;
 
   @ApiProperty({ example: 5 })
-  dailySubscriptionDownloadLimit!: number;
+  dailyDownloadLimit!: number;
 
   @ApiProperty({ example: 10 })
   dailyFreeDownloadLimitWithSubscription!: number;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Percentage applied per discounted subscription purchase.',
+  })
   discountPercent?: number | null;
 
-  @ApiProperty({ example: 10 })
+  @ApiProperty({
+    example: 10,
+    description:
+      'Remaining discounted purchases for the lifetime of this subscription (not daily, not per billing cycle).',
+  })
   discountRemaining!: number;
 
   @ApiProperty({ enum: SubscriptionStatus })

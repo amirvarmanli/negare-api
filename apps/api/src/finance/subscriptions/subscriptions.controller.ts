@@ -40,28 +40,7 @@ export class SubscriptionsController {
     @CurrentUser() user: CurrentUserPayload | undefined,
   ): Promise<SubscriptionMeDto> {
     const userId = requireUserId(user);
-    const subscription = await this.subscriptionsService.getActiveSubscription(
-      userId,
-    );
-    if (!subscription) {
-      return {};
-    }
-    const plan = await this.subscriptionsService.getPlanById(
-      subscription.planId,
-    );
-    return {
-      id: subscription.id,
-      planId: plan.id,
-      planTitle: plan.title,
-      price: plan.price,
-      durationDays: plan.durationDays,
-      dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
-      dailyFreeDownloadLimitWithSubscription:
-        plan.dailyFreeDownloadLimitWithSubscription,
-      status: subscription.status as SubscriptionMeDto['status'],
-      startAt: subscription.startAt.toISOString(),
-      endAt: subscription.endAt.toISOString(),
-    };
+    return this.subscriptionsService.getSubscriptionPanel(userId);
   }
 
   @Post('purchase')
@@ -87,13 +66,15 @@ export class SubscriptionsController {
       title: plan.title,
       price: plan.price,
       durationDays: plan.durationDays,
-      dailySubscriptionDownloadLimit: plan.dailySubscriptionDownloadLimit,
+      dailyDownloadLimit: plan.dailyDownloadLimit,
       dailyFreeDownloadLimitWithSubscription:
         plan.dailyFreeDownloadLimitWithSubscription,
       description: plan.description ?? null,
       isActive: plan.isActive,
       discountPercent: plan.discountPercent ?? null,
+      features: (plan.features ?? null) as Record<string, unknown> | null,
       discountQuota: plan.discountQuota ?? null,
+      discountQuotaType: 'LIFETIME',
       createdAt: plan.createdAt.toISOString(),
       updatedAt: plan.updatedAt.toISOString(),
     };

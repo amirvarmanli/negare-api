@@ -8,8 +8,10 @@ import {
 import { PrismaService } from '@app/prisma/prisma.service';
 import { ProductsService } from '@app/finance/products/products.service';
 import { DiscountsService } from '@app/finance/discounts/discounts.service';
+import { SubscriptionsService } from '@app/finance/subscriptions/subscriptions.service';
 import {
   EntitlementSource,
+  DiscountType,
   OrderKind,
   OrderStatus,
   ProductPricingType,
@@ -72,6 +74,7 @@ export class OrdersService {
     private readonly productsService: ProductsService,
     private readonly discountsService: DiscountsService,
     private readonly downloadTokens: DownloadTokensService,
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly config: ConfigService<AllConfig>,
   ) {}
 
@@ -124,7 +127,7 @@ export class OrdersService {
 
     const savedOrder = await this.prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-        const quote = await this.discountsService.calculateDiscountQuote(tx, {
+        let quote = await this.discountsService.calculateDiscountQuote(tx, {
           userId,
           orderKind: OrderKind.PRODUCT,
           items: lineItems.map((item) => ({
@@ -135,11 +138,42 @@ export class OrdersService {
             lineTotal: item.lineTotal,
           })),
           couponCode: resolvedCoupon,
+          subscriptionDiscount: null,
         });
+
+        const subscriptionCandidate = await this.subscriptionsService.getDiscountCandidate(
+          userId,
+          tx,
+        );
+        if (
+          quote.appliedDiscountSource !== 'COUPON' &&
+          quote.discountValue <= 0 &&
+          subscriptionCandidate
+        ) {
+          const subscriptionAmount = Math.min(
+            Math.floor((subtotal * subscriptionCandidate.percent) / 100),
+            subtotal,
+          );
+          if (subscriptionAmount > 0) {
+            quote = {
+              ...quote,
+              discountType: DiscountType.PERCENT,
+              discountValue: subscriptionAmount,
+              appliedDiscountSource: 'SUBSCRIPTION',
+              appliedDiscountAmount: subscriptionAmount,
+              appliedDiscountPercent: subscriptionCandidate.percent,
+              appliedDiscountReason: `Subscription discount applied: ${subscriptionCandidate.percent}% off`,
+              subscriptionDiscountPercent: subscriptionCandidate.percent,
+              subscriptionDiscountRemaining: subscriptionCandidate.remaining,
+              subscriptionDiscountUsed: subscriptionCandidate.used,
+              subscriptionDiscountTotal: subscriptionCandidate.total,
+            };
+          }
+        }
 
         const total = Math.max(0, subtotal - quote.discountValue);
 
-        const order = await tx.financeOrder.create({
+        let order = await tx.financeOrder.create({
           data: {
             userId,
             status: OrderStatus.PENDING_PAYMENT as FinanceOrderStatus,
@@ -179,6 +213,26 @@ export class OrdersService {
             userId,
             orderId: order.id,
           });
+        }
+
+        if (quote.appliedDiscountSource === 'SUBSCRIPTION') {
+          const usage = await this.subscriptionsService.consumeSubscriptionDiscountForOrder(
+            tx,
+            { userId, orderId: order.id, subtotal },
+          );
+          if (!usage) {
+            order = await tx.financeOrder.update({
+              where: { id: order.id },
+              data: {
+                discountType: DiscountType.NONE,
+                discountValue: 0,
+                discountAmount: 0,
+                discountSource: 'NONE',
+                discountReason: 'No discount applied.',
+                total: subtotal,
+              },
+            });
+          }
         }
 
         return order;

@@ -8,7 +8,7 @@
     { "key": "baseUrl", "value": "http://localhost:4000" },
     { "key": "API_BASE", "value": "http://localhost:4000" },
     { "key": "accessToken", "value": "" },
-    { "key": "ADMIN_TOKEN", "value": "" },
+    { "key": "token", "value": "" },
     { "key": "BLOG_ID", "value": "" },
     { "key": "NEWSLETTER_ID", "value": "" },
     { "key": "blogPostId", "value": "" },
@@ -79,7 +79,14 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/blog/posts/slug/{{blogPostSlug}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "blog", "posts", "slug", "{{blogPostSlug}}"]
+              "path": [
+                "api",
+                "admin",
+                "blog",
+                "posts",
+                "slug",
+                "{{blogPostSlug}}"
+              ]
             }
           }
         },
@@ -226,7 +233,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/blog/categories/{{blogCategoryId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "blog", "categories", "{{blogCategoryId}}"]
+              "path": [
+                "api",
+                "admin",
+                "blog",
+                "categories",
+                "{{blogCategoryId}}"
+              ]
             }
           }
         },
@@ -240,7 +253,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/blog/categories/{{blogCategoryId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "blog", "categories", "{{blogCategoryId}}"]
+              "path": [
+                "api",
+                "admin",
+                "blog",
+                "categories",
+                "{{blogCategoryId}}"
+              ]
             }
           }
         },
@@ -301,7 +320,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "issues",
+                "{{newsletterIssueId}}"
+              ]
             }
           }
         },
@@ -315,7 +340,14 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/issues/slug/{{newsletterIssueSlug}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "issues", "slug", "{{newsletterIssueSlug}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "issues",
+                "slug",
+                "{{newsletterIssueSlug}}"
+              ]
             }
           }
         },
@@ -353,7 +385,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "issues",
+                "{{newsletterIssueId}}"
+              ]
             }
           }
         },
@@ -367,7 +405,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "issues",
+                "{{newsletterIssueId}}"
+              ]
             }
           }
         },
@@ -386,7 +430,14 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/issues/{{newsletterIssueId}}/pin",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "issues", "{{newsletterIssueId}}", "pin"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "issues",
+                "{{newsletterIssueId}}",
+                "pin"
+              ]
             }
           }
         },
@@ -405,7 +456,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/newsletter/issues/{{newsletterIssueId}}/comments",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "newsletter", "issues", "{{newsletterIssueId}}", "comments"]
+              "path": [
+                "api",
+                "newsletter",
+                "issues",
+                "{{newsletterIssueId}}",
+                "comments"
+              ]
             }
           }
         },
@@ -424,7 +481,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/comments/{{newsletterCommentId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "comments", "{{newsletterCommentId}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "comments",
+                "{{newsletterCommentId}}"
+              ]
             }
           }
         },
@@ -462,7 +525,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/categories/{{newsletterCategoryId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "categories", "{{newsletterCategoryId}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "categories",
+                "{{newsletterCategoryId}}"
+              ]
             }
           }
         },
@@ -476,7 +545,13 @@
             "url": {
               "raw": "{{baseUrl}}/api/admin/newsletter/categories/{{newsletterCategoryId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "admin", "newsletter", "categories", "{{newsletterCategoryId}}"]
+              "path": [
+                "api",
+                "admin",
+                "newsletter",
+                "categories",
+                "{{newsletterCategoryId}}"
+              ]
             }
           }
         },
@@ -493,7 +568,6 @@
           }
         }
       ]
-    }
     },
     {
       "name": "Admin / Blogs",
@@ -502,24 +576,80 @@
           "name": "List Blogs (Admin)",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs?page=1&limit=20&q=design&status=APPROVED&sort=createdAt&order=desc",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs?page=1&limit=20&q=design&status=PUBLISHED&sort=createdAt&order=desc",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs"],
               "query": [
                 { "key": "page", "value": "1", "description": "Page number" },
                 { "key": "limit", "value": "20", "description": "Page size" },
-                { "key": "q", "value": "design", "description": "Search query" },
-                { "key": "status", "value": "APPROVED", "description": "Publication status" },
+                {
+                  "key": "q",
+                  "value": "design",
+                  "description": "Search query"
+                },
+                {
+                  "key": "status",
+                  "value": "PUBLISHED",
+                  "description": "Publication status (DRAFT | PUBLISHED | ARCHIVED)"
+                },
                 { "key": "authorId", "value": "", "disabled": true },
-                { "key": "from", "value": "2025-01-01T00:00:00.000Z", "disabled": true },
-                { "key": "to", "value": "2025-12-31T23:59:59.000Z", "disabled": true },
+                {
+                  "key": "from",
+                  "value": "2025-01-01T00:00:00.000Z",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31T23:59:59.000Z",
+                  "disabled": true
+                },
                 { "key": "sort", "value": "createdAt" },
                 { "key": "order", "value": "desc" }
               ]
+            }
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/blogs?page=1&limit=20&q=design&status=PUBLISHED&sort=createdAt&order=desc",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "admin", "blogs"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"c3c2e8d9-7f1f-4e72-8a3f-8f8b0f3e5f1a\",\n      \"title\": \"Scaling NestJS in Production\",\n      \"slug\": \"scaling-nestjs-in-production\",\n      \"excerpt\": \"Key lessons from running NestJS at scale...\",\n      \"status\": \"PUBLISHED\",\n      \"publishedAt\": \"2026-02-01T10:15:30.000Z\",\n      \"archivedAt\": null,\n      \"reviewedAt\": \"2026-02-01T10:15:30.000Z\",\n      \"reviewedByAdminId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n      \"rejectReason\": null,\n      \"createdAt\": \"2026-01-28T08:00:00.000Z\",\n      \"updatedAt\": \"2026-02-01T10:15:30.000Z\",\n      \"author\": {\n        \"userId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n        \"fullName\": \"Admin User\",\n        \"email\": \"admin@example.com\",\n        \"role\": \"admin\"\n      },\n      \"category\": {\n        \"id\": \"a1b2c3d4-0000-1111-2222-333344445555\",\n        \"name\": \"Engineering\",\n        \"slug\": \"engineering\",\n        \"description\": null,\n        \"isActive\": true,\n        \"parentId\": null,\n        \"createdAt\": \"2025-12-10T09:00:00.000Z\",\n        \"updatedAt\": \"2025-12-10T09:00:00.000Z\",\n        \"children\": []\n      }\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 1,\n    \"totalPages\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Blog (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Admin Created Blog\",\n  \"content\": \"Full content...\",\n  \"excerpt\": \"Short summary\",\n  \"categoryId\": \"{{blogCategoryId}}\",\n  \"status\": \"DRAFT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blogs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blogs"]
             }
           }
         },
@@ -527,15 +657,36 @@
           "name": "Get Blog (Admin)",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs", "{{BLOG_ID}}"]
             }
-          }
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "admin", "blogs", "{{BLOG_ID}}"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"id\": \"c3c2e8d9-7f1f-4e72-8a3f-8f8b0f3e5f1a\",\n  \"title\": \"Scaling NestJS in Production\",\n  \"slug\": \"scaling-nestjs-in-production\",\n  \"browserTitle\": \"Scaling NestJS\",\n  \"excerpt\": \"Key lessons from running NestJS at scale...\",\n  \"content\": \"Full markdown or HTML content...\",\n  \"coverImageUrl\": \"https://cdn.example.com/blog/cover.png\",\n  \"previewCoverUrl\": null,\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2026-02-01T10:15:30.000Z\",\n  \"archivedAt\": null,\n  \"reviewedAt\": \"2026-02-01T10:15:30.000Z\",\n  \"reviewedByAdminId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n  \"rejectReason\": null,\n  \"createdAt\": \"2026-01-28T08:00:00.000Z\",\n  \"updatedAt\": \"2026-02-01T10:15:30.000Z\",\n  \"isFeatured\": false,\n  \"isPinned\": false,\n  \"viewCount\": 120,\n  \"commentCount\": 3,\n  \"category\": {\n    \"id\": \"a1b2c3d4-0000-1111-2222-333344445555\",\n    \"name\": \"Engineering\",\n    \"slug\": \"engineering\",\n    \"description\": null,\n    \"isActive\": true,\n    \"parentId\": null,\n    \"createdAt\": \"2025-12-10T09:00:00.000Z\",\n    \"updatedAt\": \"2025-12-10T09:00:00.000Z\",\n    \"children\": []\n  },\n  \"author\": {\n    \"userId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n    \"fullName\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"role\": \"admin\"\n  }\n}"
+            }
+          ]
         },
         {
           "name": "Update Blog (Admin)",
@@ -543,15 +694,27 @@
             "method": "PATCH",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+              { "key": "Authorization", "value": "Bearer {{token}}" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Updated Admin Blog Title\",\n  \"excerpt\": \"Short summary\",\n  \"status\": \"APPROVED\"\n}"
+              "raw": "{\n  \"title\": \"Updated Admin Blog Title\",\n  \"excerpt\": \"Short summary\",\n  \"status\": \"PUBLISHED\"\n}"
             },
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "blogs", "{{BLOG_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Blog (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs", "{{BLOG_ID}}"]
             }
           }
@@ -560,12 +723,10 @@
           "name": "Approve Blog (Admin)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/approve",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}/approve",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "approve"]
             }
           }
@@ -576,15 +737,15 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+              { "key": "Authorization", "value": "Bearer {{token}}" }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reason\": \"Needs revisions\"\n}"
             },
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/reject",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}/reject",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "reject"]
             }
           }
@@ -593,12 +754,10 @@
           "name": "Archive Blog (Admin)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/archive",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}/archive",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "archive"]
             }
           }
@@ -607,12 +766,10 @@
           "name": "Unarchive Blog (Admin)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/blogs/{{BLOG_ID}}/unarchive",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/blogs/{{BLOG_ID}}/unarchive",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "blogs", "{{BLOG_ID}}", "unarchive"]
             }
           }
@@ -626,24 +783,80 @@
           "name": "List Newsletters (Admin)",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters?page=1&limit=20&q=design&status=APPROVED&sort=createdAt&order=desc",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/newsletters?page=1&limit=20&q=design&status=PUBLISHED&sort=createdAt&order=desc",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "newsletters"],
               "query": [
                 { "key": "page", "value": "1", "description": "Page number" },
                 { "key": "limit", "value": "20", "description": "Page size" },
-                { "key": "q", "value": "design", "description": "Search query" },
-                { "key": "status", "value": "APPROVED", "description": "Publication status" },
+                {
+                  "key": "q",
+                  "value": "design",
+                  "description": "Search query"
+                },
+                {
+                  "key": "status",
+                  "value": "PUBLISHED",
+                  "description": "Publication status (DRAFT | PUBLISHED | ARCHIVED)"
+                },
                 { "key": "authorId", "value": "", "disabled": true },
-                { "key": "from", "value": "2025-01-01T00:00:00.000Z", "disabled": true },
-                { "key": "to", "value": "2025-12-31T23:59:59.000Z", "disabled": true },
+                {
+                  "key": "from",
+                  "value": "2025-01-01T00:00:00.000Z",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31T23:59:59.000Z",
+                  "disabled": true
+                },
                 { "key": "sort", "value": "createdAt" },
                 { "key": "order", "value": "desc" }
               ]
+            }
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/newsletters?page=1&limit=20&q=design&status=PUBLISHED&sort=createdAt&order=desc",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "admin", "newsletters"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"b5d8f9a1-5c0e-4f7a-8d3b-9e2f3c4b5a6d\",\n      \"title\": \"January Highlights\",\n      \"slug\": \"january-highlights\",\n      \"excerpt\": \"A quick recap of the month...\",\n      \"status\": \"PUBLISHED\",\n      \"publishedAt\": \"2026-02-01T10:15:30.000Z\",\n      \"archivedAt\": null,\n      \"reviewedAt\": \"2026-02-01T10:15:30.000Z\",\n      \"reviewedByAdminId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n      \"rejectReason\": null,\n      \"createdAt\": \"2026-01-30T11:00:00.000Z\",\n      \"updatedAt\": \"2026-02-01T10:15:30.000Z\",\n      \"author\": {\n        \"userId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n        \"fullName\": \"Admin User\",\n        \"email\": \"admin@example.com\",\n        \"role\": \"admin\"\n      },\n      \"category\": {\n        \"id\": \"f1e2d3c4-5555-6666-7777-888899990000\",\n        \"name\": \"Updates\",\n        \"slug\": \"updates\",\n        \"description\": null,\n        \"isActive\": true,\n        \"parentId\": null,\n        \"createdAt\": \"2025-12-12T09:00:00.000Z\",\n        \"updatedAt\": \"2025-12-12T09:00:00.000Z\",\n        \"children\": []\n      }\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 1,\n    \"totalPages\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Newsletter (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Admin Created Newsletter\",\n  \"content\": \"Full content...\",\n  \"excerpt\": \"Short summary\",\n  \"categoryId\": \"{{newsletterCategoryId}}\",\n  \"status\": \"DRAFT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletters",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletters"]
             }
           }
         },
@@ -651,15 +864,36 @@
           "name": "Get Newsletter (Admin)",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}"]
             }
-          }
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"id\": \"b5d8f9a1-5c0e-4f7a-8d3b-9e2f3c4b5a6d\",\n  \"title\": \"January Highlights\",\n  \"slug\": \"january-highlights\",\n  \"browserTitle\": \"January Highlights\",\n  \"excerpt\": \"A quick recap of the month...\",\n  \"content\": \"Full newsletter content...\",\n  \"coverImageUrl\": null,\n  \"fileUrl\": \"https://cdn.example.com/newsletters/jan.pdf\",\n  \"status\": \"PUBLISHED\",\n  \"publishedAt\": \"2026-02-01T10:15:30.000Z\",\n  \"archivedAt\": null,\n  \"reviewedAt\": \"2026-02-01T10:15:30.000Z\",\n  \"reviewedByAdminId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n  \"rejectReason\": null,\n  \"createdAt\": \"2026-01-30T11:00:00.000Z\",\n  \"updatedAt\": \"2026-02-01T10:15:30.000Z\",\n  \"isFeatured\": false,\n  \"isPinned\": false,\n  \"viewCount\": 0,\n  \"commentCount\": 0,\n  \"category\": {\n    \"id\": \"f1e2d3c4-5555-6666-7777-888899990000\",\n    \"name\": \"Updates\",\n    \"slug\": \"updates\",\n    \"description\": null,\n    \"isActive\": true,\n    \"parentId\": null,\n    \"createdAt\": \"2025-12-12T09:00:00.000Z\",\n    \"updatedAt\": \"2025-12-12T09:00:00.000Z\",\n    \"children\": []\n  },\n  \"author\": {\n    \"userId\": \"4e8f0f2e-7c1d-4a8a-9b4a-1a2b3c4d5e6f\",\n    \"fullName\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"role\": \"admin\"\n  }\n}"
+            }
+          ]
         },
         {
           "name": "Update Newsletter (Admin)",
@@ -667,15 +901,27 @@
             "method": "PATCH",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+              { "key": "Authorization", "value": "Bearer {{token}}" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Updated Admin Newsletter\",\n  \"excerpt\": \"Short summary\",\n  \"status\": \"APPROVED\"\n}"
+              "raw": "{\n  \"title\": \"Updated Admin Newsletter\",\n  \"excerpt\": \"Short summary\",\n  \"status\": \"PUBLISHED\"\n}"
             },
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
-              "host": ["{{API_BASE}}"],
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Newsletter (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}"]
             }
           }
@@ -684,13 +930,17 @@
           "name": "Approve Newsletter (Admin)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/approve",
-              "host": ["{{API_BASE}}"],
-              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "approve"]
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "admin",
+                "newsletters",
+                "{{NEWSLETTER_ID}}",
+                "approve"
+              ]
             }
           }
         },
@@ -700,16 +950,22 @@
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+              { "key": "Authorization", "value": "Bearer {{token}}" }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reason\": \"Needs revisions\"\n}"
             },
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/reject",
-              "host": ["{{API_BASE}}"],
-              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "reject"]
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "admin",
+                "newsletters",
+                "{{NEWSLETTER_ID}}",
+                "reject"
+              ]
             }
           }
         },
@@ -717,13 +973,17 @@
           "name": "Archive Newsletter (Admin)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/archive",
-              "host": ["{{API_BASE}}"],
-              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "archive"]
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}/archive",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "admin",
+                "newsletters",
+                "{{NEWSLETTER_ID}}",
+                "archive"
+              ]
             }
           }
         },
@@ -731,13 +991,17 @@
           "name": "Unarchive Newsletter (Admin)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
-              "raw": "{{API_BASE}}/api/admin/newsletters/{{NEWSLETTER_ID}}/unarchive",
-              "host": ["{{API_BASE}}"],
-              "path": ["api", "admin", "newsletters", "{{NEWSLETTER_ID}}", "unarchive"]
+              "raw": "{{baseUrl}}/api/admin/newsletters/{{NEWSLETTER_ID}}/unarchive",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "admin",
+                "newsletters",
+                "{{NEWSLETTER_ID}}",
+                "unarchive"
+              ]
             }
           }
         }

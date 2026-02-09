@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { SUBSCRIPTION_BASE_FREE_DAILY_LIMIT } from '@app/finance/subscription-system/subscription-system.constants';
+import { BASE_FREE_DAILY_LIMIT } from '@app/finance/common/finance.constants';
+import { Prisma } from '@prisma/client';
+import { SubscriptionStatus } from '@app/finance/subscription-system/subscription-system.enums';
 import type { SubscriptionPlan } from '@prisma/client';
+import type { FinanceSubscriptionStatus } from '@prisma/client';
 import type { CreateSubscriptionPlanDto } from '@app/finance/subscription-system/dto/create-subscription-plan.dto';
 import type { UpdateSubscriptionPlanDto } from '@app/finance/subscription-system/dto/update-subscription-plan.dto';
 
@@ -30,6 +33,58 @@ export class SubscriptionPlansService {
     return plan;
   }
 
+  async getDiscountStatsForUser(
+    userId: string,
+    planId: string,
+  ): Promise<{
+    discountPercent: number;
+    discountQuota: number;
+    usedDiscounts: number;
+    remainingDiscounts: number;
+    isDiscountActive: boolean;
+    quotaType: 'LIFETIME';
+  }> {
+    const plan = await this.getPlanById(planId);
+    const discountPercent = plan.discountPercent ?? 0;
+    const discountQuota = plan.discountQuota ?? 0;
+
+    let usedDiscounts = 0;
+    if (discountPercent > 0 && discountQuota > 0) {
+      const now = new Date();
+      const activeSubscription = await this.prisma.subscription.findFirst({
+        where: {
+          userId,
+          planId: plan.id,
+          status: SubscriptionStatus.ACTIVE as FinanceSubscriptionStatus,
+          endAt: { gt: now },
+        },
+        orderBy: { endAt: 'desc' },
+        select: { id: true },
+      });
+
+      if (activeSubscription) {
+        usedDiscounts = await this.prisma.subscriptionDiscountUsage.count({
+          where: {
+            subscriptionId: activeSubscription.id,
+            consumedAt: { not: null },
+          },
+        });
+      }
+    }
+
+    const remainingDiscounts = Math.max(0, discountQuota - usedDiscounts);
+    const isDiscountActive = discountPercent > 0 && remainingDiscounts > 0;
+
+    return {
+      discountPercent,
+      discountQuota,
+      usedDiscounts,
+      remainingDiscounts,
+      isDiscountActive,
+      quotaType: 'LIFETIME',
+    };
+  }
+
   async createPlan(dto: CreateSubscriptionPlanDto): Promise<SubscriptionPlan> {
     this.assertFreeLimit(dto.dailyFreeDownloadLimitWithSubscription);
     this.assertDiscountConfig(dto.discountPercent, dto.discountQuota);
@@ -39,9 +94,13 @@ export class SubscriptionPlansService {
         title: dto.title,
         price: dto.price,
         durationDays: dto.durationDays,
-        dailySubscriptionDownloadLimit: dto.dailySubscriptionDownloadLimit,
+        dailyDownloadLimit: dto.dailyDownloadLimit,
         dailyFreeDownloadLimitWithSubscription: dto.dailyFreeDownloadLimitWithSubscription,
         description: dto.description,
+        features:
+          dto.features !== undefined
+            ? (dto.features as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+            : undefined,
         isActive: dto.isActive,
         discountPercent: dto.discountPercent ?? null,
         discountQuota: dto.discountQuota ?? null,
@@ -63,10 +122,14 @@ export class SubscriptionPlansService {
         title: dto.title ?? undefined,
         price: dto.price ?? undefined,
         durationDays: dto.durationDays ?? undefined,
-        dailySubscriptionDownloadLimit: dto.dailySubscriptionDownloadLimit ?? undefined,
+        dailyDownloadLimit: dto.dailyDownloadLimit ?? undefined,
         dailyFreeDownloadLimitWithSubscription:
           dto.dailyFreeDownloadLimitWithSubscription ?? undefined,
         description: dto.description ?? undefined,
+        features:
+          dto.features !== undefined
+            ? (dto.features as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+            : undefined,
         isActive: dto.isActive ?? undefined,
         discountPercent: dto.discountPercent ?? undefined,
         discountQuota: dto.discountQuota ?? undefined,
@@ -80,9 +143,9 @@ export class SubscriptionPlansService {
   }
 
   private assertFreeLimit(limit: number): void {
-    if (limit < SUBSCRIPTION_BASE_FREE_DAILY_LIMIT) {
+    if (limit < BASE_FREE_DAILY_LIMIT) {
       throw new BadRequestException(
-        `dailyFreeDownloadLimitWithSubscription must be greater than or equal to the free user daily limit (${SUBSCRIPTION_BASE_FREE_DAILY_LIMIT})`,
+        `dailyFreeDownloadLimitWithSubscription must be greater than or equal to the free user daily limit (${BASE_FREE_DAILY_LIMIT})`,
       );
     }
   }

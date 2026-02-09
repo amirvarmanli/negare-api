@@ -15,9 +15,10 @@ import {
 } from './dto/discount-metadata.dto';
 import { PaymentsService } from '@app/finance/payments/payments.service';
 import { ProductsService } from '@app/finance/products/products.service';
+import { SubscriptionsService } from '@app/finance/subscriptions/subscriptions.service';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { ORDER_PAYMENT_TTL_MINUTES } from '@app/finance/common/finance.constants';
-import { OrderKind, OrderStatus, ProductPricingType } from '@app/finance/common/finance.enums';
+import { DiscountType, OrderKind, OrderStatus, ProductPricingType } from '@app/finance/common/finance.enums';
 import { toBigInt } from '@app/finance/common/prisma.utils';
 import type { PaymentInitResponseDto } from '@app/finance/payments/dto/payment-init.dto';
 import type {
@@ -34,6 +35,7 @@ export class CheckoutService {
     private readonly productsService: ProductsService,
     private readonly discountsService: DiscountsService,
     private readonly paymentsService: PaymentsService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   async priceQuote(
@@ -60,12 +62,9 @@ export class CheckoutService {
     }
 
     const lineItems = await this.buildLineItems(dto.items);
-    const quote = await this.calculateQuote(userId, lineItems, dto.couponCode);
-    const metadata = this.buildDiscountMetadata(quote);
-
-    let order: FinanceOrder;
+    let orderResult: { order: FinanceOrder; quote: DiscountQuote; metadata: CheckoutDiscountMetadata };
     try {
-      order = await this.createOrder(userId, requestId, quote, metadata, lineItems);
+      orderResult = await this.createOrder(userId, requestId, dto.couponCode, lineItems);
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         return this.buildResponseForExistingOrder(userId, requestId);
@@ -73,9 +72,15 @@ export class CheckoutService {
       throw error;
     }
 
-    const payment = await this.paymentsService.initOrderPayment(userId, order.id);
-    const response = this.buildConfirmResponse(order, payment, metadata);
-    return this.ensureSessionStored(userId, requestId, order.id, payment.paymentId, response);
+    const payment = await this.paymentsService.initOrderPayment(userId, orderResult.order.id);
+    const response = this.buildConfirmResponse(orderResult.order, payment, orderResult.metadata);
+    return this.ensureSessionStored(
+      userId,
+      requestId,
+      orderResult.order.id,
+      payment.paymentId,
+      response,
+    );
   }
 
   private async buildLineItems(
@@ -127,6 +132,10 @@ export class CheckoutService {
         items: lineItems,
         couponCode: couponCode?.trim() || undefined,
         orderKind: OrderKind.PRODUCT,
+        subscriptionDiscount: await this.buildSubscriptionDiscountCandidate(
+          userId,
+          tx,
+        ),
       }),
     );
   }
@@ -178,7 +187,12 @@ export class CheckoutService {
     metadata.couponValue = quote.discountMetadata.value;
     metadata.discountAmount = quote.discountMetadata.discountAmount;
     metadata.discountReason = quote.discountMetadata.reason;
-    metadata.nonAppliedDiscounts = [];
+    metadata.subscriptionDiscountPercent = quote.subscriptionDiscountPercent ?? 0;
+    metadata.subscriptionDiscountTotal = quote.subscriptionDiscountTotal ?? 0;
+    metadata.subscriptionDiscountUsed = quote.subscriptionDiscountUsed ?? 0;
+    metadata.subscriptionDiscountRemaining = quote.subscriptionDiscountRemaining ?? 0;
+    metadata.subscriptionDiscountQuotaType = quote.subscriptionDiscountQuotaType ?? 'LIFETIME';
+    metadata.nonAppliedDiscounts = quote.nonAppliedDiscounts ?? [];
     return metadata;
   }
 
@@ -204,14 +218,58 @@ export class CheckoutService {
   private async createOrder(
     userId: string,
     requestId: string,
-    quote: DiscountQuote,
-    metadata: CheckoutDiscountMetadata,
+    couponCode: string | undefined,
     lineItems: DiscountLineItem[],
-  ): Promise<FinanceOrder> {
-    const total = Math.max(0, quote.subtotal - quote.discountValue);
-    const metadataJson = this.toJsonValue(metadata);
+  ): Promise<{
+    order: FinanceOrder;
+    quote: DiscountQuote;
+    metadata: CheckoutDiscountMetadata;
+  }> {
     return this.prisma.$transaction(async (tx) => {
-      const order = await tx.financeOrder.create({
+      const baseQuote = await this.discountsService.calculateDiscountQuote(tx, {
+        userId,
+        items: lineItems,
+        couponCode: couponCode?.trim() || undefined,
+        orderKind: OrderKind.PRODUCT,
+        subscriptionDiscount: null,
+      });
+
+      let quote = { ...baseQuote };
+      const subscriptionCandidate = await this.buildSubscriptionDiscountCandidate(
+        userId,
+        tx,
+      );
+      if (
+        quote.appliedDiscountSource !== 'COUPON' &&
+        quote.discountValue <= 0 &&
+        subscriptionCandidate
+      ) {
+        const subscriptionAmount = Math.min(
+          Math.floor((quote.subtotal * subscriptionCandidate.percent) / 100),
+          quote.subtotal,
+        );
+        if (subscriptionAmount > 0) {
+          quote = {
+            ...quote,
+            discountType: DiscountType.PERCENT,
+            discountValue: subscriptionAmount,
+            appliedDiscountSource: 'SUBSCRIPTION',
+            appliedDiscountAmount: subscriptionAmount,
+            appliedDiscountPercent: subscriptionCandidate.percent,
+            appliedDiscountReason: `Subscription discount applied: ${subscriptionCandidate.percent}% off`,
+            subscriptionDiscountPercent: subscriptionCandidate.percent,
+            subscriptionDiscountRemaining: subscriptionCandidate.remaining,
+            subscriptionDiscountUsed: subscriptionCandidate.used,
+            subscriptionDiscountTotal: subscriptionCandidate.total,
+          };
+        }
+      }
+
+      const total = Math.max(0, quote.subtotal - quote.discountValue);
+      const metadata = this.buildDiscountMetadata(quote);
+      const metadataJson = this.toJsonValue(metadata);
+
+      let order = await tx.financeOrder.create({
         data: {
           userId,
           requestId,
@@ -255,8 +313,75 @@ export class CheckoutService {
         });
       }
 
-      return order;
+      if (quote.appliedDiscountSource === 'SUBSCRIPTION') {
+        const usage = await this.subscriptionsService.consumeSubscriptionDiscountForOrder(
+          tx,
+          { userId, orderId: order.id, subtotal: quote.subtotal },
+        );
+        if (!usage) {
+          quote = {
+            ...quote,
+            discountType: DiscountType.NONE,
+            discountValue: 0,
+            appliedDiscountSource: 'NONE',
+            appliedDiscountAmount: 0,
+            appliedDiscountPercent: 0,
+            appliedDiscountReason: 'No discount applied.',
+          };
+          const updatedTotal = Math.max(0, quote.subtotal - quote.discountValue);
+          const updatedMetadata = this.buildDiscountMetadata(quote);
+          const updatedMetadataJson = this.toJsonValue(updatedMetadata);
+          order = await tx.financeOrder.update({
+            where: { id: order.id },
+            data: {
+              discountType: 'NONE',
+              discountValue: 0,
+              discountAmount: 0,
+              discountSource: 'NONE',
+              discountReason: 'No discount applied.',
+              discountMetadata: updatedMetadataJson,
+              total: updatedTotal,
+            },
+          });
+        } else {
+          quote = {
+            ...quote,
+            subscriptionDiscountRemaining: usage.remainingAfter,
+            subscriptionDiscountUsed: usage.usedAfter,
+            subscriptionDiscountTotal: usage.total,
+          };
+        }
+      }
+
+      return { order, quote, metadata: this.buildDiscountMetadata(quote) };
     });
+  }
+
+  private async buildSubscriptionDiscountCandidate(
+    userId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<
+    | {
+        percent: number;
+        remaining: number;
+        used: number;
+        total: number;
+      }
+    | null
+  > {
+    const candidate = await this.subscriptionsService.getDiscountCandidate(
+      userId,
+      tx,
+    );
+    if (!candidate) {
+      return null;
+    }
+    return {
+      percent: candidate.percent,
+      remaining: candidate.remaining,
+      used: candidate.used,
+      total: candidate.total,
+    };
   }
 
   private async buildResponseForExistingOrder(

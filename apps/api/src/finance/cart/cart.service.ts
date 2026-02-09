@@ -6,8 +6,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { DiscountsService } from '@app/finance/discounts/discounts.service';
+import { SubscriptionsService } from '@app/finance/subscriptions/subscriptions.service';
 import {
   CartStatus,
+  DiscountType,
   EntitlementSource,
   OrderKind,
   OrderStatus,
@@ -82,6 +84,7 @@ export class CartService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly discountsService: DiscountsService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   async getCart(userId: string): Promise<CartView> {
@@ -216,7 +219,7 @@ export class CartService {
 
       const lineItems = this.buildLineItems(cart);
       const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-      const quote = await this.discountsService.calculateDiscountQuote(tx, {
+      let quote = await this.discountsService.calculateDiscountQuote(tx, {
         userId,
         orderKind: OrderKind.PRODUCT,
         items: lineItems.map((item) => ({
@@ -227,7 +230,39 @@ export class CartService {
           lineTotal: item.lineTotal,
         })),
         couponCode: couponCode?.trim() || undefined,
+        subscriptionDiscount: null,
       });
+      const subscriptionCandidate = await this.subscriptionsService.getDiscountCandidate(
+        userId,
+        tx,
+      );
+      if (
+        quote.appliedDiscountSource !== 'COUPON' &&
+        quote.discountValue <= 0 &&
+        subscriptionCandidate
+      ) {
+        const subscriptionAmount = Math.min(
+          Math.floor((subtotal * subscriptionCandidate.percent) / 100),
+          subtotal,
+        );
+        if (subscriptionAmount > 0) {
+          quote = {
+            ...quote,
+            discountType: DiscountType.PERCENT,
+            discountValue: subscriptionAmount,
+            appliedDiscountSource: 'SUBSCRIPTION',
+            appliedDiscountAmount: subscriptionAmount,
+            appliedDiscountPercent: subscriptionCandidate.percent,
+            appliedDiscountReason: `Subscription discount applied: ${subscriptionCandidate.percent}% off`,
+            subscriptionDiscountPercent: subscriptionCandidate.percent,
+            subscriptionDiscountRemaining: subscriptionCandidate.remaining,
+            subscriptionDiscountUsed: subscriptionCandidate.used,
+            subscriptionDiscountTotal: subscriptionCandidate.total,
+            nonAppliedDiscounts: quote.nonAppliedDiscounts ?? [],
+          };
+        }
+      }
+
       const total = Math.max(0, subtotal - quote.discountValue);
 
       await this.ensureNotPurchasedForItems(
@@ -248,7 +283,7 @@ export class CartService {
         throw new ConflictException('Cart has already been checked out.');
       }
 
-      const order = await tx.financeOrder.create({
+      let order = await tx.financeOrder.create({
         data: {
           userId,
           status: OrderStatus.PENDING_PAYMENT as FinanceOrderStatus,
@@ -288,6 +323,42 @@ export class CartService {
           userId,
           orderId: order.id,
         });
+      }
+
+      if (quote.appliedDiscountSource === 'SUBSCRIPTION') {
+        const usage = await this.subscriptionsService.consumeSubscriptionDiscountForOrder(
+          tx,
+          { userId, orderId: order.id, subtotal },
+        );
+        if (!usage) {
+          quote = {
+            ...quote,
+            discountType: DiscountType.NONE,
+            discountValue: 0,
+            appliedDiscountSource: 'NONE',
+            appliedDiscountAmount: 0,
+            appliedDiscountPercent: 0,
+            appliedDiscountReason: 'No discount applied.',
+          };
+          order = await tx.financeOrder.update({
+            where: { id: order.id },
+            data: {
+              discountType: 'NONE',
+              discountValue: 0,
+              discountAmount: 0,
+              discountSource: 'NONE',
+              discountReason: 'No discount applied.',
+              total: subtotal,
+            },
+          });
+        } else {
+          quote = {
+            ...quote,
+            subscriptionDiscountRemaining: usage.remainingAfter,
+            subscriptionDiscountUsed: usage.usedAfter,
+            subscriptionDiscountTotal: usage.total,
+          };
+        }
       }
 
       await tx.financeCartItem.deleteMany({ where: { cartId: cart.id } });
@@ -446,20 +517,28 @@ export class CartService {
 
     const lineItems = this.buildLineItems(cart);
     const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const quote = await this.discountsService.calculateDiscountQuote(
-      this.prisma,
-      {
-        userId,
-        orderKind: OrderKind.PRODUCT,
-        items: lineItems.map((item) => ({
-          productId: item.productId,
-          pricingType: item.pricingType,
-          unitPrice: item.unitPrice,
-          quantity: item.quantity,
-          lineTotal: item.lineTotal,
-        })),
-      },
+    const subscriptionDiscount = await this.subscriptionsService.getDiscountCandidate(
+      userId,
     );
+    const quote = await this.discountsService.calculateDiscountQuote(this.prisma, {
+      userId,
+      orderKind: OrderKind.PRODUCT,
+      items: lineItems.map((item) => ({
+        productId: item.productId,
+        pricingType: item.pricingType,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineTotal: item.lineTotal,
+      })),
+      subscriptionDiscount: subscriptionDiscount
+        ? {
+            percent: subscriptionDiscount.percent,
+            remaining: subscriptionDiscount.remaining,
+            used: subscriptionDiscount.used,
+            total: subscriptionDiscount.total,
+          }
+        : null,
+    });
 
     return {
       id: cart.id,
@@ -484,6 +563,10 @@ export class CartService {
 
     const lineItems = this.buildLineItems(cart);
     const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
+    const subscriptionDiscount = await this.subscriptionsService.getDiscountCandidate(
+      userId,
+      tx,
+    );
     const quote = await this.discountsService.calculateDiscountQuote(tx, {
       userId,
       orderKind: OrderKind.PRODUCT,
@@ -495,6 +578,14 @@ export class CartService {
         lineTotal: item.lineTotal,
       })),
       couponCode: couponCode?.trim() || undefined,
+      subscriptionDiscount: subscriptionDiscount
+        ? {
+            percent: subscriptionDiscount.percent,
+            remaining: subscriptionDiscount.remaining,
+            used: subscriptionDiscount.used,
+            total: subscriptionDiscount.total,
+          }
+        : null,
     });
 
     return {

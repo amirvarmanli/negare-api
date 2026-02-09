@@ -1,9 +1,12 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@app/core/auth/guards/jwt-auth.guard';
 import {
@@ -27,9 +30,12 @@ export class SubscriptionDownloadsController {
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Validate subscription or purchased product downloads against entitlement records created during fulfillment (including platform-funded coupon purchases) and log the usage.',
+      'Validate subscription or purchased product downloads against entitlement records created during fulfillment (including platform-funded coupon purchases) without consuming quota.',
   })
   @ApiOkResponse({ type: SubscriptionDownloadDecisionDto })
+  @ApiForbiddenResponse({ description: 'SUBSCRIPTION_REQUIRED | PURCHASE_REQUIRED' })
+  @ApiTooManyRequestsResponse({ description: 'DAILY_QUOTA_EXCEEDED' })
+  @ApiUnauthorizedResponse({ description: 'NOT_AUTHENTICATED' })
   async validate(
     @Body() dto: SubscriptionDownloadRequestDto,
     @CurrentUser() user: CurrentUserPayload | undefined,

@@ -14,7 +14,7 @@ export class SubscriptionPlanDto {
   durationDays!: number;
 
   @ApiProperty({ example: 5 })
-  dailySubscriptionDownloadLimit!: number;
+  dailyDownloadLimit!: number;
 
   @ApiProperty({ example: 10 })
   dailyFreeDownloadLimitWithSubscription!: number;
@@ -25,11 +25,28 @@ export class SubscriptionPlanDto {
   @ApiProperty({ example: true })
   isActive!: boolean;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Percentage applied per discounted subscription purchase.',
+  })
   discountPercent?: number | null;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({ example: [{ label: 'Premium exports' }] })
+  features?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    example: 10,
+    description:
+      'Total discounted purchases allowed per user for the lifetime of the subscription (not daily, not per billing cycle).',
+  })
   discountQuota?: number | null;
+
+  @ApiProperty({
+    example: 'LIFETIME',
+    enum: ['LIFETIME'],
+    description: 'Discount quota applies to the lifetime of the subscription.',
+  })
+  discountQuotaType!: 'LIFETIME';
 
   @ApiProperty({ example: '2025-01-01T00:00:00.000Z' })
   createdAt!: string;

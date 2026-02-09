@@ -40,6 +40,7 @@ import {
   PaymentResultDto,
   PaymentResultNextAction,
   PaymentResultIntent,
+  PaymentResultPurpose,
 } from '@app/finance/payments/dto/payment-result.dto';
 import { PaymentResultQueryDto } from '@app/finance/payments/dto/payment-result-query.dto';
 import {
@@ -417,6 +418,11 @@ export class PaymentsController {
     description: 'Gateway trackId. Used when paymentId is missing.',
   })
   @ApiQuery({
+    name: 'authority',
+    required: false,
+    description: 'Gateway authority/session id (alias of trackId).',
+  })
+  @ApiQuery({
     name: 'referenceType',
     required: false,
     description:
@@ -448,7 +454,7 @@ export class PaymentsController {
   ): Promise<PaymentResultDto> {
     const userId = requireUserId(user);
     const paymentId = query.paymentId;
-    const trackId = query.trackId;
+    const trackId = query.trackId ?? query.authority;
     const refType = query.referenceType ?? query.refType;
     const refId = query.referenceId ?? query.refId;
 
@@ -580,7 +586,27 @@ export class PaymentsController {
       provider: PaymentProvider.ZIBAL,
       amount: photoPayment.amountToman,
       currency: 'TOMAN',
-      purpose: 'PHOTO_RESTORE',
+      purpose: PaymentResultPurpose.IMAGE_RESTORE_ORDER,
+      purposeRef: {
+        customOrderId: photoPayment.orderRequestId ?? photoPayment.id,
+      },
+      dateTime: photoPayment.updatedAt.toISOString(),
+      refId: photoPayment.transactionId ?? null,
+      trackingCode: photoPayment.trackId ?? null,
+      errorMessage: photoPayment.message ?? photoPayment.fulfillmentError ?? null,
+      cta: { label: 'Go to Orders', href: '/panel/orders' },
+      details: {
+        orderId: photoPayment.orderRequestId ?? null,
+        items: undefined,
+        downloadAllowed:
+          photoPayment.fulfillmentStatus ===
+          OrderRequestPaymentFulfillmentStatus.SUCCESS,
+        subscriptionId: null,
+        planId: null,
+        walletId: null,
+        donationId: null,
+        customOrderId: photoPayment.orderRequestId ?? null,
+      },
       referenceType: 'photo_restore',
       referenceId: photoPayment.orderRequestId ?? photoPayment.id,
       intent: PaymentResultIntent.PHOTO_RESTORE,
