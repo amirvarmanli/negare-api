@@ -29,4 +29,4 @@ mkdir -p "$UPLOAD_TMP_DIR"
 chown -R node:node "$UPLOAD_TMP_DIR" 2>/dev/null || true
 
 echo "Starting application process"
-exec su-exec node "$@"
+exec gosu node "$@"

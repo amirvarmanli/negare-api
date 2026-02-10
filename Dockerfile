@@ -1,8 +1,11 @@
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
 WORKDIR /app
 
 FROM base AS deps
-RUN apk add --no-cache python3 git build-base
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 build-essential git \
+  && rm -rf /var/lib/apt/lists/*
+RUN npm config set registry https://registry.npmmirror.com/
 COPY package*.json ./
 RUN npm ci --prefer-offline
 
@@ -16,6 +19,7 @@ ENV NODE_ENV=development
 COPY . .
 
 FROM base AS prod-deps
+RUN npm config set registry https://registry.npmmirror.com/
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline
 
@@ -30,7 +34,9 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
 RUN chmod +x ./scripts/docker-entrypoint.sh \
-  && apk add --no-cache curl postgresql-client su-exec
+  && apt-get update \
+  && apt-get install -y --no-install-recommends curl postgresql-client gosu \
+  && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
 CMD ["npm", "run", "start:prod"]
